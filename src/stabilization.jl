@@ -94,7 +94,7 @@ function settle_wing(config::V3SettleConfig;
 
     # Load system structure
     sys = load_sys_struct_from_yaml(source_struc;
-        system_name="v3", set,
+        system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
 
     # Set transform from heading/elevation

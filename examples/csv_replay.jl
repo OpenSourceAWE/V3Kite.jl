@@ -216,7 +216,7 @@ function run_physics_replay(csv_path;
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = AERO_YAML_PATH
     sys_struct = load_sys_struct_from_yaml(STRUC_YAML_PATH;
-        system_name="v3", set,
+        system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
     sam = SymbolicAWEModel(set, sys_struct)
     init!(sam)

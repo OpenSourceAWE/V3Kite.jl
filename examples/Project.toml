@@ -18,3 +18,5 @@ VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 
 [sources]
 V3Kite = {path = ".."}
+SymbolicAWEModels = {path = "../../SymbolicAWEModels.jl"}
+VortexStepMethod = {path = "../../VortexStepMethod.jl"}
