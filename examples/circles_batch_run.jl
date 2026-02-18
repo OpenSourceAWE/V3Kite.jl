@@ -143,10 +143,10 @@ function run_zenith_circles(;
         tl = sys.winches[1].tether_len
         wf = winch_pid(nominal_tether_length, tl, 0.0)
         wt = force_to_torque(wf, sys)
-        sys.winches[1].set_value = wt
+        sys.winches[1].set_value = -wt
 
         if !sim_step!(sam;
-                set_values=[wt], dt=dt_z, vsm_interval=1)
+                set_values=[-wt], dt=dt_z, vsm_interval=1)
             @error "Zenith phase failed" step
             break
         end

@@ -272,7 +272,7 @@ function run_physics_replay(csv_path;
     struc = joinpath(v3_data_path(),
         "struc_geometry_stable.yaml")
     sys_struct = load_sys_struct_from_yaml(struc;
-        system_name="v3", set,
+        system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
 
     # Set wing CD

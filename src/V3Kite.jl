@@ -84,6 +84,7 @@ export report_performance
 
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
+export V3_MODEL_NAME, V3_QUAT_MODEL_NAME
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
@@ -103,5 +104,7 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_body_frame_local end
+
+include("precompile.jl")
 
 end # module

@@ -34,7 +34,7 @@ function plot_batch(df; batch_dir)
         isfinite(row.yaw_rate) &&
         isfinite(row.yaw_rate_paper) &&
         isfinite(row.up), df)
-    if :lt in names(df)
+    if "lt" in names(df)
         df = filter(row -> isfinite(row.lt), df)
     end
 
@@ -113,7 +113,7 @@ function plot_batch(df; batch_dir)
     end
 
     lt_tag = ""
-    if :lt in names(df)
+    if "lt" in names(df)
         lt_vals = unique(df.lt)
         if length(lt_vals) == 1
             lt_tag = "_lt_$(Int(round(lt_vals[1])))"
@@ -127,7 +127,7 @@ end
 
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    batch_name = "circular_2025_batch_2026_01_11_11_29_19"
+    # batch_name = "circular_2025_batch_2026_01_11_11_29_19"
     if isempty(batch_name)
         print("Enter batch folder name: ")
         batch_name = strip(readline())

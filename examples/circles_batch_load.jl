@@ -209,7 +209,7 @@ end
 
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    batch_name = "zenith_2025_batch_2026_01_10_20_50_34"
+    # batch_name = "zenith_2025_batch_2026_01_10_20_50_34"
     if isempty(batch_name)
         print("Enter batch folder name: ")
         batch_name = strip(readline())
