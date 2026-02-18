@@ -1,0 +1,131 @@
+wing_sections:
+  # ---------------------------------------------------------------
+  # headers:
+  #   - airfoil_id: integer, unique identifier for the airfoil (matches wing_airfoils)
+  #   - LE_x: x-coordinate of leading edge
+  #   - LE_y: y-coordinate of leading edge
+  #   - LE_z: z-coordinate of leading edge
+  #   - TE_x: x-coordinate of trailing edge
+  #   - TE_y: y-coordinate of trailing edge
+  #   - TE_z: z-coordinate of trailing edge
+  # ---------------------------------------------------------------
+  # NOTE: Reduced to 10 sections to match 20 structural WING points (10 LE/TE pairs)
+  # Constraint: n_structural_points (20) == 2 * n_vsm_sections (10)
+  # Selected sections match structural point spanwise positions
+  headers: [airfoil_id, LE_x, LE_y, LE_z, TE_x, TE_y, TE_z]
+  data:
+    # Sections match structural points exactly from struc_geometry.yaml
+    # Section 1: points 2 (LE) and 3 (TE)
+    - [18, 0.2939, 4.0396, 8.5835, 1.3505, 3.944, 8.7597]
+    # Section 2: points 4 (LE) and 5 (TE)
+    - [15, -0.2932, 3.9653, 9.371, 1.1988, 3.7772, 9.5443]
+    # Section 3: points 6 (LE) and 7 (TE)
+    - [11, -0.7807, 3.1779, 10.3234, 1.1645, 2.9365, 10.429]
+    # Section 4: points 8 (LE) and 9 (TE)
+    - [7, -1.0207, 2.0155, 10.9164, 1.1282, 1.8387, 10.9602]
+    # Section 5: points 10 (LE) and 11 (TE)
+    - [3, -1.1331, 0.7131, 11.1272, 1.1331, 0.6344, 11.1558]
+    # Section 6: points 12 (LE) and 13 (TE) - mirror of section 5
+    - [3, -1.1331, -0.6344, 11.09, 1.1334, -0.5561, 11.0867]
+    # Section 7: points 14 (LE) and 15 (TE) - mirror of section 4
+    - [7, -1.0232, -1.9455, 10.94, 1.125, -1.7614, 10.8979]
+    # Section 8: points 16 (LE) and 17 (TE) - mirror of section 3
+    - [11, -0.8032, -3.1098, 10.3432, 1.1416, -2.8437, 10.3346]
+    # Section 9: points 18 (LE) and 19 (TE) - mirror of section 2
+    - [15, -0.3579, -3.93, 9.3978, 1.1362, -3.6943, 9.4588]
+    # Section 10: points 20 (LE) and 21 (TE) - mirror of section 1
+    - [18, 0.1663, -3.9589, 8.5643, 1.2252, -3.7933, 8.6534]
+
+wing_airfoils:
+  # ---------------------------------------------------------------
+  # headers:
+  #   - airfoil_id: integer, unique identifier for the airfoil
+  #   - type: one of [neuralfoil, breukels_regression, masure_regression, polars]
+  #   - info_dict: dictionary with parameters depending on 'type'
+  #
+  # info_dict fields by type:
+  #   - breukels_regression:
+  #       t: Tube diameter non-dimensionalized by chord (required)
+  #       kappa: Maximum camber height/magnitude, non-dimensionalized by chord (required)
+  #   - neuralfoil:
+  #       dat_file_path: Path to airfoil .dat file (x, y columns)
+  #       model_size: NeuralFoil model size (e.g., "xxxlarge")
+  #       xtr_lower: Lower transition location (0=forced, 1=free)
+  #       xtr_upper: Upper transition location
+  #       n_crit: Critical amplification factor (see guidelines below)
+  #         n_crit guidelines:
+  #           Sailplane:           12–14
+  #           Motorglider:         11–13
+  #           Clean wind tunnel:   10–12
+  #           Average wind tunnel: 9   (standard "e^9 method")
+  #           Dirty wind tunnel:   4–8
+  #   - polars:
+  #       csv_file_path: Path to polar CSV file (columns: alpha [rad], cl, cd, cm)
+  #   - masure_regression:
+  #       t, eta, kappa, delta, lamba, phi: Regression parameters
+  #   - inviscid:
+  #       no further data is required 
+  # ---------------------------------------------------------------
+  alpha_range: [-10, 40, 0.5] # [deg], in this range the polars are calculated
+  reynolds: !!float 1e6 # Reynolds number
+  headers: [airfoil_id, type, info_dict]
+  data:
+    - [1, polars, {csv_file_path: "2D_polars_CFD/1.csv"}]
+    - [2, polars, {csv_file_path: "2D_polars_CFD/2.csv"}]
+    - [3, polars, {csv_file_path: "2D_polars_CFD/3.csv"}]
+    - [4, polars, {csv_file_path: "2D_polars_CFD/4.csv"}]
+    - [5, polars, {csv_file_path: "2D_polars_CFD/5.csv"}]
+    - [6, polars, {csv_file_path: "2D_polars_CFD/6.csv"}]
+    - [7, polars, {csv_file_path: "2D_polars_CFD/7.csv"}]
+    - [8, polars, {csv_file_path: "2D_polars_CFD/8.csv"}]
+    - [9, polars, {csv_file_path: "2D_polars_CFD/9.csv"}]
+    - [10, polars, {csv_file_path: "2D_polars_CFD/10.csv"}]
+    - [11, polars, {csv_file_path: "2D_polars_CFD/11.csv"}]
+    - [12, polars, {csv_file_path: "2D_polars_CFD/12.csv"}]
+    - [13, polars, {csv_file_path: "2D_polars_CFD/13.csv"}]
+    - [14, polars, {csv_file_path: "2D_polars_CFD/14.csv"}]
+    - [15, polars, {csv_file_path: "2D_polars_CFD/15.csv"}]
+    - [16, polars, {csv_file_path: "2D_polars_CFD/16.csv"}]
+    - [17, polars, {csv_file_path: "2D_polars_CFD/17.csv"}]
+    - [18, polars, {csv_file_path: "2D_polars_CFD/18.csv"}]
+    - [19, polars, {csv_file_path: "2D_polars_CFD/19.csv"}]
+    # - [1, polars, {csv_file_path: "2D_polars_CFD_drag_increase/1.csv"}]
+    # - [2, polars, {csv_file_path: "2D_polars_CFD_drag_increase/2.csv"}]
+    # - [3, polars, {csv_file_path: "2D_polars_CFD_drag_increase/3.csv"}]
+    # - [4, polars, {csv_file_path: "2D_polars_CFD_drag_increase/4.csv"}]
+    # - [5, polars, {csv_file_path: "2D_polars_CFD_drag_increase/5.csv"}]
+    # - [6, polars, {csv_file_path: "2D_polars_CFD_drag_increase/6.csv"}]
+    # - [7, polars, {csv_file_path: "2D_polars_CFD_drag_increase/7.csv"}]
+    # - [8, polars, {csv_file_path: "2D_polars_CFD_drag_increase/8.csv"}]
+    # - [9, polars, {csv_file_path: "2D_polars_CFD_drag_increase/9.csv"}]
+    # - [10, polars, {csv_file_path: "2D_polars_CFD_drag_increase/10.csv"}]
+    # - [11, polars, {csv_file_path: "2D_polars_CFD_drag_increase/11.csv"}]
+    # - [12, polars, {csv_file_path: "2D_polars_CFD_drag_increase/12.csv"}]
+    # - [13, polars, {csv_file_path: "2D_polars_CFD_drag_increase/13.csv"}]
+    # - [14, polars, {csv_file_path: "2D_polars_CFD_drag_increase/14.csv"}]
+    # - [15, polars, {csv_file_path: "2D_polars_CFD_drag_increase/15.csv"}]
+    # - [16, polars, {csv_file_path: "2D_polars_CFD_drag_increase/16.csv"}]
+    # - [17, polars, {csv_file_path: "2D_polars_CFD_drag_increase/17.csv"}]
+    # - [18, polars, {csv_file_path: "2D_polars_CFD_drag_increase/18.csv"}]
+    # - [19, polars, {csv_file_path: "2D_polars_CFD_drag_increase/19.csv"}]
+    # - [1, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/1.csv"}]
+    # - [2, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/2.csv"}]
+    # - [3, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/3.csv"}]
+    # - [4, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/4.csv"}]
+    # - [5, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/5.csv"}]
+    # - [6, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/6.csv"}]
+    # - [7, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/7.csv"}]
+    # - [8, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/8.csv"}]
+    # - [9, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/9.csv"}]
+    # - [10, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/10.csv"}]
+    # - [11, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/11.csv"}]
+    # - [12, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/12.csv"}]
+    # - [13, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/13.csv"}]
+    # - [14, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/14.csv"}]
+    # - [15, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/15.csv"}]
+    # - [16, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/16.csv"}]
+    # - [17, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/17.csv"}]
+    # - [18, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/18.csv"}]
+    # - [19, polars, {csv_file_path: "2D_polars_CFD_re5e5_converged_kasper_run_3_fitted_pchip_T26_drag_2x/19.csv"}]
+
+
