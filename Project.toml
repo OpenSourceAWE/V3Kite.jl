@@ -1,0 +1,37 @@
+name = "V3Kite"
+uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
+version = "0.1.0"
+authors = ["Jelle Poland", "Bart van de Lint"]
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+DiscretePIDs = "c1363496-6848-4723-8758-079b737f6baf"
+KiteUtils = "90980105-b163-44e5-ba9f-8b1c83bb0533"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+SymbolicAWEModels = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
+UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
+VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
+
+[weakdeps]
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+
+[sources]
+SymbolicAWEModels = {path = "../SymbolicAWEModels.jl"}
+VortexStepMethod = {path = "../VortexStepMethod.jl"}
+
+[extensions]
+V3KiteMakieExt = "GLMakie"
+
+[compat]
+VortexStepMethod = "2.3.0"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
