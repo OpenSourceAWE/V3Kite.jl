@@ -173,8 +173,8 @@ fig = plot(sam.sys_struct, syslog;
     plot_heading=false, plot_elevation=true,
     plot_azimuth=true, plot_winch_force=false,
     plot_set_values=false,
-    gk_ylims=(0.0, 15.0), aoa_ylims=(0.0, 15.0),
     yaw_rate_paper_ylims=(0.0, 50.0),
+    ylims=Dict(:aoa => (0.0, 15.0), :gk => (0.0, 15.0)),
     plot_tether_actual=true, plot_us=true)
 
 scene = replay(syslog, sam.sys_struct, show_panes=false)

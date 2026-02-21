@@ -112,7 +112,7 @@ function run_circular(;
 
         # Tube bending resistance
         if tube_bending_resistance != 0
-            R = sys.wings[1].R_b_w
+            R = calc_R_b_w(sys)
             f_pos = R * [0.0, tube_bending_resistance, 0.0]
             f_neg = R * [0.0, -tube_bending_resistance, 0.0]
             sys.points[2].disturb .= f_pos

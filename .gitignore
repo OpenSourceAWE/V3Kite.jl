@@ -55,3 +55,8 @@ docs/src/.$kite_power_tools.drawio.bkp
 .vscode
 .zprofile
 .zshrc
+/HEAD
+/config
+/hooks
+/objects
+/refs

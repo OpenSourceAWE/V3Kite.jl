@@ -47,7 +47,7 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.3, 0.0, 
     csv_x = cross(csv_y, csv_z)
 
     # Sim basis: directly from wing rotation matrix
-    R_b_w = sys_struct.wings[1].R_b_w
+    R_b_w = calc_R_b_w(sys_struct)
     sim_x = R_b_w[:, 1]
     sim_y = R_b_w[:, 2]
     sim_z = R_b_w[:, 3]

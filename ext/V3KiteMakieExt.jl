@@ -94,7 +94,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         # Update pos_b for REFINE wing points
         for wing in wings
             if wing.wing_type == SymbolicAWEModels.REFINE
-                R_w_b = wing.R_b_w'
+                R_w_b = V3Kite.calc_R_b_w(sys_struct)'
                 for point in points
                     if point.wing_idx == wing.idx
                         point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
@@ -178,7 +178,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
     # Plot extra points with connections (use first struct's wing for transform)
     if !isnothing(extra_points) && !isnothing(extra_groups)
         wing = structs[1].wings[1]
-        R_w_b = wing.R_b_w'
+        R_w_b = V3Kite.calc_R_b_w(structs[1])'
         extra_body = [R_w_b * (collect(p) - wing.pos_w) for p in extra_points]
 
         if dir == :top
