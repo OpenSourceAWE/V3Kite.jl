@@ -130,8 +130,8 @@ function update_vel_from_csv!(sys, row, brake)
 
     steering = clamp(row.steering, -100.0, 100.0)
     L_left, L_right = local_steering_to_lengths(steering)
-    segments[V3_STEERING_LEFT_IDX].l0 = L_left
-    segments[V3_STEERING_RIGHT_IDX].l0 = L_right
+    segments[V3_STEERING_LEFT_IDX].l0 = max(0.01, L_left)
+    segments[V3_STEERING_RIGHT_IDX].l0 = max(0.01, L_right)
 
     winch = winches[1]
     ff_torque = calc_feedforward_torque(
@@ -141,7 +141,7 @@ function update_vel_from_csv!(sys, row, brake)
 
     L_depower = local_depower_to_length(
         row.depower + DEPOWER_OFFSET)
-    segments[V3_DEPOWER_IDX].l0 = L_depower
+    segments[V3_DEPOWER_IDX].l0 = max(0.01, L_depower)
 
     return winch.set_value
 end
@@ -154,7 +154,7 @@ function local_update_sys_from_csv!(sys, row)
     quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
     csv_heading = calc_heading(sys,
         SymbolicAWEModels.quaternion_to_rotation_matrix(quat)) + pi
-    wing.R_b_w = calc_R_b_w(sys)
+    R_b_w = calc_R_b_w(sys)
 
     csv_pos = [row.x, row.y, row.z]
     for (n, pidx) in enumerate(39:44)
@@ -178,9 +178,9 @@ function local_update_sys_from_csv!(sys, row)
     L_left, L_right = local_steering_to_lengths(row.steering)
     L_depower = local_depower_to_length(
         row.depower + DEPOWER_OFFSET)
-    segments[V3_STEERING_LEFT_IDX].l0 = L_left
-    segments[V3_STEERING_RIGHT_IDX].l0 = L_right
-    segments[V3_DEPOWER_IDX].l0 = L_depower
+    segments[V3_STEERING_LEFT_IDX].l0 = max(0.01, L_left)
+    segments[V3_STEERING_RIGHT_IDX].l0 = max(0.01, L_right)
+    segments[V3_DEPOWER_IDX].l0 = max(0.01, L_depower)
 end
 
 function find_equilibrium_turn_rate(wing)

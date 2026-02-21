@@ -281,8 +281,8 @@ function update_sys_struct_from_csv!(sys, row; extra_vel_body_x=0.0)
     quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
     csv_heading = calc_heading(sys,
         SymbolicAWEModels.quaternion_to_rotation_matrix(quat)) + pi
-    wing.R_b_w = calc_R_b_w(sys)
-    curr_heading = calc_heading(sys, wing.R_b_w)
+    R_b_w = calc_R_b_w(sys)
+    curr_heading = calc_heading(sys, R_b_w)
 
     # calc needed transform
     csv_pos = [row.x, row.y, row.z]
@@ -296,7 +296,7 @@ function update_sys_struct_from_csv!(sys, row; extra_vel_body_x=0.0)
 
     # apply vel with optional extra velocity in body -z direction (upward)
     csv_vel = [row.vx, row.vy, row.vz]
-    extra_vel_w = extra_vel_body_x * wing.R_b_w[:, 1]
+    extra_vel_w = extra_vel_body_x * R_b_w[:, 1]
     wing.vel_w .= csv_vel + extra_vel_w
     for point in points
         transform_frac = point.pos_w ⋅ normalize(wing.pos_w) / norm(wing.pos_w)
@@ -310,7 +310,8 @@ function update_sys_struct_from_csv!(sys, row; extra_vel_body_x=0.0)
     L_left, L_right = csv_steering_percentage_to_lengths(row.steering)
     L_depower = depower_percentage_to_length(row.depower)
 
-    segments[V3_STEERING_LEFT_IDX].l0 = L_left
-    segments[V3_STEERING_RIGHT_IDX].l0 = L_right
-    segments[V3_DEPOWER_IDX].l0 = L_depower
+    min_l0 = 0.01
+    segments[V3_STEERING_LEFT_IDX].l0 = max(min_l0, L_left)
+    segments[V3_STEERING_RIGHT_IDX].l0 = max(min_l0, L_right)
+    segments[V3_DEPOWER_IDX].l0 = max(min_l0, L_depower)
 end

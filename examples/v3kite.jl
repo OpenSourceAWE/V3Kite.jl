@@ -113,7 +113,7 @@ function run_example()
         wt = force_to_torque(wf, sys)
         sys.winches[1].set_value = -wt
 
-        if !sim_step!(sam;
+        @time if !sim_step!(sam;
                 set_values=[-wt], dt, vsm_interval=1)
             @error "Simulation failed" step
             break
@@ -144,7 +144,7 @@ sam, syslog, heading_setpoint = run_example()
 @info "Creating visualization..."
 fig = plot(sam.sys_struct, syslog;
     plot_tether=true,
-    heading_setpoint=heading_setpoint)
+    setpoints=Dict(:heading => heading_setpoint))
 display(fig)
 
 @info "Example complete!"

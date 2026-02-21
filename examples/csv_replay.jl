@@ -155,8 +155,8 @@ function update_vel_from_csv!(sys, row, brake, heading_pid)
     raw_csv_heading = calc_csv_heading(
         row.roll, row.pitch, row.yaw, sys)
     csv_heading = filter_csv_heading(raw_csv_heading)
-    wing.R_b_w = calc_R_b_w(sys)
-    curr_heading = calc_heading(sys, wing.R_b_w)
+    R_b_w = calc_R_b_w(sys)
+    curr_heading = calc_heading(sys, R_b_w)
     delta_heading = -wrap_to_pi(csv_heading - curr_heading)
 
     update_sim_distance!(wing.pos_w)
@@ -169,10 +169,11 @@ function update_vel_from_csv!(sys, row, brake, heading_pid)
     steering = clamp(row.steering, -100.0, 100.0)
     L_left, L_right = csv_steering_percentage_to_lengths(
         steering * STEERING_MULTIPLIER)
-    segments[V3_STEERING_LEFT_IDX].l0 =
-        L_left + V3_STEERING_GAIN * steering_ctrl
-    segments[V3_STEERING_RIGHT_IDX].l0 =
-        L_right - V3_STEERING_GAIN * steering_ctrl
+    min_l0 = 0.01
+    segments[V3_STEERING_LEFT_IDX].l0 = max(min_l0,
+        L_left + V3_STEERING_GAIN * steering_ctrl)
+    segments[V3_STEERING_RIGHT_IDX].l0 = max(min_l0,
+        L_right - V3_STEERING_GAIN * steering_ctrl)
 
     # Winch feed-forward
     winch = winches[1]
@@ -183,7 +184,7 @@ function update_vel_from_csv!(sys, row, brake, heading_pid)
 
     # Depower from CSV
     L_depower = depower_percentage_to_length(row.depower)
-    segments[V3_DEPOWER_IDX].l0 = L_depower
+    segments[V3_DEPOWER_IDX].l0 = max(min_l0, L_depower)
 
     eff_steering = steering * STEERING_MULTIPLIER +
         steering_ctrl * 100
@@ -333,7 +334,7 @@ function run_physics_replay(csv_path;
                 k_spring=CSV_SPRING_K * total_mass,
                 k_damping=CSV_DAMPING_K * total_mass)
 
-            next_step!(sam; dt, set_values=[set_value])
+            @time next_step!(sam; dt, set_values=[set_value])
 
             # Extra points comparison
             if !isnothing(EXTRA_POINTS_CSV) &&

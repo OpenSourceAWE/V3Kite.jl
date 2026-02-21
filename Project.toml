@@ -9,8 +9,8 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DiscretePIDs = "c1363496-6848-4723-8758-079b737f6baf"
 KiteUtils = "90980105-b163-44e5-ba9f-8b1c83bb0533"
-PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 SymbolicAWEModels = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
@@ -21,14 +21,14 @@ VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 
 [sources]
-SymbolicAWEModels = {path = "../SymbolicAWEModels.jl"}
-VortexStepMethod = {path = "../VortexStepMethod.jl"}
+SymbolicAWEModels = {url = "https://github.com/OpenSourceAWE/SymbolicAWEModels.jl.git#big-update"}
 
 [extensions]
 V3KiteMakieExt = "GLMakie"
 
 [compat]
-VortexStepMethod = "2.3.0"
+SymbolicAWEModels = "0.5.0"
+VortexStepMethod = "3.0.0"
 julia = "1.10"
 
 [extras]

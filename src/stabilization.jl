@@ -169,10 +169,10 @@ function settle_wing(config::V3SettleConfig;
 
         # Heading control
         wing = sys.wings[1]
-        wing.R_b_w = SymbolicAWEModels.calc_refine_wing_frame(
+        R_b_w = SymbolicAWEModels.calc_refine_wing_frame(
             sys.points, wing.z_ref_points,
             wing.y_ref_points, wing.origin_idx)[1]
-        curr_heading = calc_heading(sys, wing.R_b_w)
+        curr_heading = calc_heading(sys, R_b_w)
         delta = -wrap_to_pi(
             config.heading_setpoint - curr_heading)
         ctrl = DiscretePIDs.calculate_control!(
