@@ -28,60 +28,79 @@ using Printf
 # Configuration
 # =============================================================================
 
+TETHER_LENGTH = 262
+ELEVATION = 20.0
+
+# Geometry (must match settle output)
+TE_FRAC = 0.95
+TIP_REDUCTION = 0.4
+GEOM_SUFFIX = build_geom_suffix(
+    V3_DEPOWER_L0, TIP_REDUCTION, TE_FRAC)
+
+# Base control values
+UP = 0.42                  # Depower fraction (old 0-1)
+V_WIND = 7.6
+DAMPING_PATTERN = [0.0, 10.0, 20.0]
+
+# Ramp timing (depower only)
+RAMP_START_UP = 0.1
+RAMP_END_UP = 1.5
+
+# Steering targets (keyboard-driven)
+STEERING_TARGET = 10.0     # Target % when key held
+STEERING_RAMP_RATE = 20.0  # %/s ramp speed
+
 SIM_TIME = 60.0
-FPS = 20
-dt = 1.0 / FPS
-realtime_factor = 1.0
-plot_interval = 1
+FPS = 120
+DISPLAY_FPS = 10
 vector_scale = 1.0
 
-# Control parameters
-max_steering = 0.3
-max_power_depower = 0.3
-steering_rate = 0.001
-power_rate = 0.002
-
-# Damping
-initial_damping = 10.0
-decay_time = 2.0
+# Keyboard control
+power_rate = 0.5           # Percentage per keypress
+max_depower_pct = 50.0
 
 # Recording
 record_video = false
-output_filename = joinpath(v3_data_path(), "v3_realtime.mp4")
+output_filename = joinpath(
+    v3_data_path(), "v3_realtime.mp4")
 
 # =============================================================================
 # Model setup
 # =============================================================================
 
 config = V3SimConfig(
-    struc_yaml_path = "struc_geometry_stable.yaml",
-    aero_yaml_path = "aero_geometry_stable.yaml",
+    struc_yaml_path =
+        "struc_geometry_$(GEOM_SUFFIX).yaml",
+    aero_yaml_path =
+        "aero_geometry_$(GEOM_SUFFIX).yaml",
+    vsm_settings_path = "CORRECT_vsm_settings.yaml",
     sim_time = SIM_TIME,
     fps = FPS,
+    v_wind = V_WIND,
+    tether_length = TETHER_LENGTH,
+    elevation = ELEVATION,
     wing_type = REFINE,
-    remake_cache = false,
+    brake = true,
+    damping_pattern = DAMPING_PATTERN,
 )
 
 @info "Creating V3 model..."
 sam, sys = create_v3_model(config)
 
-# World frame damping
-SymbolicAWEModels.set_world_frame_damping(
-    sys, initial_damping, 1:38)
-
 @info "Initializing model..."
-init!(sam; remake=false, ignore_l0=false)
+init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+sys.winches[1].brake = true
+sys.points[1].extra_mass = 2.0
+sys.points[1].area = 0.2
 
-# Settle initial state
-wing_points = [p for p in sys.points if p.type == WING]
-[p.fix_static = true for p in sys.points if p.type == WING]
-next_step!(sam; dt=10.0)
-[p.fix_static = false for p in sys.points if p.type == WING]
+dt = 1.0 / FPS
+display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
 
-# Store initial segment lengths
-seg_left_init = sys.segments[V3_STEERING_LEFT_IDX].l0
-seg_right_init = sys.segments[V3_STEERING_RIGHT_IDX].l0
-seg_depower_init = sys.segments[V3_DEPOWER_IDX].l0
+# Store nominal segment lengths
+nominal_l0_left = sys.segments[V3_STEERING_LEFT_IDX].l0
+nominal_l0_right =
+    sys.segments[V3_STEERING_RIGHT_IDX].l0
+nominal_l0_depower = sys.segments[V3_DEPOWER_IDX].l0
 
 # =============================================================================
 # Create visualization
@@ -91,12 +110,13 @@ seg_depower_init = sys.segments[V3_DEPOWER_IDX].l0
 scene = plot(sys; vector_scale, size=(1400, 900))
 display(scene)
 
-progress_text = Observable("Progress: 0%")
+progress_text = Observable("t = 0.0s")
 text!(scene, progress_text, position=Point2f(1380, 40),
     space=:pixel, fontsize=20, color=:black,
     align=(:right, :top))
 
-control_text = Observable("Steering: 0.00m | Power: 0.00m")
+control_text = Observable(
+    "Steering: 0.0% | Depower: 0.0%")
 text!(scene, control_text, position=Point2f(20, 60),
     space=:pixel, fontsize=14, color=:darkgreen,
     align=(:left, :top))
@@ -115,30 +135,31 @@ text!(scene, instructions, position=Point2f(20, 130),
 # Keyboard control
 # =============================================================================
 
-current_steering_delta = Ref(0.0)
-current_power_delta = Ref(0.0)
+steering_target = Ref(0.0)   # Target: ±STEERING_TARGET
+steering_pct = Ref(0.0)     # Current (ramped) value
+depower_pct_delta = Ref(0.0)
 stop_simulation = Ref(false)
 
 on(events(scene).keyboardbutton) do event
     if event.action in (Keyboard.press, Keyboard.repeat)
         if event.key == Keyboard.left
-            current_steering_delta[] = clamp(
-                current_steering_delta[] - steering_rate,
-                -max_steering, max_steering)
+            steering_target[] = STEERING_TARGET
         elseif event.key == Keyboard.right
-            current_steering_delta[] = clamp(
-                current_steering_delta[] + steering_rate,
-                -max_steering, max_steering)
+            steering_target[] = -STEERING_TARGET
         elseif event.key == Keyboard.down
-            current_power_delta[] = clamp(
-                current_power_delta[] - power_rate,
-                -max_power_depower, max_power_depower)
+            depower_pct_delta[] = clamp(
+                depower_pct_delta[] - power_rate,
+                -max_depower_pct, max_depower_pct)
         elseif event.key == Keyboard.up
-            current_power_delta[] = clamp(
-                current_power_delta[] + power_rate,
-                -max_power_depower, max_power_depower)
+            depower_pct_delta[] = clamp(
+                depower_pct_delta[] + power_rate,
+                -max_depower_pct, max_depower_pct)
         elseif event.key == Keyboard.escape
             stop_simulation[] = true
+        end
+    elseif event.action == Keyboard.release
+        if event.key in (Keyboard.left, Keyboard.right)
+            steering_target[] = 0.0
         end
     end
 end
@@ -147,83 +168,114 @@ end
 # Simulation loop
 # =============================================================================
 
-n_steps = Int(round(FPS * SIM_TIME))
-logger, sys_state = create_logger(sam, n_steps)
+n_steps = if record_video
+    Int(round(FPS * SIM_TIME))
+else
+    typemax(Int)
+end
 
-io = record_video ? VideoStream(scene; framerate=FPS) : nothing
+if record_video
+    logger, sys_state = create_logger(
+        sam, Int(round(FPS * SIM_TIME)))
+end
 
-@info "Starting real-time simulation..." SIM_TIME dt
+io = if record_video
+    VideoStream(scene; framerate=DISPLAY_FPS)
+else
+    nothing
+end
+
+wing_points = [p for p in sys.points if p.type == WING]
+
+@info "Starting real-time simulation..." dt FPS
 start_time = time()
 simulation_time = 0.0
+last_t = 0.0
 
-for step in 1:n_steps
-    stop_simulation[] && break
+try
+    for step in 1:n_steps
+        stop_simulation[] && break
 
-    t = step * dt
-    target_elapsed = t / realtime_factor
+        global simulation_time, last_t
+        t = step * dt
 
-    # Damping decay
-    if t <= decay_time
-        damping = initial_damping * (1.0 - t / decay_time)
-        SymbolicAWEModels.set_world_frame_damping(
-            sys, damping, 1:38)
-    else
-        SymbolicAWEModels.set_world_frame_damping(
-            sys, 0.0, 1:38)
+        # Ramp steering toward keyboard target
+        max_delta = STEERING_RAMP_RATE * dt
+        diff = steering_target[] - steering_pct[]
+        steering_pct[] += clamp(diff, -max_delta, max_delta)
+
+        # Apply steering
+        L_left, L_right =
+            steering_percentage_to_lengths(steering_pct[])
+        sys.segments[V3_STEERING_LEFT_IDX].l0 = L_left
+        sys.segments[V3_STEERING_RIGHT_IDX].l0 = L_right
+
+        # Ramp depower
+        rf_up = ramp_factor(t, RAMP_START_UP, RAMP_END_UP)
+        up_pct = UP * 100 + depower_pct_delta[]
+        L_dp = depower_percentage_to_length(up_pct)
+        sys.segments[V3_DEPOWER_IDX].l0 =
+            nominal_l0_depower +
+            rf_up * (L_dp - nominal_l0_depower)
+
+        # Step simulation
+        step_start = time()
+        if !sim_step!(sam;
+                set_values=[0.0], dt, vsm_interval=1)
+            @warn "Simulation crashed at t=$t"
+            break
+        end
+        simulation_time += time() - step_start
+        last_t = t
+
+        if record_video
+            log_state!(logger, sys_state, sam, t)
+        end
+
+        # Update visualization
+        if step % display_interval == 0
+            plot!(sys; vector_scale)
+            progress_text[] = @sprintf("t = %.1fs", t)
+            control_text[] = @sprintf(
+                "Steering: %.1f%% | Depower: %.1f%%",
+                steering_pct[], up_pct * rf_up)
+            record_video && recordframe!(io)
+            sleep(0.001)
+        end
+
+        # Real-time pacing
+        target_elapsed = t
+        actual_elapsed = time() - start_time
+        sleep(max(0.0, target_elapsed - actual_elapsed))
+
+        # Status every 5 seconds
+        if step % (FPS * 5) == 0
+            avg_pos = mean(
+                [p.pos_w for p in wing_points])
+            @printf(
+                "  t=%.1fs z=%.1fm st=%.1f%% dp=%.1f%%\n",
+                t, avg_pos[3], steering_pct[], up_pct)
+        end
     end
-
-    # Apply control
-    sys.segments[V3_STEERING_LEFT_IDX].l0 =
-        seg_left_init + current_steering_delta[]
-    sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-        seg_right_init - current_steering_delta[]
-    sys.segments[V3_DEPOWER_IDX].l0 =
-        seg_depower_init + current_power_delta[]
-
-    control_text[] = @sprintf(
-        "Steering: %.3fm | Power: %.3fm",
-        current_steering_delta[], current_power_delta[])
-
-    step_start = time()
-    if !sim_step!(sam; dt, vsm_interval=1)
-        @warn "Simulation crashed at t=$t"
-        break
-    end
-    simulation_time += time() - step_start
-
-    log_state!(logger, sys_state, sam, t)
-
-    # Update visualization
-    if step % plot_interval == 0
-        plot!(sys; vector_scale)
-        progress_text[] = @sprintf(
-            "Progress: %d%%", round(Int, 100 * step / n_steps))
-        record_video && recordframe!(io)
-        sleep(0.001)
-    end
-
-    actual_elapsed = time() - start_time
-    sleep(max(0.0, target_elapsed - actual_elapsed))
-
-    if step % (n_steps ÷ 10) == 0
-        avg_pos = mean([p.pos_w for p in wing_points])
-        @printf("  %.0f%% (t=%.1fs, z=%.2fm)\n",
-            100 * step / n_steps, t, avg_pos[3])
-    end
+catch e
+    e isa InterruptException || rethrow(e)
+    @info "Stopped by user" t=round(last_t, digits=2)
 end
 
 if record_video
     save(output_filename, io)
     @info "Video saved" output_filename
+
+    report_performance(SIM_TIME, simulation_time)
+
+    save_log(logger, "realtime_v3")
+    syslog = load_log("realtime_v3")
+    replay_scene = replay(
+        syslog, sys; autoplay=false, loop=true)
+    display(replay_scene)
+else
+    total_elapsed = time() - start_time
+    @info "Complete" wall=round(total_elapsed, digits=2) sim_only=round(simulation_time, digits=2)
 end
-
-total_elapsed = time() - start_time
-@info "Complete" wall=round(total_elapsed, digits=2) sim_only=round(simulation_time, digits=2) speedup=round(SIM_TIME / simulation_time, digits=2)
-
-# Save and replay
-save_log(logger, "realtime_v3")
-syslog = load_log("realtime_v3")
-replay_scene = replay(syslog, sys; autoplay=false, loop=true)
-display(replay_scene)
 
 nothing
