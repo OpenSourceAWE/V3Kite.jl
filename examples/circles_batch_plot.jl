@@ -18,11 +18,21 @@ using Printf
 using GLMakie
 using Colors: distinguishable_colors
 
+function resolve_batch_dir(batch_name)
+    batch_dir = joinpath("processed_data", batch_name)
+    isdir(batch_dir) && return batch_dir
+    legacy_dir = joinpath("processed_data", "v3_kite", batch_name)
+    if isdir(legacy_dir)
+        @warn "Using legacy batch path" batch_dir=legacy_dir
+        return legacy_dir
+    end
+    return batch_dir
+end
+
 function load_batch_csv(batch_name)
-    batch_dir = joinpath(
-        "processed_data", "v3_kite", batch_name)
+    batch_dir = resolve_batch_dir(batch_name)
     csv_path = joinpath(batch_dir,
-        "circle_batch_analysis.csv")
+        "circles_batch_analysis.csv")
     isfile(csv_path) || error("CSV not found: $csv_path")
     df = CSV.read(csv_path, DataFrame)
     return df, batch_dir
@@ -120,7 +130,7 @@ function plot_batch(df; batch_dir)
         end
     end
     out_path = joinpath(batch_dir,
-        "circle_batch_plot$(lt_tag).png")
+        "circles_batch_plot$(lt_tag).png")
     save(out_path, fig)
     @info "Saved plot" path=out_path
 end
