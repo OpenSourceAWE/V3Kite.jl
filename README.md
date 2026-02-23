@@ -1,16 +1,19 @@
+
+[WORK IN PROGRESS] 
+
 # V3Kite.jl
 
 Julia package for simulation and validation of the TU Delft V3 ram-air kite.
 
 ## Overview
 
-V3Kite.jl provides calibration functions, model setup utilities, CSV replay capabilities, and simulation functions built on top of [SymbolicAWEModels.jl](https://github.com/aenarete/SymbolicAWEModels.jl) for the TU Delft V3 kite.
+V3Kite.jl provides calibration functions, model setup utilities, CSV replay capabilities, and simulation functions built on top of [SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl) for the TU Delft V3 kite.
 
 ## Installation
-
+Inside the REPL:
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/aenarete/V3Kite.jl")
+Pkg.add(url="https://github.com/OpenSourceAWE/V3Kite.jl")
 ```
 
 ## Quick Start
