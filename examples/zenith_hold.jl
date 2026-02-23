@@ -13,6 +13,7 @@ Usage:
 """
 
 using V3Kite
+using SymbolicAWEModels
 using GLMakie
 using LinearAlgebra
 using DiscretePIDs
@@ -22,11 +23,11 @@ using Dates
 # Configuration
 # =============================================================================
 
-SIM_TIME = 40.0
+SIM_TIME = 2.0
 FPS = 60
 V_WIND = 15.0
 TETHER_LENGTH = 250.0
-UP = 0.3                   # Depower fraction (0-1), old convention
+UP = 0.3                   # Depower fraction (0-1) #2025 flight definition
 MAX_US = 0.05              # Max steering fraction for azimuth PID
 TARGET_AZIMUTH = 0.0       # Target azimuth [rad]
 
@@ -51,14 +52,14 @@ WINCH_D = 50.0
 # =============================================================================
 
 config = V3SimConfig(
-    struc_yaml_path = "struc_geometry_stable.yaml",
-    aero_yaml_path = "aero_geometry_stable.yaml",
-    sim_time = SIM_TIME,
-    fps = FPS,
-    v_wind = V_WIND,
-    tether_length = TETHER_LENGTH,
-    wing_type = REFINE,
-    brake = false,
+    struc_yaml_path="struc_geometry_stable.yaml",
+    aero_yaml_path="aero_geometry_stable.yaml",
+    sim_time=SIM_TIME,
+    fps=FPS,
+    v_wind=V_WIND,
+    tether_length=TETHER_LENGTH,
+    wing_type=REFINE,
+    brake=false,
 )
 
 @info "Creating V3 model..."
@@ -71,9 +72,9 @@ SymbolicAWEModels.set_world_frame_damping(sys, INITIAL_DAMPING, 1:38)
 @info "Initializing model..."
 init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
 
-# Compute power tape target from old convention (0-1 fraction)
+# Compute power tape target
 nominal_l0_88 = sys.segments[V3_DEPOWER_IDX].l0
-power_tape_change = ((200 + 5000 * UP) / 1000) - nominal_l0_88
+power_tape_change = 0.2 + 5 * u_dp - nominal_l0_88
 
 # Logger
 n_steps = Int(round(FPS * SIM_TIME))
@@ -87,18 +88,18 @@ nominal_l0_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
 # Azimuth PID
 max_steering = MAX_US * V3_STEERING_GAIN
 azimuth_pid = create_heading_pid(;
-    K = HEADING_P > 0 ? HEADING_P : 1.0,
-    Ti = HEADING_I > 0 ? 1.0 / HEADING_I : false,
-    Td = HEADING_D > 0 ? HEADING_D : false,
+    K=HEADING_P > 0 ? HEADING_P : 1.0,
+    Ti=HEADING_I > 0 ? 1.0 / HEADING_I : false,
+    Td=HEADING_D > 0 ? HEADING_D : false,
     dt, umin=-abs(max_steering), umax=abs(max_steering))
 
 # Winch PID
 nominal_tether_length = sys.winches[1].tether_len
 init_winch_torque!(sys)
 winch_pid = create_winch_pid(;
-    K = WINCH_P,
-    Ti = WINCH_I > 0 ? WINCH_P / WINCH_I : false,
-    Td = WINCH_D > 0 ? WINCH_D / WINCH_P : false,
+    K=WINCH_P,
+    Ti=WINCH_I > 0 ? WINCH_P / WINCH_I : false,
+    Td=WINCH_D > 0 ? WINCH_D / WINCH_P : false,
     dt)
 
 azimuth_setpoint = Float64[TARGET_AZIMUTH]
@@ -107,7 +108,7 @@ azimuth_setpoint = Float64[TARGET_AZIMUTH]
 # Simulation loop
 # =============================================================================
 
-@info "Starting simulation" n_steps dt target_azimuth=TARGET_AZIMUTH
+@info "Starting simulation" n_steps dt target_azimuth = TARGET_AZIMUTH
 sim_start_time = time()
 
 for step in 1:n_steps
@@ -147,7 +148,7 @@ for step in 1:n_steps
 
     # Step
     if !sim_step!(sam;
-            set_values=[-winch_torque], dt, vsm_interval=1)
+        set_values=[-winch_torque], dt, vsm_interval=1)
         @error "Simulation failed" step
         break
     end
@@ -156,7 +157,7 @@ for step in 1:n_steps
 
     if should_report(step, n_steps)
         elapsed = time() - sim_start_time
-        @info "Step $step/$n_steps (t=$(round(t, digits=2))s)" times_realtime=round(t / elapsed, digits=2)
+        @info "Step $step/$n_steps (t=$(round(t, digits=2))s)" times_realtime = round(t / elapsed, digits=2)
     end
 end
 

@@ -25,7 +25,7 @@ using DiscretePIDs
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
-export init!, next_step!, update_sys_state!, log!, save_log, load_log
+export init!, next_step!, update_sys_state!, log!, save_log, load_log, replay
 export REFINE, QUATERNION, WING
 export Settings
 
@@ -105,6 +105,6 @@ Load GLMakie before using: `using GLMakie`
 """
 function plot_body_frame_local end
 
-include("precompile.jl")
+# include("precompile.jl") # disabled: precompilation workload
 
 end # module

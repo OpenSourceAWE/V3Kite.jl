@@ -24,28 +24,43 @@ using Statistics
 # =============================================================================
 
 DATA_DIR = joinpath(
-    dirname(dirname(@__DIR__)),
-    "SymbolicAWEModels.jl", "processed_data", "v3_kite")
+    dirname(@__DIR__),
+    "processed_data")
 
 # =============================================================================
 # Helper functions
 # =============================================================================
 
-function resolve_log_path(log_name, base_dir)
+function resolve_log_file(log_name, base_dir)
     candidates = String[]
-    push!(candidates, log_name)
-    if !endswith(log_name, ".arrow")
-        push!(candidates, log_name * ".arrow")
+
+    function add_candidate!(path)
+        push!(candidates, path)
+        if !endswith(path, ".arrow")
+            push!(candidates, path * ".arrow")
+        end
     end
-    push!(candidates, joinpath(base_dir, log_name))
-    if !endswith(log_name, ".arrow")
-        push!(candidates,
-            joinpath(base_dir, log_name * ".arrow"))
+
+    add_candidate!(log_name)
+    add_candidate!(joinpath(base_dir, log_name))
+
+    # Handle names that use the legacy "v3_kite/" prefix.
+    if startswith(log_name, "v3_kite/")
+        rel = log_name[(length("v3_kite/")+1):end]
+        add_candidate!(joinpath(base_dir, rel))
     end
-    for c in candidates
-        isfile(c) && return c
+
+    # Also try relative to processed_data root.
+    add_candidate!(joinpath(dirname(base_dir), log_name))
+
+    for c in unique(candidates)
+        if isfile(c)
+            return splitext(basename(c))[1], dirname(c), c
+        end
     end
-    return candidates[end]
+
+    error("Could not find log file. Tried:\n" *
+          join(unique(candidates), "\n"))
 end
 
 function load_log_and_system(; log_name)
@@ -59,20 +74,22 @@ function load_log_and_system(; log_name)
     us_vals = parse.(Float64, us_tokens)
     v_wind = parse(Int, m.captures[3])
     lt = parse(Int, m.captures[4])
-    @info "Parsed tags" up=up/100 us=us_vals./100 v_wind lt
+    @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
 
     config = V3SimConfig(
-        struc_yaml_path = "CORRECT_struc_geometry.yaml",
-        aero_yaml_path = "CORRECT_aero_geometry.yaml",
-        vsm_settings_path = "CORRECT_vsm_settings.yaml",
-        v_wind = Float64(v_wind),
-        tether_length = Float64(lt),
-        wing_type = REFINE,
+        struc_yaml_path="jelle_struc_geometry.yaml",
+        aero_yaml_path="jelle_aero_geometry.yaml",
+        vsm_settings_path="jelle_vsm_settings.yaml",
+        v_wind=Float64(v_wind),
+        tether_length=Float64(lt),
+        wing_type=REFINE,
     )
     sam, sys = create_v3_model(config)
 
-    log_path = resolve_log_path(log_name, DATA_DIR)
-    lg = load_log(log_path)
+    log_file, log_dir, log_path = resolve_log_file(
+        log_name, DATA_DIR)
+    @info "Resolved log file" log_path
+    lg = load_log(log_file; path=log_dir)
     return lg, sam, up, us_vals, v_wind, lt
 end
 
@@ -89,7 +106,7 @@ function print_and_plot_wing(lg, sam; is_print=false)
         lg_last.Y[origin_idx],
         lg_last.Z[origin_idx],
     ]
-    R_b_w = SymbolicAWEModels.quaternion_to_rotation_matrix(
+    R_b_w = V3Kite.SymbolicAWEModels.quaternion_to_rotation_matrix(
         lg_last.orient)
     wing_point_idxs = [
         p.idx for p in sam.sys_struct.points
@@ -101,9 +118,9 @@ function print_and_plot_wing(lg, sam; is_print=false)
             pos_w = [lg_last.X[idx], lg_last.Y[idx],
                 lg_last.Z[idx]]
             println("- [$idx, [$(Float64(pos_w[1])), " *
-                "$(Float64(pos_w[2])), " *
-                "$(Float64(pos_w[3]))], " *
-                "WING, 1, 1, 0.0, 10.0, 0.0]")
+                    "$(Float64(pos_w[2])), " *
+                    "$(Float64(pos_w[3]))], " *
+                    "WING, 1, 1, 0.0, 10.0, 0.0]")
         end
 
         println("\n# Wing node positions (body frame):")
@@ -112,9 +129,9 @@ function print_and_plot_wing(lg, sam; is_print=false)
                 lg_last.Z[idx]]
             pos_b = R_b_w' * (pos_w .- origin_w)
             println("- [$idx, [$(Float64(pos_b[1])), " *
-                "$(Float64(pos_b[2])), " *
-                "$(Float64(pos_b[3]))], " *
-                "WING, 1, 1, 0.0, 10.0, 0.0]")
+                    "$(Float64(pos_b[2])), " *
+                    "$(Float64(pos_b[3]))], " *
+                    "WING, 1, 1, 0.0, 10.0, 0.0]")
         end
 
         bridle_pairs = [
@@ -133,28 +150,28 @@ function print_and_plot_wing(lg, sam; is_print=false)
             y_c = (pos_b_pos[2] + pos_b_neg[2]) / 2.0
             y_off = (pos_b_pos[2] - pos_b_neg[2]) / 2.0
             println("- [$idx_pos, " *
-                "[$(Float64(pos_b_pos[1])), " *
-                "$(Float64(y_c + y_off)), " *
-                "$(Float64(pos_b_pos[3]))], " *
-                "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                "0.0, 0.0]")
+                    "[$(Float64(pos_b_pos[1])), " *
+                    "$(Float64(y_c + y_off)), " *
+                    "$(Float64(pos_b_pos[3]))], " *
+                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
+                    "0.0, 0.0]")
             println("- [$idx_neg, " *
-                "[$(Float64(pos_b_neg[1])), " *
-                "$(Float64(y_c - y_off)), " *
-                "$(Float64(pos_b_neg[3]))], " *
-                "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                "0.0, 0.0]")
+                    "[$(Float64(pos_b_neg[1])), " *
+                    "$(Float64(y_c - y_off)), " *
+                    "$(Float64(pos_b_neg[3]))], " *
+                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
+                    "0.0, 0.0]")
         end
         for idx in bridle_center
             pos_w = [lg_last.X[idx], lg_last.Y[idx],
                 lg_last.Z[idx]]
             pos_b = R_b_w' * (pos_w .- origin_w)
             println("- [$idx, " *
-                "[$(Float64(pos_b[1])), " *
-                "$(Float64(pos_b[2])), " *
-                "$(Float64(pos_b[3]))], " *
-                "DYNAMIC, 1, 1, 0.1, 30.000, 0.0, " *
-                "0.0, 0.0]")
+                    "[$(Float64(pos_b[1])), " *
+                    "$(Float64(pos_b[2])), " *
+                    "$(Float64(pos_b[3]))], " *
+                    "DYNAMIC, 1, 1, 0.1, 30.000, 0.0, " *
+                    "0.0, 0.0]")
         end
     end
 
@@ -283,11 +300,11 @@ function report_tether_direction_alignment(lg)
         p_le_mid = (ple12 .+ ple14) ./ 2
         bridle_dir = p1 .- p_le_mid
         midLE_to_KCU = norm(bridle_dir) > 0 ?
-            bridle_dir / norm(bridle_dir) : bridle_dir
+                       bridle_dir / norm(bridle_dir) : bridle_dir
         p39 = [sl.X[39], sl.Y[39], sl.Z[39]]
         seg90_dir = p39 .- p1
         seg90_unit = norm(seg90_dir) > 0 ?
-            seg90_dir / norm(seg90_dir) : seg90_dir
+                     seg90_dir / norm(seg90_dir) : seg90_dir
         @info "Direction (sample $idx)" midLE_to_KCU seg90_unit
     end
 end
@@ -304,21 +321,21 @@ Returns per-category stretch matrices and per-pulley
 combined stretch vectors.
 """
 function compute_line_stretch(lg, sam;
-        window_seconds::Real=50.0,
-        segment_l0_adjustments=nothing,
-        tether_length=nothing)
+    window_seconds::Real=50.0,
+    segment_l0_adjustments=nothing,
+    tether_length=nothing)
     sl = hasproperty(lg, :syslog) ? lg.syslog : lg
     if isempty(sl)
         @warn "compute_line_stretch: empty log"
         return (window=(0.0, 0.0),
-            ratio=Dict{Symbol, Matrix{Float64}}())
+            ratio=Dict{Symbol,Matrix{Float64}}())
     end
 
     segments = sam.sys_struct.segments
     base_l0 = [Float64(seg.l0) for seg in segments]
 
     tether_seg_idxs = if !isempty(sam.sys_struct.tethers) &&
-            !isempty(sam.sys_struct.tethers[1].segment_idxs)
+                         !isempty(sam.sys_struct.tethers[1].segment_idxs)
         Int.(sam.sys_struct.tethers[1].segment_idxs)
     else
         collect(90:95)
@@ -380,7 +397,7 @@ function compute_line_stretch(lg, sam;
     n_samples = length(sl) - start_idx + 1
     sample_times = [sl[i].time for i in start_idx:length(sl)]
     l0_adj = segment_l0_adjustments === nothing ?
-        Dict{Int, Any}() : segment_l0_adjustments
+             Dict{Int,Any}() : segment_l0_adjustments
 
     pulleys = sam.sys_struct.pulleys
     pulley_seg_set = Set{Int}()
@@ -405,7 +422,7 @@ function compute_line_stretch(lg, sam;
     # Precompute pulley segment lengths
     if !isempty(pulley_seg_set)
         @inbounds for (si, li) in
-                enumerate(start_idx:length(sl))
+                      enumerate(start_idx:length(sl))
             state = sl[li]
             X, Y, Z = state.X, state.Y, state.Z
             for seg_idx in pulley_seg_set
@@ -427,7 +444,7 @@ function compute_line_stretch(lg, sam;
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
-                len = sqrt(dx*dx + dy*dy + dz*dz)
+                len = sqrt(dx * dx + dy * dy + dz * dz)
                 if isfinite(len)
                     seg_len_for_pulleys[seg_idx][si] = len
                     seg_l0_for_pulleys[seg_idx][si] = l0
@@ -451,13 +468,13 @@ function compute_line_stretch(lg, sam;
             "Tether", 90:95),
     )
 
-    ratio_by_category = Dict{Symbol, Matrix{Float64}}()
+    ratio_by_category = Dict{Symbol,Matrix{Float64}}()
 
     for (key, label, seg_idxs) in categories
         ratios = fill(NaN, n_samples, length(seg_idxs))
         l0_used = fill(NaN, n_samples, length(seg_idxs))
         @inbounds for (si, li) in
-                enumerate(start_idx:length(sl))
+                      enumerate(start_idx:length(sl))
             state = sl[li]
             X, Y, Z = state.X, state.Y, state.Z
             for (ci, seg_idx) in enumerate(seg_idxs)
@@ -479,7 +496,7 @@ function compute_line_stretch(lg, sam;
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
-                len = sqrt(dx*dx + dy*dy + dz*dz)
+                len = sqrt(dx * dx + dy * dy + dz * dz)
                 if isfinite(len)
                     ratios[si, ci] = (len - l0) / l0
                     l0_used[si, ci] = l0
@@ -492,15 +509,15 @@ function compute_line_stretch(lg, sam;
             elong_mask = finite_mask .& (ratios .> 0)
             comp_mask = finite_mask .& (ratios .< 0)
             me = any(elong_mask) ?
-                mean(ratios[elong_mask]) : NaN
+                 mean(ratios[elong_mask]) : NaN
             mc = any(comp_mask) ?
-                mean(ratios[comp_mask]) : NaN
+                 mean(ratios[comp_mask]) : NaN
             me_abs = any(elong_mask) ?
-                mean(ratios[elong_mask] .*
-                    l0_used[elong_mask]) : NaN
+                     mean(ratios[elong_mask] .*
+                          l0_used[elong_mask]) : NaN
             mc_abs = any(comp_mask) ?
-                mean(ratios[comp_mask] .*
-                    l0_used[comp_mask]) : NaN
+                     mean(ratios[comp_mask] .*
+                          l0_used[comp_mask]) : NaN
 
             max_e, max_e_info, max_e_abs = NaN, missing, NaN
             if any(elong_mask)
@@ -529,25 +546,25 @@ function compute_line_stretch(lg, sam;
             end
 
             e_mean = any(elong_mask) ?
-                "mean = $(round(me_abs, digits=4))" *
-                " [m], $(round(me*100, digits=4)) [%]" :
-                "mean = n/a"
+                     "mean = $(round(me_abs, digits=4))" *
+                     " [m], $(round(me*100, digits=4)) [%]" :
+                     "mean = n/a"
             e_max = any(elong_mask) ?
-                "max  = $(round(max_e_abs, digits=4))" *
-                " [m], $(round(max_e*100, digits=4))" *
-                " [%] seg=$(max_e_info.segment)," *
-                " t=$(round(max_e_info.time, digits=2))" :
-                "max  = n/a"
+                    "max  = $(round(max_e_abs, digits=4))" *
+                    " [m], $(round(max_e*100, digits=4))" *
+                    " [%] seg=$(max_e_info.segment)," *
+                    " t=$(round(max_e_info.time, digits=2))" :
+                    "max  = n/a"
             c_mean = any(comp_mask) ?
-                "mean = $(round(mc_abs, digits=4))" *
-                " [m], $(round(mc*100, digits=4)) [%]" :
-                "mean = n/a"
+                     "mean = $(round(mc_abs, digits=4))" *
+                     " [m], $(round(mc*100, digits=4)) [%]" :
+                     "mean = n/a"
             c_max = any(comp_mask) ?
-                "max  = $(round(max_c_abs, digits=4))" *
-                " [m], $(round(max_c*100, digits=4))" *
-                " [%] seg=$(max_c_info.segment)," *
-                " t=$(round(max_c_info.time, digits=2))" :
-                "max  = n/a"
+                    "max  = $(round(max_c_abs, digits=4))" *
+                    " [m], $(round(max_c*100, digits=4))" *
+                    " [%] seg=$(max_c_info.segment)," *
+                    " t=$(round(max_c_info.time, digits=2))" :
+                    "max  = n/a"
 
             msg = """
               Elongation
@@ -558,7 +575,7 @@ function compute_line_stretch(lg, sam;
                 $c_max
             """
             @info "$label, last " *
-                "$(round(window_span, digits=2)) s\n$msg"
+                  "$(round(window_span, digits=2)) s\n$msg"
         else
             @warn "$label: no finite values in window"
         end
@@ -566,7 +583,7 @@ function compute_line_stretch(lg, sam;
     end
 
     # Pulley combined stretch
-    pulley_ratio = Dict{Int, Vector{Float64}}()
+    pulley_ratio = Dict{Int,Vector{Float64}}()
     if !isempty(pulleys)
         np = length(pulleys)
         pmat = fill(NaN, n_samples, np)
@@ -596,15 +613,15 @@ function compute_line_stretch(lg, sam;
             comp_mask = finite_mask .& (pmat .< 0)
 
             me = any(elong_mask) ?
-                mean(pmat[elong_mask]) : NaN
+                 mean(pmat[elong_mask]) : NaN
             mc = any(comp_mask) ?
-                mean(pmat[comp_mask]) : NaN
+                 mean(pmat[comp_mask]) : NaN
             me_abs = any(elong_mask) ?
-                mean(pmat[elong_mask] .*
-                    pl0[elong_mask]) : NaN
+                     mean(pmat[elong_mask] .*
+                          pl0[elong_mask]) : NaN
             mc_abs = any(comp_mask) ?
-                mean(pmat[comp_mask] .*
-                    pl0[comp_mask]) : NaN
+                     mean(pmat[comp_mask] .*
+                          pl0[comp_mask]) : NaN
 
             max_e, max_e_abs = NaN, NaN
             max_e_info = missing
@@ -639,19 +656,19 @@ function compute_line_stretch(lg, sam;
             end
 
             e_s = any(elong_mask) ?
-                "mean=$(round(me_abs, digits=4))[m]" *
-                " $(round(me*100, digits=4))[%]" *
-                " | max=$(round(max_e_abs, digits=4))" *
-                "[m] pulley=$(max_e_info.pulley)" : "n/a"
+                  "mean=$(round(me_abs, digits=4))[m]" *
+                  " $(round(me*100, digits=4))[%]" *
+                  " | max=$(round(max_e_abs, digits=4))" *
+                  "[m] pulley=$(max_e_info.pulley)" : "n/a"
             c_s = any(comp_mask) ?
-                "mean=$(round(mc_abs, digits=4))[m]" *
-                " $(round(mc*100, digits=4))[%]" *
-                " | max=$(round(max_c_abs, digits=4))" *
-                "[m] pulley=$(max_c_info.pulley)" : "n/a"
+                  "mean=$(round(mc_abs, digits=4))[m]" *
+                  " $(round(mc*100, digits=4))[%]" *
+                  " | max=$(round(max_c_abs, digits=4))" *
+                  "[m] pulley=$(max_c_info.pulley)" : "n/a"
 
             @info "Pulleys, last " *
-                "$(round(window_span, digits=2))s" *
-                "\n  Elong: $e_s\n  Comp: $c_s"
+                  "$(round(window_span, digits=2))s" *
+                  "\n  Elong: $e_s\n  Comp: $c_s"
         end
     end
 
@@ -663,9 +680,47 @@ end
 # Main execution
 # =============================================================================
 
-log_name = "batch_2026_01_08_15_52_33/" *
-    "circle__up_22_us_22_vw_9_lt_275" *
-    "_run_004_date_2026_01_08_15_58_42"
+# Set to "" to auto-select the latest dated directory and log file.
+log_name = ""
+# log_name =
+#     "zenith_2019_batch_2026_02_23_15_09_48/" *
+#     "hold_at_zenith_then_circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
+
+# add an if log is empty, use dir name that has the last date.
+# then inside that dir, use the file_name with the last date
+if isempty(strip(log_name))
+    function last_timestamp_token(name::AbstractString)
+        token = ""
+        for m in eachmatch(
+            r"[0-9]{4}(?:_[0-9]{2}){5}",
+            name)
+            token = m.match
+        end
+        return token
+    end
+
+    dirs = filter(name -> isdir(joinpath(DATA_DIR, name)),
+        readdir(DATA_DIR))
+    isempty(dirs) &&
+        error("No log directories found in $DATA_DIR")
+    latest_dir = last(sort(dirs; by=name ->
+        (last_timestamp_token(name), name)))
+
+    log_dir = joinpath(DATA_DIR, latest_dir)
+    files = filter(name -> isfile(joinpath(log_dir, name)),
+        readdir(log_dir))
+    arrow_files = filter(name -> endswith(name, ".arrow"),
+        files)
+    candidates = isempty(arrow_files) ? files : arrow_files
+    isempty(candidates) &&
+        error("No log files found in $log_dir")
+
+    latest_file = last(sort(candidates; by=name ->
+        (last_timestamp_token(name), name)))
+    log_name = joinpath(latest_dir, splitext(latest_file)[1])
+    @info "Using latest log_name" log_name
+end
+
 lg, sam, up, us, v_wind, lt =
     load_log_and_system(log_name=log_name)
 
