@@ -11,11 +11,9 @@ NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 OrdinaryDiffEqBDF = "6ad6398a-0878-4a85-9266-38940aa047c8"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-SymbolicAWEModels = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 V3Kite = "4caac9c8-c726-438f-ab10-3553e918eab1"
 VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 
 [sources]
-SymbolicAWEModels = {path = "../../SymbolicAWEModels.jl"}
 V3Kite = {path = ".."}
