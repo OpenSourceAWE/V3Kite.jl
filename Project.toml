@@ -20,14 +20,11 @@ VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 [weakdeps]
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 
-[sources]
-SymbolicAWEModels = {url = "https://github.com/OpenSourceAWE/SymbolicAWEModels.jl.git#big-update"}
-
 [extensions]
 V3KiteMakieExt = "GLMakie"
 
 [compat]
-SymbolicAWEModels = "0.5.0"
+SymbolicAWEModels = "0.6.0"
 VortexStepMethod = "3.0.0"
 julia = "1.10"
 
