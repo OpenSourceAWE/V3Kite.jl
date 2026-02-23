@@ -32,7 +32,7 @@ TIP_REDUCTION = 0.4
 GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0, TIP_REDUCTION, TE_FRAC)
 
 # Control
-US = 0.05                   # Steering percentage [-100, 100]
+US = 0.1                   # Steering percentage [-100, 100]
 UP = 0.42                   # Depower percentage [0, 100] (old fraction)
 V_WIND = 7.6
 DAMPING_PATTERN = [0.0, 0.0, 20.0]
@@ -136,7 +136,7 @@ for step in 1:n_steps
 
     # Stretch stats after t > 1.0
     if t > 1.0
-        ms, ms_mean, ms_idx = segment_stretch_stats(
+        ms, ms_mean, ms_idx = SymbolicAWEModels.segment_stretch_stats(
             sam.sys_struct)
         push!(max_stretch_samples, ms)
         push!(mean_stretch_samples, ms_mean)
@@ -165,17 +165,7 @@ log_name = "open_loop_lt_$(lt_tag)"
 save_log(logger, log_name)
 syslog = load_log(log_name)
 
-fig = plot(sam.sys_struct, syslog;
-    plot_turn_rates=false, plot_reelout=false,
-    plot_twist=false, plot_yaw_rate_paper=true,
-    plot_v_app=true, plot_kite_vel=true,
-    plot_gk=true, plot_aoa=true,
-    plot_heading=false, plot_elevation=true,
-    plot_azimuth=true, plot_winch_force=false,
-    plot_set_values=false,
-    yaw_rate_paper_ylims=(0.0, 50.0),
-    ylims=Dict(:aoa => (0.0, 15.0), :gk => (0.0, 15.0)),
-    plot_tether_actual=true, plot_us=true)
+fig = plot(sam.sys_struct, syslog)
 
 scene = replay(syslog, sam.sys_struct, show_panes=false)
 
