@@ -27,7 +27,7 @@ SymbolicAWEModels = {url = "https://github.com/OpenSourceAWE/SymbolicAWEModels.j
 V3KiteMakieExt = "GLMakie"
 
 [compat]
-SymbolicAWEModels = "0.5.0"
+SymbolicAWEModels = "0.6.0"
 VortexStepMethod = "3.0.0"
 julia = "1.10"
 
