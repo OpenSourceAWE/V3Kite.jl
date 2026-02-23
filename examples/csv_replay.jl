@@ -62,7 +62,7 @@ VIDEO_FPS = 29.97
 # Maneuver selection
 if SECTION == "straight_right"
     START_UTC = "15:36:31.0"
-    END_UTC = "15:36:41.1"
+    END_UTC = "15:36:35.1"
     EXTRA_POINTS_CSV = nothing
     EXTRA_POINTS_FRAME = nothing
 elseif SECTION == "straight_left"
@@ -334,7 +334,7 @@ function run_physics_replay(csv_path;
                 k_spring=CSV_SPRING_K * total_mass,
                 k_damping=CSV_DAMPING_K * total_mass)
 
-            @time next_step!(sam; dt, set_values=[set_value])
+            next_step!(sam; dt, set_values=[set_value])
 
             # Extra points comparison
             if !isnothing(EXTRA_POINTS_CSV) &&
