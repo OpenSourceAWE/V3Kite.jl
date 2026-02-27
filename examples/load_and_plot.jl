@@ -19,6 +19,8 @@ using GLMakie
 using LinearAlgebra
 using Statistics
 
+include(joinpath(@__DIR__, "_shared.jl"))
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -63,7 +65,8 @@ function resolve_log_file(log_name, base_dir)
           join(unique(candidates), "\n"))
 end
 
-function load_log_and_system(; log_name)
+function load_log_and_system(; log_name,
+    te_edge_scale=0.95)
     m = match(
         r"_up_([0-9]+)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
         log_name)
@@ -77,14 +80,15 @@ function load_log_and_system(; log_name)
     @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
 
     config = V3SimConfig(
-        struc_yaml_path="jelle_struc_geometry.yaml",
-        aero_yaml_path="jelle_aero_geometry.yaml",
-        vsm_settings_path="jelle_vsm_settings.yaml",
+        struc_yaml_path="struc_geometry.yaml",
+        aero_yaml_path="aero_geometry.yaml",
+        vsm_settings_path="vsm_settings.yaml",
         v_wind=Float64(v_wind),
         tether_length=Float64(lt),
         wing_type=REFINE,
     )
     sam, sys = create_v3_model(config)
+    scale_te_edge_rest_lengths!(sys; scale=te_edge_scale)
 
     log_file, log_dir, log_path = resolve_log_file(
         log_name, DATA_DIR)
