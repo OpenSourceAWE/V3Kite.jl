@@ -1,2 +1,0 @@
-Run 1: el=50, g=0.0, us=0.0, up=0.18, vw=8.6, lt=268
-  Error: ErrorException("Solver unstable at t=3.3586: Unstable")
