@@ -556,15 +556,15 @@ segments:
 
     #TODO: stiffness ratio between LE+struts & wires is crucial for stability
     # Wing structural elements - trailing edge wires (hardcoded stiffness)
-    - [20, 3, 5, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
-    - [21, 5, 7, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
-    - [22, 7, 9, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
-    - [23, 9, 11, POWER_LINE, 1.3505, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
-    - [24, 11, 13, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100] #1.3211*0.95 = 1.254045
-    - [25, 13, 15, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
-    - [26, 15, 17, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
-    - [27, 17, 19, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
-    - [28, 19, 21, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
+    - [20, 3, 5, POWER_LINE, 0.858705, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
+    - [21, 5, 7, POWER_LINE, 1.283545, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
+    - [22, 7, 9, POWER_LINE, 1.28307, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
+    - [23, 9, 11, POWER_LINE, 1.283, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
+    - [24, 11, 13, POWER_LINE, 1.254045, 1.0, 5e5, 5e5, 0.100] #1.3211*0.95 = 1.254045
+    - [25, 13, 15, POWER_LINE, 1.283, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
+    - [26, 15, 17, POWER_LINE, 1.28307, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
+    - [27, 17, 19, POWER_LINE, 1.283545, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
+    - [28, 19, 21, POWER_LINE, 0.858705, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
 
     # Wing structural elements - diagonal springs (hardcoded stiffness)
     - [29, 2, 5, POWER_LINE, 1.3604, 1.0, 5e5, 5e5, 0.100]
@@ -765,7 +765,7 @@ wings:
       origin_idx: 1
       z_ref_points: [1, [12, 11]] # KCU to LE for Z (normal)
       y_ref_points: [12, 10] # Center LE for Y (span)
-      aero_scale_chord: 0.129 # Aero Force/Moment multiplier = 1 + value (0.13 -> 1.13x) 12.9% was the delta in projected area
+      aero_scale_chord: 0.129 # Aero Force/Moment multiplier = 1 + value (0.13 -> 1.13x)
       aero_z_offset: 0.0 # QUATERNION only: shifts VSM panels +z in body frame
 
 ###########################
