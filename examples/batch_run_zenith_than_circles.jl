@@ -285,18 +285,17 @@ end
 # Batch sweep 1: 2019 kite parameters
 # =============================================================================
 
-# elevation_vals = [
-# 20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
-elevation_vals = [40]
+# elevation_vals = [20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
+elevation_vals = [70]
 g_earth_vals = [0.0]
-us_vals = [0.15]
-up_vals = [0.3]
+us_vals = [0.1] #, 0.1, 0.15, 0.2]
+up_vals = [0.18]
 # vw_vals = [8.6, 19.8]
 vw_vals = [8.6]
 lt_vals = [268]
 kcu_mass_2019 = 22.0
 kcu_mass_2025 = 23.3
-kcu_mass_vals = [kcu_mass_2025]
+kcu_mass_vals = [kcu_mass_2019]
 max_us_zenith = 0.02 # maximum allowed steering to keep it on zenith
 te_edge_scale = 0.95 # scaling the TE lengths down by 5% to align with photogrammetry
 
@@ -305,11 +304,11 @@ batch_tag = "zenith_2019_batch_" *
 batch_dir = joinpath("processed_data", batch_tag)
 isdir(batch_dir) || mkpath(batch_dir)
 
-sim_time_zenith = 4
-sim_time_circles = 20
-start_ramp_time = 1.0
-ramp_time_up = 3
-ramp_time_us = 3
+sim_time_zenith = 2
+sim_time_circles = 200
+start_ramp_time = 0.1
+ramp_time_up = 2
+ramp_time_us = 2
 
 # How to get the simulation stable?
 #   high fps helps
