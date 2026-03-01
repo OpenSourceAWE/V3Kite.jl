@@ -73,7 +73,7 @@ CSV_DAMPING_K = 0.0
 # PID parameters
 HEADING_KP = 0.0
 HEADING_TAU_I = false
-PID_START_TIME = 5.0
+PID_START_TIME = 0.0
 
 # =============================================================================
 # CSV replay helper functions
@@ -238,12 +238,13 @@ function run_physics_replay(csv_path;
             reduce_tip=true, reduce_te=true,
             reduce_depower=true,
             tether_length=tether_len))
-    sam, _ = settle_wing(settle_config;
+    sam, syslog = settle_wing(settle_config;
         v_app=row1.v_app,
-        tether_length=tether_len)
+        tether_length=tether_len,
+        remake=false)
+    # wait(display(replay(syslog, sam.sys_struct)))
     sys_struct = sam.sys_struct
     set = sam.set
-    set.g_earth = 9.81
     set.l_tether = tether_len
 
     n_steps = length(csv_data.time)
@@ -392,4 +393,4 @@ fig = plot([sam.sys_struct, csv_sam.sys_struct],
 
 sphere = plot_sphere_trajectory([syslog, csvlog])
 
-replay(syslog, sam.sys_struct)
+replay([syslog, csvlog], [sam.sys_struct, csv_sam.sys_struct])
