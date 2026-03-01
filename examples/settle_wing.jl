@@ -25,8 +25,6 @@ config = V3SettleConfig(
     v_wind = 10.72,
     elevation = 70.0,
     tether_length = 240.0,
-    te_frac = 0.95,
-    tip_reduction = 0.4,
 )
 
 # =============================================================================
@@ -34,7 +32,10 @@ config = V3SettleConfig(
 # =============================================================================
 
 @info "Running wing settling..."
-sam, syslog = settle_wing(config)
+sam, syslog = settle_wing(config;
+    v_app=config.v_wind,
+    tether_length=config.tether_length,
+    remake=true)
 
 # =============================================================================
 # Plot

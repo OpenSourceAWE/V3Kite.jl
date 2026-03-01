@@ -50,7 +50,7 @@ Base.@kwdef mutable struct V3SimConfig
     ramp_end_time_us::Float64 = 5.0
 
     # Damping parameters
-    damping_pattern::Vector{Float64} = [0.0, 30.0, 60.0]
+    damping_pattern::Vector{Float64} = [0.0, 0.0, 20.0]
 
     # Model options
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.REFINE
