@@ -57,8 +57,8 @@ end
 
 Run a damped settling simulation to find equilibrium wing geometry.
 
-Returns the model and simulation log. The settled positions are
-written to destination YAML files derived from the geometry suffix.
+Always returns a fresh model loaded from the settled YAML, so the
+caller gets clean settings (normal gravity, no settling damping).
 
 When `remake=false` and the destination YAML already exists, the
 simulation is skipped and the settled geometry is loaded from file.
@@ -87,38 +87,60 @@ function settle_wing(config::V3SettleConfig;
     source_aero = joinpath(
         data_path, config.source_aero_path)
 
-    # Load settings
+    # Run settling simulation if needed
+    syslog = nothing
+    if remake || !isfile(dest_struc)
+        syslog = _run_settling_sim!(config;
+            v_app, tether_length, elevation,
+            data_path, show_progress,
+            source_struc, source_aero,
+            dest_struc, dest_aero, gc)
+    end
+
+    # Always load a fresh model from settled YAML
+    @info "Loading settled geometry" dest_struc
     set_data_path(data_path)
     set = Settings("system.yaml")
     set.v_wind = v_app
     set.l_tether = tether_length
     set.profile_law = 0
 
-    # Load VSM
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
     vsm_set.wings[1].n_panels = config.n_panels
+    vsm_set.wings[1].geometry_file = dest_aero
 
-    # Early return if settled YAML exists and !remake
-    if !remake && isfile(dest_struc)
-        @info "Loading settled geometry from file" dest_struc
-        vsm_set.wings[1].geometry_file = dest_aero
-        sys = load_sys_struct_from_yaml(dest_struc;
-            system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.REFINE, vsm_set)
-        sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false,
-            remake_vsm=true)
-        return sam, nothing
-    end
+    sys = load_sys_struct_from_yaml(dest_struc;
+        system_name=V3_MODEL_NAME, set,
+        wing_type=SymbolicAWEModels.REFINE, vsm_set)
+    sam = SymbolicAWEModel(set, sys)
+    SymbolicAWEModels.init!(sam;
+        remake=false, ignore_l0=false, remake_vsm=true)
 
-    # Settling uses zero gravity
+    return sam, syslog
+end
+
+"""Run the damped settling simulation and write results to YAML."""
+function _run_settling_sim!(config::V3SettleConfig;
+        v_app, tether_length, elevation,
+        data_path, show_progress,
+        source_struc, source_aero,
+        dest_struc, dest_aero, gc)
+
+    set_data_path(data_path)
+    set = Settings("system.yaml")
     set.g_earth = 0.0
+    set.v_wind = v_app
+    set.l_tether = tether_length
+    set.profile_law = 0
+
+    vsm_path = joinpath(data_path, config.vsm_settings_path)
+    vsm_set = VortexStepMethod.VSMSettings(
+        vsm_path; data_prefix=false)
+    vsm_set.wings[1].n_panels = config.n_panels
     vsm_set.wings[1].geometry_file = source_aero
 
-    # Load system structure
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
@@ -148,37 +170,31 @@ function settle_wing(config::V3SettleConfig;
 
     # Create and init model
     sam = SymbolicAWEModel(set, sys)
+
+    # Apply geometry modifications
+    apply_geom_adjustments!(sys, gc)
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
-
-    # Apply geometry modifications after init
-    # (so winch force is available for tether calculation)
-    apply_geom_adjustments!(sys, gc)
+    @show sys.winches[1].tether_len sys.segments[90].l0 set.l_tether
 
     @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
     # Lock tether
     for winch in sys.winches
         winch.brake = true
+        winch.tether_len = tether_length
     end
 
     # Set steering/depower
     set_steering!(sys, config.steering_pct / 100.0)
     set_depower!(sys, config.depower_pct / 100.0, gc)
 
-    # Heading PID
-    heading_pid = DiscretePID(;
-        K=config.heading_kp,
-        Ti=config.heading_tau_i,
-        Td=false,
-        Ts=config.dt,
-        umin=-1.0, umax=1.0)
-
     # Logger
     logger, sys_state = create_logger(sam, config.num_steps)
 
     # Simulation loop
     @info "Starting settling simulation..."
+    wing = sys.wings[1]
     for step in 1:config.num_steps
         t = step * config.dt
 
@@ -188,25 +204,6 @@ function settle_wing(config::V3SettleConfig;
             config.min_damping)
         SymbolicAWEModels.set_world_frame_damping(
             sys, damping)
-
-        # Heading control
-        wing = sys.wings[1]
-        R_b_w = SymbolicAWEModels.calc_refine_wing_frame(
-            sys.points, wing.z_ref_points,
-            wing.y_ref_points, wing.origin_idx)[1]
-        curr_heading = calc_heading(sys, R_b_w)
-        delta = -wrap_to_pi(
-            config.heading_setpoint - curr_heading)
-        ctrl = DiscretePIDs.calculate_control!(
-            heading_pid, 0.0, delta, 0.0)
-
-        # Apply steering with heading correction
-        L_left, L_right = steering_percentage_to_lengths(
-            config.steering_pct)
-        sys.segments[V3_STEERING_LEFT_IDX].l0 =
-            L_left + V3_STEERING_GAIN * ctrl
-        sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-            L_right - V3_STEERING_GAIN * ctrl
 
         # Step
         if !sim_step!(sam; dt=config.dt, vsm_interval=1)
@@ -228,7 +225,6 @@ function settle_wing(config::V3SettleConfig;
         source_aero, dest_aero)
 
     syslog = save_and_load_log(logger, "settle_refine_wing")
-
     @info "Settling complete" dest_struc dest_aero
-    return sam, syslog
+    return syslog
 end
