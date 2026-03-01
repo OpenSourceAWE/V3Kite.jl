@@ -274,6 +274,28 @@ function set_depower!(sys, depower)
 end
 
 """
+    set_depower!(sys, depower, config::V3GeomAdjustConfig)
+
+Set the depower input, accounting for depower tape reduction
+from the geometry config.
+
+# Arguments
+- `sys`: SystemStructure from the kite model
+- `depower`: Relative depower, must be between 0.0 .. 1.0
+- `config`: Geometry adjustment config with optional
+            depower reduction
+"""
+function set_depower!(sys, depower, config::V3GeomAdjustConfig)
+    reduction = config.reduce_depower ?
+        config.depower_reduction : 0.0
+    L_depower = depower_percentage_to_length(
+        depower * 100.0;
+        l0_base=V3_DEPOWER_L0_BASE - reduction)
+    sys.segments[V3_DEPOWER_IDX].l0 = L_depower
+    return nothing
+end
+
+"""
     get_depower(sys)
 
 Get the current depower value as a normalized input.

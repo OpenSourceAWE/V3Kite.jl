@@ -19,8 +19,6 @@ using Statistics
 using Dates
 using StaticArrays
 
-include(joinpath(@__DIR__, "_shared.jl"))
-
 WINDOW_SEC = 100.0
 
 # =============================================================================
@@ -43,8 +41,7 @@ end
 # System construction
 # =============================================================================
 
-function build_sys(; v_wind=10.0, tether_length=150.0,
-    te_edge_scale=0.95)
+function build_sys(; v_wind=10.0, tether_length=150.0)
     config = V3SimConfig(
         struc_yaml_path="struc_geometry.yaml",
         aero_yaml_path="aero_geometry.yaml",
@@ -54,7 +51,8 @@ function build_sys(; v_wind=10.0, tether_length=150.0,
         wing_type=REFINE,
     )
     _, sys = create_v3_model(config)
-    scale_te_edge_rest_lengths!(sys; scale=te_edge_scale)
+    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
+        reduce_te=true))
     return sys
 end
 

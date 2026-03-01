@@ -14,9 +14,9 @@ Configuration for wing settling simulation.
 """
 Base.@kwdef mutable struct V3SettleConfig
     # Geometry paths
-    source_struc_path::String = "CORRECT_struc_geometry.yaml"
-    source_aero_path::String = "CORRECT_aero_geometry.yaml"
-    vsm_settings_path::String = "vsm_settings_reduced_for_coupling.yaml"
+    source_struc_path::String = "struc_geometry.yaml"
+    source_aero_path::String = "aero_geometry.yaml"
+    vsm_settings_path::String = "vsm_settings.yaml"
 
     # Simulation parameters
     num_steps::Int = 8000
@@ -41,88 +41,104 @@ Base.@kwdef mutable struct V3SettleConfig
     heading_tau_i::Union{Float64,Bool} = false
 
     # Geometry modifications
-    te_frac::Float64 = 0.95
-    tip_reduction::Float64 = 0.4
-    tip_segments::Vector{Int} = [47, 48, 57, 58]
-    te_segments::UnitRange{Int} = 20:28
+    geom::V3GeomAdjustConfig = V3GeomAdjustConfig(
+        reduce_tip=true, reduce_te=true,
+        tether_length=240.0)
 
     # Model options
     n_panels::Int = 36
 end
 
 """
-    settle_wing(config::V3SettleConfig; data_path=nothing,
-                show_progress=true) -> (sam, syslog)
+    settle_wing(config::V3SettleConfig; v_app=config.v_wind,
+                tether_length=config.tether_length,
+                data_path=nothing, show_progress=true,
+                remake=false) -> (sam, syslog)
 
 Run a damped settling simulation to find equilibrium wing geometry.
 
 Returns the model and simulation log. The settled positions are
 written to destination YAML files derived from the geometry suffix.
+
+When `remake=false` and the destination YAML already exists, the
+simulation is skipped and the settled geometry is loaded from file.
 """
 function settle_wing(config::V3SettleConfig;
+                     v_app=config.v_wind,
+                     tether_length=config.tether_length,
+                     elevation=config.elevation,
                      data_path=nothing,
-                     show_progress=true)
+                     show_progress=true,
+                     remake=false)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
 
+    gc = config.geom
     suffix = build_geom_suffix(
-        V3_DEPOWER_L0, config.tip_reduction, config.te_frac)
+        V3_DEPOWER_L0, gc.tip_reduction, gc.te_frac)
+    suffix *= "_vapp$(round(v_app, digits=2))_lt$(Int(round(tether_length)))"
     dest_struc = joinpath(
         data_path, "struc_geometry_$(suffix).yaml")
     dest_aero = joinpath(
         data_path, "aero_geometry_$(suffix).yaml")
-    source_struc = joinpath(data_path, config.source_struc_path)
-    source_aero = joinpath(data_path, config.source_aero_path)
-
-    @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
+    source_struc = joinpath(
+        data_path, config.source_struc_path)
+    source_aero = joinpath(
+        data_path, config.source_aero_path)
 
     # Load settings
     set_data_path(data_path)
     set = Settings("system.yaml")
-    set.g_earth = 9.81
-    set.v_wind = config.v_wind
-    set.l_tether = config.tether_length
+    set.v_wind = v_app
+    set.l_tether = tether_length
     set.profile_law = 0
 
     # Load VSM
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
-    vsm_set.wings[1].geometry_file = source_aero
     vsm_set.wings[1].n_panels = config.n_panels
+
+    # Early return if settled YAML exists and !remake
+    if !remake && isfile(dest_struc)
+        @info "Loading settled geometry from file" dest_struc
+        vsm_set.wings[1].geometry_file = dest_aero
+        sys = load_sys_struct_from_yaml(dest_struc;
+            system_name=V3_MODEL_NAME, set,
+            wing_type=SymbolicAWEModels.REFINE, vsm_set)
+        sam = SymbolicAWEModel(set, sys)
+        SymbolicAWEModels.init!(sam;
+            remake=false, ignore_l0=false,
+            remake_vsm=true)
+        return sam, nothing
+    end
+
+    # Settling uses zero gravity
+    set.g_earth = 0.0
+    vsm_set.wings[1].geometry_file = source_aero
 
     # Load system structure
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
 
+    # Override geom tether_length from kwarg
+    gc = V3GeomAdjustConfig(;
+        reduce_tip=gc.reduce_tip,
+        tip_reduction=gc.tip_reduction,
+        tip_segments=gc.tip_segments,
+        reduce_te=gc.reduce_te,
+        te_frac=gc.te_frac,
+        te_segments=gc.te_segments,
+        reduce_depower=gc.reduce_depower,
+        depower_reduction=gc.depower_reduction,
+        tether_length=tether_length)
+
     # Set transform from heading/elevation
-    h = config.heading_setpoint
-    sys.transforms[1].elevation = deg2rad(
-        config.elevation * cos(h))
-    sys.transforms[1].azimuth = deg2rad(
-        config.elevation * sin(h))
-    sys.transforms[1].heading = h
-
-    # Configure tether
-    seg_len = config.tether_length / 6 *
-        (1 + 1000 / sys.segments[end].unit_stiffness)
-    for i in 39:44
-        sys.points[i].pos_cad .= [
-            0.0, 0.0, -(i - 38) * seg_len]
-    end
-    for i in 90:95
-        sys.segments[i].l0 = seg_len
-    end
-
-    # Apply geometry modifications
-    for idx in config.tip_segments
-        sys.segments[idx].l0 -= config.tip_reduction
-    end
-    for idx in config.te_segments
-        sys.segments[idx].l0 *= config.te_frac
-    end
+    sys.transforms[1].elevation = deg2rad(elevation)
+    sys.transforms[1].azimuth = 0.0
+    sys.transforms[1].heading = 0.0
 
     # Set damping
     SymbolicAWEModels.set_world_frame_damping(
@@ -133,7 +149,13 @@ function settle_wing(config::V3SettleConfig;
     # Create and init model
     sam = SymbolicAWEModel(set, sys)
     SymbolicAWEModels.init!(
-        sam; remake=true, ignore_l0=false, remake_vsm=true)
+        sam; remake=false, ignore_l0=false, remake_vsm=true)
+
+    # Apply geometry modifications after init
+    # (so winch force is available for tether calculation)
+    apply_geom_adjustments!(sys, gc)
+
+    @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
     # Lock tether
     for winch in sys.winches
@@ -142,7 +164,7 @@ function settle_wing(config::V3SettleConfig;
 
     # Set steering/depower
     set_steering!(sys, config.steering_pct / 100.0)
-    set_depower!(sys, config.depower_pct / 100.0)
+    set_depower!(sys, config.depower_pct / 100.0, gc)
 
     # Heading PID
     heading_pid = DiscretePID(;

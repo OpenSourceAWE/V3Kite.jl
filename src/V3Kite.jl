@@ -31,9 +31,9 @@ export Settings
 export SymbolicAWEModels
 export record, replay
 
-# Include submodules
-include("calibration.jl")
+# Include submodules (model_setup before calibration: calibration uses V3GeomAdjustConfig)
 include("model_setup.jl")
+include("calibration.jl")
 include("coordinate_utils.jl")
 include("csv_data.jl")
 include("photogrammetry.jl")
@@ -62,6 +62,7 @@ export get_steering, set_steering!
 export get_depower, set_depower!
 
 # Model setup exports
+export V3GeomAdjustConfig, apply_geom_adjustments!
 export adjust_tether_length!, adjust_elevation!
 export segment_stretch_stats
 
