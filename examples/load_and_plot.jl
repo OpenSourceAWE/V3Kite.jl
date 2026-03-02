@@ -19,8 +19,6 @@ using GLMakie
 using LinearAlgebra
 using Statistics
 
-include(joinpath(@__DIR__, "_shared.jl"))
-
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -65,8 +63,7 @@ function resolve_log_file(log_name, base_dir)
           join(unique(candidates), "\n"))
 end
 
-function load_log_and_system(; log_name,
-    te_edge_scale=0.95)
+function load_log_and_system(; log_name)
     m = match(
         r"_up_([0-9]+)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
         log_name)
@@ -88,7 +85,8 @@ function load_log_and_system(; log_name,
         wing_type=REFINE,
     )
     sam, sys = create_v3_model(config)
-    scale_te_edge_rest_lengths!(sys; scale=te_edge_scale)
+    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
+        reduce_te=true))
 
     log_file, log_dir, log_path = resolve_log_file(
         log_name, DATA_DIR)

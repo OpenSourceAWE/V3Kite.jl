@@ -7,6 +7,63 @@ Functions for adjusting tether length, elevation, and other model parameters.
 """
 
 """
+    V3GeomAdjustConfig
+
+Configuration for wing geometry adjustments (tip reduction, trailing
+edge shortening, depower tape reduction, and tether length).
+"""
+Base.@kwdef struct V3GeomAdjustConfig
+    reduce_tip::Bool = false
+    tip_reduction::Float64 = 0.4
+    tip_segments::Vector{Int} = [47, 48, 57, 58]
+
+    reduce_te::Bool = false
+    te_frac::Float64 = 0.95
+    te_segments::UnitRange{Int} = 20:28
+
+    reduce_depower::Bool = false
+    depower_reduction::Float64 = 0.2
+
+    tether_length::Union{Nothing,Float64} = nothing
+end
+
+"""
+    apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
+
+Apply wing geometry adjustments to a `SystemStructure`:
+tip leading-edge reduction, trailing-edge wire shortening,
+and tether length repositioning.
+"""
+function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
+    if config.reduce_tip
+        for idx in config.tip_segments
+            sys.segments[idx].l0 -= config.tip_reduction
+        end
+    end
+    if config.reduce_te
+        for idx in config.te_segments
+            sys.segments[idx].l0 *= config.te_frac
+        end
+    end
+    if !isnothing(config.tether_length)
+        wf = norm(sys.winches[1].force)
+        wf = isnan(wf) ? 0.0 : wf
+        stiffness = sys.segments[end].unit_stiffness
+        n_segs = length(V3_TETHER_POINT_IDXS)
+        seg_len = config.tether_length / n_segs *
+            (1 + wf / stiffness)
+        for (n, i) in enumerate(V3_TETHER_POINT_IDXS)
+            sys.points[i].pos_cad .= [
+                0.0, 0.0, -n * seg_len]
+        end
+        for i in 90:95
+            sys.segments[i].l0 = seg_len
+        end
+    end
+    return nothing
+end
+
+"""
     adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw; tether_point_idxs=V3_TETHER_POINT_IDXS)
 
 Update the winch rest length, reposition tether points in CAD/body frames,

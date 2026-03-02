@@ -22,8 +22,6 @@ using LinearAlgebra
 using DiscretePIDs
 using Dates
 
-include(joinpath(@__DIR__, "_shared.jl"))
-
 # =============================================================================
 # Two-phase simulation function
 # =============================================================================
@@ -51,7 +49,6 @@ function run_zenith_circles(;
     tether_length=150.0, elevation=nothing,
     g_earth=nothing,
     kcu_mass=nothing,
-    te_edge_scale=0.95,
     save_subdir="", run_tag="")
 
     startup_pattern = isnothing(startup_damping_pattern) ?
@@ -80,7 +77,8 @@ function run_zenith_circles(;
         wing_type=REFINE,
     )
     sam, sys = create_v3_model(config)
-    scale_te_edge_rest_lengths!(sys; scale=te_edge_scale)
+    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
+        reduce_te=true))
     if kcu_mass !== nothing
         sys.points[1].extra_mass = float(kcu_mass)
     end
@@ -297,8 +295,6 @@ kcu_mass_2019 = 22.0
 kcu_mass_2025 = 23.3
 kcu_mass_vals = [kcu_mass_2019]
 max_us_zenith = 0.02 # maximum allowed steering to keep it on zenith
-te_edge_scale = 0.95 # scaling the TE lengths down by 5% to align with photogrammetry
-
 batch_tag = "zenith_2019_batch_" *
             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
 batch_dir = joinpath("processed_data", batch_tag)
@@ -340,8 +336,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             sim_time_circles, fps_circles,
             ramp_time_us, us=us,
             save_subdir=batch_tag,
-            run_tag,
-            te_edge_scale=te_edge_scale)
+            run_tag)
         @info "Completed" run_id
     catch err
         @error "Failed" run_id err

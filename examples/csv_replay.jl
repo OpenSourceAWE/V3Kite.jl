@@ -31,7 +31,6 @@ using LinearAlgebra
 using OrdinaryDiffEqBDF
 using KiteUtils: calc_elevation, azimuth_east
 using Dates
-using VortexStepMethod
 using SymbolicAWEModels
 
 # =============================================================================
@@ -42,18 +41,6 @@ SECTION = "straight_right"
 CSV_PATH = joinpath(v3_data_path(), "v3_2025-10-09-ekf.csv")
 WARN_STEP = false
 
-# Geometry
-DEPOWER_PERCENTAGE = 39.37
-TETHER_LENGTH = 248
-TE_FRAC = 0.95
-TIP_REDUCTION = 0.4
-GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0, TIP_REDUCTION, TE_FRAC)
-
-STRUC_YAML_PATH = joinpath(
-    v3_data_path(), "struc_geometry_$(GEOM_SUFFIX).yaml")
-AERO_YAML_PATH = joinpath(
-    v3_data_path(), "aero_geometry_$(GEOM_SUFFIX).yaml")
-
 # Video frame mapping
 VIDEO_FRAME_REF = 7182
 UTC_REF_SECONDS = 15*3600 + 36*60 + 31.0
@@ -62,7 +49,7 @@ VIDEO_FPS = 29.97
 # Maneuver selection
 if SECTION == "straight_right"
     START_UTC = "15:36:31.0"
-    END_UTC = "15:36:35.1"
+    END_UTC = "15:36:41.0"
     EXTRA_POINTS_CSV = nothing
     EXTRA_POINTS_FRAME = nothing
 elseif SECTION == "straight_left"
@@ -76,17 +63,17 @@ else
 end
 
 STEERING_MULTIPLIER = 1.0
-RESTABLE = false
 STOP_EARLY = false
-MIN_DAMPING = [0.0, 60, 120]
+MIN_DAMPING = [0.0, 0.0, 20.0]
 
 # Tracking forces
-CSV_SPRING_K = 0.1
-CSV_DAMPING_K = 0.01
+CSV_SPRING_K = 0.0
+CSV_DAMPING_K = 0.0
 
 # PID parameters
-HEADING_KP = 0.5
+HEADING_KP = 0.0
 HEADING_TAU_I = false
+PID_START_TIME = 5.0
 
 # =============================================================================
 # CSV replay helper functions
@@ -164,8 +151,12 @@ function update_vel_from_csv!(sys, row, brake, heading_pid)
     sys.set.upwind_dir = row.wind_dir + -90
 
     # PID steering + CSV steering
-    steering_ctrl = DiscretePIDs.calculate_control!(
-        heading_pid, 0.0, delta_heading, 0.0)
+    if row.time >= PID_START_TIME
+        steering_ctrl = DiscretePIDs.calculate_control!(
+            heading_pid, 0.0, delta_heading, 0.0)
+    else
+        steering_ctrl = 0.0
+    end
     steering = clamp(row.steering, -100.0, 100.0)
     L_left, L_right = csv_steering_percentage_to_lengths(
         steering * STEERING_MULTIPLIER)
@@ -197,7 +188,7 @@ end
 
 function run_physics_replay(csv_path;
         start_utc=START_UTC, end_utc=END_UTC,
-        n_substeps=5)
+        n_substeps=20)
 
     df = load_flight_data(csv_path)
     limited_data, _ = limit_by_utc(df, start_utc, end_utc)
@@ -206,21 +197,54 @@ function run_physics_replay(csv_path;
     @info "Interpolating CSV data" n_substeps
     csv_data = interpolate_csv_data(limited_data, n_substeps)
 
-    @info "Loading V3 kite" STRUC_YAML_PATH AERO_YAML_PATH
-    set_data_path(v3_data_path())
-    set = Settings("system.yaml")
+    function get_row(data, step)
+        return (
+            time = data.time[step],
+            video_frame = round(Int, data.video_frame[step]),
+            roll = data.ekf_kite_roll[step],
+            pitch = data.ekf_kite_pitch[step],
+            yaw = data.ekf_kite_yaw[step],
+            x = data.ekf_kite_position_x[step],
+            y = data.ekf_kite_position_y[step],
+            z = data.ekf_kite_position_z[step],
+            vx = data.ekf_kite_velocity_x[step],
+            vy = data.ekf_kite_velocity_y[step],
+            vz = data.ekf_kite_velocity_z[step],
+            tether_len = data.ekf_tether_length[step],
+            tether_vel = data.tether_reelout_speed[step],
+            tether_force = data.ground_tether_force[step],
+            steering = data.kcu_actual_steering[step],
+            depower = data.kcu_actual_depower[step],
+            distance = data.distance[step],
+            cumulative_distance =
+                data.cumulative_distance[step],
+            wind_speed =
+                data.ekf_wind_speed_horizontal[step],
+            wind_dir = data.ekf_wind_direction[step],
+            angle_of_attack = deg2rad(
+                data.ekf_wing_angle_of_attack[step]),
+            v_app =
+                data.ekf_kite_apparent_windspeed[step],
+        )
+    end
+
+    # Settle wing with first CSV conditions
+    row1 = get_row(csv_data, 1)
+    tether_len = Float64(row1.tether_len)
+    settle_config = V3SettleConfig(
+        depower_pct=row1.depower,
+        tether_length=tether_len,
+        geom=V3GeomAdjustConfig(
+            reduce_tip=true, reduce_te=true,
+            reduce_depower=true,
+            tether_length=tether_len))
+    sam, _ = settle_wing(settle_config;
+        v_app=row1.v_app,
+        tether_length=tether_len)
+    sys_struct = sam.sys_struct
+    set = sam.set
     set.g_earth = 9.81
-    set.l_tether = TETHER_LENGTH
-    vsm_path = joinpath(v3_data_path(),
-        "vsm_settings_reduced_for_coupling.yaml")
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_path; data_prefix=false)
-    vsm_set.wings[1].geometry_file = AERO_YAML_PATH
-    sys_struct = load_sys_struct_from_yaml(STRUC_YAML_PATH;
-        system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.REFINE, vsm_set)
-    sam = SymbolicAWEModel(set, sys_struct)
-    init!(sam)
+    set.l_tether = tether_len
 
     n_steps = length(csv_data.time)
     sys_state = SysState(sam)
@@ -257,34 +281,6 @@ function run_physics_replay(csv_path;
     heading_pid = DiscretePID(;
         K=HEADING_KP, Ti=HEADING_TAU_I, Td=false,
         Ts=dt, umin=-1.0, umax=1.0)
-
-    function get_row(data, step)
-        return (
-            time = data.time[step],
-            video_frame = round(Int, data.video_frame[step]),
-            roll = data.ekf_kite_roll[step],
-            pitch = data.ekf_kite_pitch[step],
-            yaw = data.ekf_kite_yaw[step],
-            x = data.ekf_kite_position_x[step],
-            y = data.ekf_kite_position_y[step],
-            z = data.ekf_kite_position_z[step],
-            vx = data.ekf_kite_velocity_x[step],
-            vy = data.ekf_kite_velocity_y[step],
-            vz = data.ekf_kite_velocity_z[step],
-            tether_len = data.ekf_tether_length[step],
-            tether_vel = data.tether_reelout_speed[step],
-            tether_force = data.ground_tether_force[step],
-            steering = data.kcu_actual_steering[step],
-            depower = data.kcu_actual_depower[step],
-            distance = data.distance[step],
-            cumulative_distance = data.cumulative_distance[step],
-            wind_speed = data.ekf_wind_speed_horizontal[step],
-            wind_dir = data.ekf_wind_direction[step],
-            angle_of_attack = deg2rad(
-                data.ekf_wing_angle_of_attack[step]),
-            v_app = data.ekf_kite_apparent_windspeed[step],
-        )
-    end
 
     try
         for step in 1:n_steps-1
@@ -354,12 +350,14 @@ function run_physics_replay(csv_path;
             push!(phys_tape.depower, eff_dep)
 
             if should_report(step, n_steps)
-                @info "Step $step/$n_steps (t=$(round(row.time, digits=2))s, frame=$(row.video_frame))"
+                elapsed = time() - replay_start
+                @info "Step $step/$n_steps (t=$(round(row.time, digits=2))s, frame=$(row.video_frame))" times_realtime=round(row.time / elapsed, digits=2)
             end
         end
     catch err
-        if err isa AssertionError
-            @warn "Simulation stopped (AssertionError)"
+        if err isa ErrorException &&
+                contains(err.msg, "Unstable")
+            @warn "Solver unstable, stopping replay" msg=err.msg
         else
             rethrow(err)
         end
@@ -371,12 +369,6 @@ function run_physics_replay(csv_path;
     save_log(csv_logger, "csv_reference")
     syslog = load_log("csv_replay")
     csvlog = load_log("csv_reference")
-
-    if RESTABLE
-        SymbolicAWEModels.update_yaml_from_sys_struct!(
-            sam.sys_struct, STRUC_YAML_PATH, STRUC_YAML_PATH,
-            AERO_YAML_PATH, AERO_YAML_PATH)
-    end
 
     return sam, syslog, csv_sam, csvlog, csv_data,
         phys_tape, csv_tape, extra_pts, extra_groups
@@ -400,4 +392,4 @@ fig = plot([sam.sys_struct, csv_sam.sys_struct],
 
 sphere = plot_sphere_trajectory([syslog, csvlog])
 
-nothing
+replay(syslog, sam.sys_struct)
