@@ -48,7 +48,7 @@ VIDEO_FPS = 29.97
 
 # Maneuver selection
 if SECTION == "straight_right"
-    START_UTC = "15:36:31.0"
+    START_UTC = "15:36:29.0"
     END_UTC = "15:36:41.0"
     EXTRA_POINTS_CSV = nothing
     EXTRA_POINTS_FRAME = nothing
@@ -135,7 +135,8 @@ function apply_csv_tracking_forces!(sim_sys, csv_sys;
     end
 end
 
-function update_vel_from_csv!(sys, row, brake, heading_pid)
+function update_vel_from_csv!(sys, row, brake, heading_pid,
+        gc::V3GeomAdjustConfig)
     @unpack wings, points, winches, segments = sys
     wing = wings[1]
 
@@ -174,8 +175,7 @@ function update_vel_from_csv!(sys, row, brake, heading_pid)
     winch.set_value = ff_torque
 
     # Depower from CSV
-    L_depower = depower_percentage_to_length(row.depower)
-    segments[V3_DEPOWER_IDX].l0 = max(min_l0, L_depower)
+    set_depower!(sys, row.depower / 100.0, gc)
 
     eff_steering = steering * STEERING_MULTIPLIER +
         steering_ctrl * 100
@@ -315,7 +315,8 @@ function run_physics_replay(csv_path;
 
             set_value, eff_steer, eff_dep =
                 update_vel_from_csv!(
-                    sam.sys_struct, row, true, heading_pid)
+                    sam.sys_struct, row, true, heading_pid,
+                    settle_config.geom)
 
             sam.sys_struct.winches[1].tether_len =
                 row.tether_len + tether_delta

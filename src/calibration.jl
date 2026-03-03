@@ -262,12 +262,19 @@ end
 
 Set the depower input. Internally converts to tape segment length.
 
+!!! warning
+    This method ignores `V3GeomAdjustConfig.reduce_depower`.
+    Use `set_depower!(sys, depower, config)` to account for
+    depower tape reduction.
+
 # Arguments
 - `sys`: SystemStructure from the kite model
 - `depower`: Relative depower, must be between 0.0 .. 1.0
              (0.0 = no depower, 1.0 = full depower)
 """
 function set_depower!(sys, depower)
+    @warn "set_depower! called without V3GeomAdjustConfig; " *
+        "depower tape reduction will not be applied" maxlog=1
     L_depower = depower_percentage_to_length(depower * 100.0)
     sys.segments[V3_DEPOWER_IDX].l0 = L_depower
     return nothing
