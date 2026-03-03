@@ -65,16 +65,16 @@ end
 
 function load_log_and_system(; log_name)
     m = match(
-        r"_up_([0-9]+)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
+        r"_(?:u_dp|up)_([0-9]+(?:\\.[0-9]+)?)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
         log_name)
     m === nothing && error(
-        "Could not parse up/us/vw/lt from: $log_name")
-    up = parse(Float64, m.captures[1])
-    us_tokens = split(m.captures[2], "_")
-    us_vals = parse.(Float64, us_tokens)
+        "Could not parse u_dp/up/us/vw/lt from: $log_name")
+    u_dp = parse(Float64, m.captures[1]) / 100.0
+    us_token = first(split(m.captures[2], "_"))
+    us = parse(Float64, us_token) / 100.0
     v_wind = parse(Int, m.captures[3])
     lt = parse(Int, m.captures[4])
-    @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
+    @info "Parsed tags" u_dp us v_wind lt
 
     config = V3SimConfig(
         struc_yaml_path="struc_geometry.yaml",
@@ -92,7 +92,7 @@ function load_log_and_system(; log_name)
         log_name, DATA_DIR)
     @info "Resolved log file" log_path
     lg = load_log(log_file; path=log_dir)
-    return lg, sam, up, us_vals, v_wind, lt
+    return lg, sam, u_dp, us, v_wind, lt
 end
 
 # =============================================================================
@@ -686,7 +686,7 @@ end
 log_name = ""
 # log_name =
 #     "zenith_2019_batch_2026_02_23_15_09_48/" *
-#     "hold_at_zenith_then_circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
+#     "hold_at_zenith_then_circles__u_dp_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
 
 # add an if log is empty, use dir name that has the last date.
 # then inside that dir, use the file_name with the last date
@@ -723,20 +723,18 @@ if isempty(strip(log_name))
     @info "Using latest log_name" log_name
 end
 
-lg, sam, up, us, v_wind, lt =
+lg, sam, u_dp, us, v_wind, lt =
     load_log_and_system(log_name=log_name)
 
 # Stretch analysis with commanded tape adjustments
-up_fraction = up / 100
-us_fraction = us / 100
 seg87_nom = Float64(
     sam.sys_struct.segments[V3_STEERING_LEFT_IDX].l0)
 seg88_nom = Float64(
     sam.sys_struct.segments[V3_DEPOWER_IDX].l0)
 seg89_nom = Float64(
     sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].l0)
-steering_tape_change = V3_STEERING_GAIN * us_fraction
-power_target_l0 = 0.2 + 5.0 * up_fraction
+steering_tape_change = V3_STEERING_GAIN * us
+power_target_l0 = 0.2 + 5.0 * u_dp
 segment_l0_adjustments = Dict(
     V3_STEERING_LEFT_IDX => steering_tape_change,
     V3_DEPOWER_IDX => power_target_l0 - seg88_nom,

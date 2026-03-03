@@ -398,7 +398,9 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
         aoa=NaN, elevation=NaN, azimuth=NaN,
         cs=NaN, turn_radius=NaN,
         usva_at=Dict{Int,Float64}(),
-        yaw_rate_at=Dict{Int,Float64}())
+        yaw_rate_at=Dict{Int,Float64}(),
+        va_at=Dict{Int,Float64}(),
+        aoa_at=Dict{Int,Float64}())
 
     az = [sl.aero_force_b[i][3]
           for i in eachindex(sl.aero_force_b)]
@@ -441,11 +443,17 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
     usva = us_cmd .* sl.v_app
     usva_at = Dict{Int,Float64}()
     yaw_rate_at = Dict{Int,Float64}()
+    va_at = Dict{Int,Float64}()
+    aoa_at = Dict{Int,Float64}()
     for t_sec in 3:10
         usva_at[t_sec] = mean_at_time(
             usva, sl.time, Float64(t_sec))
         yaw_rate_at[t_sec] = mean_at_time(
             yr_deg, yr_time, Float64(t_sec))
+        va_at[t_sec] = mean_at_time(
+            sl.v_app, sl.time, Float64(t_sec))
+        aoa_at[t_sec] = mean_at_time(
+            aoa_deg, sl.time, Float64(t_sec))
     end
 
     return (aero_force=aero_force, v_app=v_app,
@@ -453,7 +461,8 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
         gk=gk, gk_paper=gk_paper, kite_vel=kite_vel,
         aoa=aoa, elevation=elevation, azimuth=azimuth,
         cs=cs, turn_radius=turn_radius,
-        usva_at=usva_at, yaw_rate_at=yaw_rate_at)
+        usva_at=usva_at, yaw_rate_at=yaw_rate_at,
+        va_at=va_at, aoa_at=aoa_at)
 end
 
 # =============================================================================
@@ -489,9 +498,11 @@ function write_csv(path, rows)
            "yaw_rate,yaw_rate_paper,gk,gk_paper," *
            "kite_vel,aoa,elevation,azimuth,cs,turn_radius"
     tc = String[]
-    for t in 3:10
+    for t in 4:9
         push!(tc, "usva_$t")
         push!(tc, "yaw_rate_$t")
+        push!(tc, "va$t")
+        push!(tc, "aoa$t")
     end
     header = base * "," * join(tc, ",")
     open(path, "w") do io
@@ -507,6 +518,8 @@ function write_csv(path, rows)
             for t in 3:10
                 push!(tv, r.usva_at[t])
                 push!(tv, r.yaw_rate_at[t])
+                push!(tv, r.va_at[t])
+                push!(tv, r.aoa_at[t])
             end
             println(io, join(vcat(bv, tv), ","))
         end
@@ -516,6 +529,8 @@ end
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
     # batch_name = "circular_2025_batch_2026_01_11_11_29_19"
+    batch_name = "zenith_2025_batch_2026_03_03_11_26_48"
+    batch_name = "zenith_2025_batch_2026_03_03_12_37_24"
     if isempty(batch_name)
         print("Enter batch folder name: ")
         batch_name = strip(readline())
@@ -550,7 +565,9 @@ function main()
             elevation=m.elevation, azimuth=m.azimuth,
             cs=m.cs, turn_radius=m.turn_radius,
             usva_at=m.usva_at,
-            yaw_rate_at=m.yaw_rate_at))
+            yaw_rate_at=m.yaw_rate_at,
+            va_at=m.va_at,
+            aoa_at=m.aoa_at))
     end
 
     sort!(rows, by=r -> (r.vw, r.up, r.us, r.lt))

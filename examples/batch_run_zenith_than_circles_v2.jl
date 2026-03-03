@@ -17,15 +17,10 @@ using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
 using SymbolicAWEModels
+using GLMakie
 using LinearAlgebra
 using DiscretePIDs
 using Dates
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-depower_tape_length_from_u_dp(u_dp) = 0.2 + 5.0 * float(u_dp)
 
 # =============================================================================
 # Two-phase simulation function
@@ -42,104 +37,48 @@ function run_zenith_circles(;
     sim_time_circles=0.0, fps_circles=1,
     damping_pattern=[0.0, 0.0, 20.0],
     startup_damping_pattern=nothing,
-    begin_time_damping_decay=0.0,
-    end_time_damping_decay=2.0,
-    u_dp=0.4,
-    begin_time_ramp_up=0.0,
-    end_time_ramp_up=25.0,
+    startup_decay_time=2.0,
+    up=0.4, ramp_time_up=25.0,
+    start_ramp_time=0.0,
     ramp_time_us=25.0,
     max_us_zenith=0.1, us=0.1,
     v_wind=15.4, v_wind_base=15.0,
-    upwind_dir=-90.0,
     heading_p=0.0, heading_i=0.1, heading_d=0.0,
     winch_p=1000.0, winch_i=100.0, winch_d=50.0,
     target_azimuth=0.0,
     tether_length=150.0, elevation=nothing,
     g_earth=nothing,
     kcu_mass=nothing,
-    use_settled_init=true,
-    settle_remake=true,
-    settle_v_app=nothing,
-    settle_u_dp=nothing,
-    settle_us=0.0,
-    is_reduce_te=true,
-    is_reduce_tip=true,
-    is_reduce_depower=false,
     save_subdir="", run_tag="")
 
     startup_pattern = isnothing(startup_damping_pattern) ?
                       damping_pattern : startup_damping_pattern
-    u_dp = float(u_dp)
     damping_profile = function (t)
-        if t < begin_time_damping_decay
+        if t < start_ramp_time
             return startup_pattern
         end
-        decay_window = end_time_damping_decay -
-                       begin_time_damping_decay
-        if decay_window <= 0
+        if startup_decay_time <= 0
             return damping_pattern
         end
-        mix = clamp(
-            (t - begin_time_damping_decay) / decay_window,
-            0.0, 1.0)
+        mix = clamp((t - start_ramp_time) / startup_decay_time, 0.0, 1.0)
         return startup_pattern .+
                (damping_pattern .- startup_pattern) .* mix
     end
 
-    if use_settled_init
-        init_v_app = isnothing(settle_v_app) ?
-                     float(v_wind) : float(settle_v_app)
-        init_u_dp = isnothing(settle_u_dp) ?
-                    u_dp : float(settle_u_dp)
-        init_us = float(settle_us)
-        init_elevation = isnothing(elevation) ?
-                         70.0 : float(elevation)
-        init_tether = float(tether_length)
-
-        settle_cfg = V3SettleConfig(
-            v_wind=init_v_app,
-            depower_pct=100.0 * init_u_dp,
-            steering_pct=100.0 * init_us,
-            tether_length=init_tether,
-            elevation=init_elevation,
-            geom=V3GeomAdjustConfig(
-                reduce_tip=is_reduce_tip,
-                reduce_te=is_reduce_te,
-                reduce_depower=is_reduce_depower,
-                tether_length=init_tether))
-        sam, _ = settle_wing(settle_cfg;
-            v_app=init_v_app,
-            tether_length=init_tether,
-            elevation=init_elevation,
-            show_progress=false,
-            remake=settle_remake)
-        sys = sam.sys_struct
-        sys.set.v_wind = v_wind
-        sys.set.upwind_dir = upwind_dir
-        SymbolicAWEModels.set_body_frame_damping(
-            sys, damping_profile(0.0))
-        SymbolicAWEModels.reinit!(
-            sam, sam.prob, SymbolicAWEModels.FBDF())
-    else
-        config = V3SimConfig(
-            struc_yaml_path="struc_geometry.yaml",
-            aero_yaml_path="aero_geometry.yaml",
-            vsm_settings_path="vsm_settings.yaml",
-            v_wind=v_wind,
-            upwind_dir=upwind_dir,
-            tether_length=tether_length,
-            elevation=elevation,
-            damping_pattern=damping_profile(0.0),
-            wing_type=REFINE,
-        )
-        sam, sys = create_v3_model(config)
-        apply_geom_adjustments!(sys, V3GeomAdjustConfig(
-            reduce_tip=is_reduce_tip,
-            reduce_te=is_reduce_te,
-            reduce_depower=is_reduce_depower,
-            tether_length=tether_length))
-    end
-
+    config = V3SimConfig(
+        struc_yaml_path="struc_geometry.yaml",#"struc_geometry.yaml",
+        aero_yaml_path="aero_geometry.yaml",
+        vsm_settings_path="vsm_settings.yaml",
+        v_wind=v_wind,
+        upwind_dir=-90.0,
+        tether_length=tether_length,
+        elevation=elevation,
+        damping_pattern=damping_profile(0.0),
+        wing_type=REFINE,
+    )
+    sam, sys = create_v3_model(config)
+    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
+        reduce_te=true))
     if kcu_mass !== nothing
         sys.points[1].extra_mass = float(kcu_mass)
     end
@@ -177,9 +116,8 @@ function run_zenith_circles(;
     nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
     nom_dep = sys.segments[V3_DEPOWER_IDX].l0
-    target_depower_l0 =
-        depower_tape_length_from_u_dp(u_dp)
-    power_tape_change = target_depower_l0 - nom_dep
+    power_tape_change =
+        ((200 + 5000 * up) / 1000) - nom_dep
 
     azimuth_setpoint = Float64[target_azimuth]
 
@@ -221,16 +159,9 @@ function run_zenith_circles(;
             push!(azimuth_setpoint, target_azimuth)
 
             # Power ramp
-            if t >= begin_time_ramp_up
-                ramp_window = end_time_ramp_up -
-                              begin_time_ramp_up
-                if ramp_window <= 0
-                    rf = 1.0
-                else
-                    rf = clamp(
-                        (t - begin_time_ramp_up) / ramp_window,
-                        0.0, 1.0)
-                end
+            if t >= start_ramp_time
+                rf = min(
+                    (t - start_ramp_time) / ramp_time_up, 1.0)
                 power_ctrl = power_tape_change * rf
             else
                 power_ctrl = 0.0
@@ -327,7 +258,7 @@ function run_zenith_circles(;
                joinpath(save_root, save_subdir)
     isdir(save_dir) || mkpath(save_dir)
     ts = Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
-    u_dp_t = Int(round(u_dp * 100))
+    up_t = Int(round(up * 100))
     us_t = Int(round(us * 100))
     vw_t = Int(round(v_wind))
     el_t = elevation !== nothing ?
@@ -336,7 +267,7 @@ function run_zenith_circles(;
           Int(round(g_earth * 10)) : "yaml"
     run_prefix = n_c > 0 ?
                  "hold_at_zenith_then_circles" : "zenith_circle"
-    ln = "$(run_prefix)__u_dp_$(u_dp_t)_us_$(us_t)" *
+    ln = "$(run_prefix)__up_$(up_t)_us_$(us_t)" *
          "_vw_$(vw_t)_lt_$(lt_tag)" *
          "_el_$(el_t)_g_$(g_t)"
     if !isempty(run_tag)
@@ -357,27 +288,13 @@ end
 elevation_vals = [15]
 g_earth_vals = [0.0]
 us_vals = [0.15]
-u_dp_vals = [0.42]
+up_vals = [0.42]
 # vw_vals = [8.6, 19.8]
 vw_vals = [8.6]
 lt_vals = [268]
 kcu_mass_2019 = 22.0
 kcu_mass_2025 = 23.3
 kcu_mass_vals = [kcu_mass_2025]
-
-# Geometric settings
-is_reduce_te = true
-is_reduce_tip = true
-is_reduce_depower = false
-
-# Settled initialization settings (variable-defined; no CSV startup row)
-use_settled_init = true
-settle_remake = true
-settle_v_app = nothing
-settle_u_dp = nothing
-settle_us = 0.0
-upwind_dir = -90.0
-
 max_us_zenith = 0.02 # maximum allowed steering to keep it on zenith
 batch_tag = "zenith_2019_batch_" *
             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
@@ -386,8 +303,8 @@ isdir(batch_dir) || mkpath(batch_dir)
 
 sim_time_zenith = 1
 sim_time_circles = 20
-begin_time_ramp_up = 1.0
-end_time_ramp_up = 2.0
+start_ramp_time = 1.0
+ramp_time_up = 1
 ramp_time_us = 2
 
 # How to get the simulation stable?
@@ -395,37 +312,30 @@ ramp_time_us = 2
 #   high startup damping helps, then decay toward the nominal damping pattern
 fps_zenith = 360
 fps_circles = 180
-begin_time_damping_decay = 1.0
-end_time_damping_decay = 3.0
+startup_decay_time = 2.0
 startup_damping_pattern = [100.0, 500.0, 1000.0]
 damping_pattern = [0.0, 0.0, 20.0]
 
 failed_runs = NamedTuple[]
 
-for (run_id, (elev, g, us, u_dp, vw, lt, kcu_mass_val)) in enumerate(
+for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
     Iterators.product(elevation_vals, g_earth_vals,
-        us_vals, u_dp_vals, vw_vals, lt_vals, kcu_mass_vals))
+        us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals))
     run_tag = "run_" * lpad(string(run_id), 3, '0')
-    @info "Starting run" run_id elevation = elev g_earth = g us u_dp vw lt kcu_mass = kcu_mass_val
+    @info "Starting run" run_id elevation = elev g_earth = g us up vw lt kcu_mass = kcu_mass_val
     try
         run_zenith_circles(;
             v_wind=vw, v_wind_base=vw,
-            u_dp=u_dp, tether_length=lt,
+            up=up, tether_length=lt,
             elevation=elev, g_earth=g,
             kcu_mass=kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            begin_time_ramp_up, end_time_ramp_up,
+            start_ramp_time, ramp_time_up,
             startup_damping_pattern, damping_pattern,
-            begin_time_damping_decay,
-            end_time_damping_decay,
+            startup_decay_time,
             max_us_zenith, target_azimuth=0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us=us,
-            use_settled_init, settle_remake,
-            settle_v_app, settle_u_dp, settle_us,
-            upwind_dir,
-            is_reduce_te, is_reduce_tip,
-            is_reduce_depower,
             save_subdir=batch_tag,
             run_tag)
         @info "Completed" run_id
@@ -433,7 +343,7 @@ for (run_id, (elev, g, us, u_dp, vw, lt, kcu_mass_val)) in enumerate(
         @error "Failed" run_id err
         push!(failed_runs, (run_id=run_id,
             elevation=elev, g_earth=g,
-            us=us, u_dp=u_dp, vw=vw, lt=lt,
+            us=us, up=up, vw=vw, lt=lt,
             kcu_mass=kcu_mass_val, error=err))
     end
     GC.gc()
@@ -445,7 +355,7 @@ if !isempty(failed_runs)
         for fr in failed_runs
             println(io, "Run $(fr.run_id): " *
                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-                        "us=$(fr.us), u_dp=$(fr.u_dp), " *
+                        "us=$(fr.us), up=$(fr.up), " *
                         "vw=$(fr.vw), lt=$(fr.lt), " *
                         "kcu_mass=$(fr.kcu_mass)")
             println(io, "  Error: $(fr.error)")
@@ -456,7 +366,7 @@ end
 
 n_total = length(collect(Iterators.product(
     elevation_vals, g_earth_vals,
-    us_vals, u_dp_vals, vw_vals, lt_vals, kcu_mass_vals)))
+    us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals)))
 @info "Batch 1 completed" total = n_total failed = length(failed_runs)
 
 #TODO: check updates from above to complete the below when you start using it
@@ -468,7 +378,7 @@ n_total = length(collect(Iterators.product(
 #     20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
 # g_earth_vals = [0.0]
 # us_vals = [0.0]
-# u_dp_vals = [0.42]
+# up_vals = [0.42]
 # vw_vals = [7.8, 19.7]
 # lt_vals = [262]
 
@@ -478,21 +388,20 @@ n_total = length(collect(Iterators.product(
 # sim_time_zenith = 200.0
 # failed_runs = NamedTuple[]
 
-# for (run_id, (elev, g, us, u_dp, vw, lt)) in enumerate(
+# for (run_id, (elev, g, us, up, vw, lt)) in enumerate(
 #     Iterators.product(elevation_vals, g_earth_vals,
-#         us_vals, u_dp_vals, vw_vals, lt_vals))
+#         us_vals, up_vals, vw_vals, lt_vals))
 #     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id elevation = elev g_earth = g us u_dp vw lt
+#     @info "Starting run" run_id elevation = elev g_earth = g us up vw lt
 #     try
 #         run_zenith_circles(;
 #             v_wind=vw, v_wind_base=vw,
-#             u_dp=u_dp, tether_length=lt,
+#             up=up, tether_length=lt,
 #             elevation=elev, g_earth=g,
 #             sim_time_zenith, fps_zenith,
-#             begin_time_ramp_up, end_time_ramp_up,
+#             start_ramp_time, ramp_time_up,
 #             startup_damping_pattern, damping_pattern,
-#             begin_time_damping_decay,
-#             end_time_damping_decay,
+#             startup_decay_time,
 #             max_us_zenith, target_azimuth=0.0,
 #             sim_time_circles, fps_circles,
 #             ramp_time_us, us=us,
@@ -502,7 +411,7 @@ n_total = length(collect(Iterators.product(
 #         @error "Failed" run_id err
 #         push!(failed_runs, (run_id=run_id,
 #             elevation=elev, g_earth=g,
-#             us=us, u_dp=u_dp, vw=vw, lt=lt, error=err))
+#             us=us, up=up, vw=vw, lt=lt, error=err))
 #     end
 #     GC.gc()
 # end
@@ -514,7 +423,7 @@ n_total = length(collect(Iterators.product(
 #         for fr in failed_runs
 #             println(io, "Run $(fr.run_id): " *
 #                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-#                         "us=$(fr.us), u_dp=$(fr.u_dp), " *
+#                         "us=$(fr.us), up=$(fr.up), " *
 #                         "vw=$(fr.vw), lt=$(fr.lt)")
 #             println(io, "  Error: $(fr.error)")
 #         end
@@ -524,5 +433,5 @@ n_total = length(collect(Iterators.product(
 
 # n_total = length(collect(Iterators.product(
 #     elevation_vals, g_earth_vals,
-#     us_vals, u_dp_vals, vw_vals, lt_vals)))
+#     us_vals, up_vals, vw_vals, lt_vals)))
 # @info "Batch 2 completed" total = n_total failed = length(failed_runs)

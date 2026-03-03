@@ -12,6 +12,7 @@ Usage:
 """
 
 using V3Kite
+using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_GAIN
 using LinearAlgebra
 using Statistics
 using Dates
@@ -81,6 +82,17 @@ function mean_last_window(values, times;
     return isempty(data) ? NaN : mean(data)
 end
 
+function mean_at_time(values, times, target_time;
+    window_half=0.5)
+    @assert length(values) == length(times)
+    mask = (times .>= (target_time - window_half)) .&
+           (times .<= (target_time + window_half))
+    any(mask) || return NaN
+    data = values[mask]
+    data = data[isfinite.(data)]
+    return isempty(data) ? NaN : mean(data)
+end
+
 function calc_ref_area(sys)
     isempty(sys.wings) && return NaN
     wing = sys.wings[1]
@@ -142,12 +154,57 @@ function compute_projected_area(sl, k, sys; eps=1e-12)
     return abs(area) / 2.0
 end
 
+function unwrap_heading(heading)
+    hw = copy(heading)
+    for j in 2:length(hw)
+        while hw[j] - hw[j-1] > pi
+            hw[j] -= 2pi
+        end
+        while hw[j] - hw[j-1] < -pi
+            hw[j] += 2pi
+        end
+    end
+    return hw
+end
+
+function heading_rate(sl)
+    hw = unwrap_heading(sl.heading)
+    rates = diff(rad2deg.(hw)) ./ diff(sl.time)
+    return rates, sl.time[1:end-1]
+end
+
+function steering_command(sl, sys; steering_l0=nothing)
+    seg = sys.segments[V3_STEERING_LEFT_IDX]
+    pi_, pj = seg.point_idxs
+    n = length(sl.time)
+    slen = zeros(Float64, n)
+    @inbounds for k in 1:n
+        p1 = SVector{3}(sl.X[k][pi_], sl.Y[k][pi_],
+            sl.Z[k][pi_])
+        p2 = SVector{3}(sl.X[k][pj], sl.Y[k][pj],
+            sl.Z[k][pj])
+        slen[k] = norm(p2 - p1)
+    end
+    base_l0 = isnothing(steering_l0) ? slen[1] : steering_l0
+    us_cmd = similar(slen)
+    @inbounds for k in eachindex(us_cmd)
+        d = slen[k] - base_l0
+        us_cmd[k] = abs(d) > 1e-6 ?
+                    d / V3_STEERING_GAIN : 0.0
+    end
+    return us_cmd
+end
+
 function analyze_log(lg, sys; window_sec=WINDOW_SEC)
     sl = lg.syslog
     length(sl.time) < 2 && return (
         aero_force=NaN, v_app=NaN, kite_vel=NaN,
         aoa=NaN, final_elevation=NaN, azimuth=NaN,
-        proj_area=NaN, ref_area=NaN)
+        proj_area=NaN, ref_area=NaN,
+        usva_at=Dict{Int,Float64}(),
+        yaw_rate_at=Dict{Int,Float64}(),
+        va_at=Dict{Int,Float64}(),
+        aoa_at=Dict{Int,Float64}())
     aero_z = [sl.aero_force_b[i][3]
               for i in eachindex(sl.aero_force_b)]
     aero_force = mean_last_window(aero_z, sl.time;
@@ -167,11 +224,30 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
     proj_area = compute_projected_area(
         sl, length(sl.time), sys)
     ref_area = calc_ref_area(sys)
+
+    us_cmd = steering_command(sl, sys)
+    usva = us_cmd .* sl.v_app
+    yaw_rate_deg, yaw_rate_time = heading_rate(sl)
+    usva_at = Dict{Int,Float64}()
+    yaw_rate_at = Dict{Int,Float64}()
+    va_at = Dict{Int,Float64}()
+    aoa_at = Dict{Int,Float64}()
+    for t_sec in 3:10
+        t = Float64(t_sec)
+        usva_at[t_sec] = mean_at_time(usva, sl.time, t)
+        yaw_rate_at[t_sec] = mean_at_time(
+            yaw_rate_deg, yaw_rate_time, t)
+        va_at[t_sec] = mean_at_time(sl.v_app, sl.time, t)
+        aoa_at[t_sec] = mean_at_time(aoa_deg, sl.time, t)
+    end
+
     return (aero_force=aero_force, v_app=v_app,
         kite_vel=kite_vel, aoa=aoa,
         final_elevation=final_elevation,
         azimuth=azimuth, proj_area=proj_area,
-        ref_area=ref_area)
+        ref_area=ref_area, usva_at=usva_at,
+        yaw_rate_at=yaw_rate_at, va_at=va_at,
+        aoa_at=aoa_at)
 end
 
 # =============================================================================
@@ -203,26 +279,42 @@ function resolve_batch_dir(batch_name)
 end
 
 function write_csv(path, rows)
-    header = "vw,up,us,lt,aero_force,v_app,kite_vel," *
-             "aoa,set_elevation,final_elevation,azimuth," *
-             "proj_area,ref_area,g_earth"
+    base = "vw,up,us,lt,aero_force,v_app,kite_vel," *
+           "aoa,set_elevation,final_elevation,azimuth," *
+           "proj_area,ref_area,g_earth"
+    tc = String[]
+    for t in 3:10
+        push!(tc, "usva_$t")
+        push!(tc, "yaw_rate_$t")
+        push!(tc, "va$t")
+        push!(tc, "aoa$t")
+    end
+    header = base * "," * join(tc, ",")
     open(path, "w") do io
         println(io, header)
         for r in rows
-            println(io, join([
-                    r.vw, r.up, r.us, r.lt,
-                    r.aero_force, r.v_app, r.kite_vel,
-                    r.aoa, r.set_elevation,
-                    r.final_elevation, r.azimuth,
-                    r.proj_area, r.ref_area, r.g_earth
-                ], ","))
+            base_vals = [
+                r.vw, r.up, r.us, r.lt,
+                r.aero_force, r.v_app, r.kite_vel,
+                r.aoa, r.set_elevation,
+                r.final_elevation, r.azimuth,
+                r.proj_area, r.ref_area, r.g_earth
+            ]
+            time_vals = Float64[]
+            for t in 3:10
+                push!(time_vals, r.usva_at[t])
+                push!(time_vals, r.yaw_rate_at[t])
+                push!(time_vals, r.va_at[t])
+                push!(time_vals, r.aoa_at[t])
+            end
+            println(io, join(vcat(base_vals, time_vals), ","))
         end
     end
 end
 
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    # batch_name = "zenith_2019_batch_2026_02_23_11_13_35"
+    # batch_name = "zenith_2025_batch_2026_03_03_12_37_24"
     if isempty(batch_name)
         print("Enter batch folder name: ")
         batch_name = strip(readline())
@@ -258,7 +350,11 @@ function main()
                           NaN : set_elev,
             final_elevation=m.final_elevation,
             azimuth=m.azimuth, proj_area=m.proj_area,
-            ref_area=m.ref_area, g_earth=g_eff))
+            ref_area=m.ref_area, g_earth=g_eff,
+            usva_at=m.usva_at,
+            yaw_rate_at=m.yaw_rate_at,
+            va_at=m.va_at,
+            aoa_at=m.aoa_at))
     end
 
     sort!(rows, by=r -> (
