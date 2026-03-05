@@ -52,7 +52,7 @@ export V3_TETHER_POINT_IDXS
 export V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 export V3_DEPOWER_IDX
 # Conversion functions
-export steering_percentage_to_lengths, csv_steering_percentage_to_lengths
+export steering_percentage_to_lengths
 export depower_percentage_to_length
 export steering_length_to_percentage, depower_length_to_percentage
 export build_geom_suffix

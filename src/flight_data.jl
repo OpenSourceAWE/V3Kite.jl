@@ -254,20 +254,24 @@ end
 
 """
     update_sys_struct_from_data!(sys, row;
-        extra_vel_body_x=0.0)
+        extra_vel_body_x=0.0,
+        config=V3GeomAdjustConfig())
 
 Update system structure from a single data row.
 Updates wing orientation from Euler angles and position
-via transform system.
+via transform system. Sets steering/depower from CSV data
+using the provided geometry config.
 
 # Arguments
 - `sys`: System structure to update
 - `row`: NamedTuple with roll, pitch, yaw, x, y, z, vx,
   vy, vz, steering, depower fields
 - `extra_vel_body_x`: Extra velocity in body x direction
+- `config`: Geometry adjustment config for tape reductions
 """
 function update_sys_struct_from_data!(sys, row;
-        extra_vel_body_x=0.0)
+        extra_vel_body_x=0.0,
+        config::V3GeomAdjustConfig=V3GeomAdjustConfig())
     @unpack wings, points, winches, segments, transforms = sys
     wing = wings[1]
     transform = transforms[1]
@@ -302,16 +306,10 @@ function update_sys_struct_from_data!(sys, row;
     # update winch
     winches[1].brake = true
 
-    # Convert percentages to tape lengths
-    L_left, L_right =
-        csv_steering_percentage_to_lengths(row.steering)
-    L_depower = depower_percentage_to_length(row.depower)
-
-    min_l0 = 0.01
-    segments[V3_STEERING_LEFT_IDX].l0 =
-        max(min_l0, L_left)
-    segments[V3_STEERING_RIGHT_IDX].l0 =
-        max(min_l0, L_right)
-    segments[V3_DEPOWER_IDX].l0 =
-        max(min_l0, L_depower)
+    # Set steering/depower from CSV data (KCU convention)
+    # row.steering is KCU: positive = left turn
+    # set_steering! expects positive = right turn, so negate
+    set_steering!(sys, -row.steering / 100.0, config;
+        min_l0=0.01)
+    set_depower!(sys, row.depower / 100.0, config)
 end

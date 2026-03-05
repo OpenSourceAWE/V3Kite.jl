@@ -12,8 +12,6 @@ Usage:
 """
 
 using V3Kite
-using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
-    V3_DEPOWER_IDX
 using GLMakie
 using LinearAlgebra
 using DiscretePIDs

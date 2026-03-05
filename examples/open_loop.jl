@@ -26,11 +26,10 @@ using Dates
 TETHER_LENGTH = 262
 ELEVATION = 20.0            # degrees
 
-# Geometry (must match settle output)
-TE_FRAC = 0.95
-TIP_REDUCTION = 0.4
+# Geometry config
+gc = V3GeomAdjustConfig()
 GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, TIP_REDUCTION, TE_FRAC)
+    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]
@@ -83,16 +82,6 @@ n_steps = Int(round(FPS * SIM_TIME))
 dt = SIM_TIME / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
-# Store nominal lengths for ramping
-nominal_l0_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-nominal_l0_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-nominal_l0_depower = sys.segments[V3_DEPOWER_IDX].l0
-
-# Target tape lengths from percentages
-L_left_target, L_right_target = steering_percentage_to_lengths(
-    US * 100)
-L_depower_target = depower_percentage_to_length(UP * 100)
-
 # Stretch stats storage
 max_stretch_samples = Float64[]
 mean_stretch_samples = Float64[]
@@ -115,13 +104,10 @@ for step in 1:n_steps
 
     # Ramp steering
     rf_us = ramp_factor(t, RAMP_START_US, RAMP_END_US)
-    sys.segments[V3_STEERING_LEFT_IDX].l0 =
-        nominal_l0_left + rf_us * (L_left_target - nominal_l0_left)
-    sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-        nominal_l0_right + rf_us * (L_right_target - nominal_l0_right)
+    set_steering!(sys, rf_us * US, gc)
 
     # Instant depower
-    sys.segments[V3_DEPOWER_IDX].l0 = L_depower_target
+    set_depower!(sys, UP, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
