@@ -15,27 +15,24 @@ function wrap_to_pi(angle)
 end
 
 """
-    euler_to_quaternion(roll_deg, pitch_deg, yaw_deg)
+    euler_to_quaternion(roll, pitch, yaw)
 
-Convert Euler angles (in degrees) to quaternion.
+Convert Euler angles (in radians) to quaternion.
 Converts from NED to ENU frame:
   X_ENU = Y_NED (East)
   Y_ENU = X_NED (North)
   Z_ENU = -Z_NED (Up = -Down)
 
 # Arguments
-- `roll_deg`: Roll angle in degrees
-- `pitch_deg`: Pitch angle in degrees
-- `yaw_deg`: Yaw angle in degrees
+- `roll`: Roll angle in radians
+- `pitch`: Pitch angle in radians
+- `yaw`: Yaw angle in radians
 
 # Returns
 - Quaternion [w, x, y, z]
 """
-function euler_to_quaternion(roll_deg, pitch_deg, yaw_deg)
-    roll_rad = deg2rad(roll_deg)
-    pitch_rad = deg2rad(pitch_deg)
-    yaw_rad = deg2rad(yaw_deg)
-    rot_ned = RotZYX(yaw_rad, pitch_rad, roll_rad)
+function euler_to_quaternion(roll, pitch, yaw)
+    rot_ned = RotZYX(yaw, pitch, roll)
     R_ned_to_enu = [0.0 1.0 0.0;
                     1.0 0.0 0.0;
                     0.0 0.0 -1.0]
@@ -70,21 +67,21 @@ function calc_heading(sys_struct::SymbolicAWEModels.SystemStructure, R_b_w)
 end
 
 """
-    calc_csv_heading(roll_deg, pitch_deg, yaw_deg, sys_struct)
+    calc_csv_heading(roll, pitch, yaw, sys_struct)
 
-Calculate heading from CSV Euler angles, wrapped to [-π, π].
+Calculate heading from Euler angles, wrapped to [-π, π].
 
 # Arguments
-- `roll_deg`: Roll angle from CSV in degrees
-- `pitch_deg`: Pitch angle from CSV in degrees
-- `yaw_deg`: Yaw angle from CSV in degrees
+- `roll`: Roll angle in radians
+- `pitch`: Pitch angle in radians
+- `yaw`: Yaw angle in radians
 - `sys_struct`: System structure
 
 # Returns
 - Heading angle in radians, wrapped to [-π, π]
 """
-function calc_csv_heading(roll_deg, pitch_deg, yaw_deg, sys_struct)
-    quat = euler_to_quaternion(roll_deg, pitch_deg, yaw_deg)
+function calc_csv_heading(roll, pitch, yaw, sys_struct)
+    quat = euler_to_quaternion(roll, pitch, yaw)
     R = SymbolicAWEModels.quaternion_to_rotation_matrix(quat)
     heading = calc_heading(sys_struct, R)
     return wrap_to_pi(heading + π)

@@ -29,7 +29,8 @@ ELEVATION = 20.0            # degrees
 # Geometry (must match settle output)
 TE_FRAC = 0.95
 TIP_REDUCTION = 0.4
-GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0, TIP_REDUCTION, TE_FRAC)
+GEOM_SUFFIX = build_geom_suffix(
+    V3_DEPOWER_L0_BASE, TIP_REDUCTION, TE_FRAC)
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]

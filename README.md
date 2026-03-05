@@ -53,28 +53,21 @@ V3Kite uses a base + delta calibration pattern:
 | `V3_STEERING_GAIN` | 1.4 m | Max differential at 100% steering |
 | `V3_DEPOWER_GAIN` | 5.0 m | Depower range for 0-100% |
 
-### Calibration Delta
+### Tape Reductions
 
-The default delta (`V3_DEFAULT_DELTA = -0.2`) accounts for the empirical difference between measured KCU values and effective simulation values.
-
-### Effective Values
-
-```julia
-V3_STEERING_L0 = V3_STEERING_L0_BASE + V3_DEFAULT_DELTA  # = 1.4 m
-V3_DEPOWER_L0 = V3_DEPOWER_L0_BASE + V3_DEFAULT_DELTA    # = 0.0 m
-```
+Tape reductions (shortening of steering/depower tapes) are applied
+through `V3GeomAdjustConfig`, not through global constants. Use
+`set_steering!`/`set_depower!` with a config to apply reductions.
 
 ### Conversion Functions
 
-All conversion functions accept an optional `delta` parameter:
-
 ```julia
-# Using default delta
+# Using base values (no reduction)
 L_left, L_right = steering_percentage_to_lengths(50.0)
 L_depower = depower_percentage_to_length(40.0)
 
-# Using custom delta
-L_left, L_right = steering_percentage_to_lengths(50.0; delta=0.0)  # Use base values
+# With custom l0_base (e.g. after reduction)
+L_left, L_right = steering_percentage_to_lengths(50.0; l0_base=1.4)
 
 # Inverse conversions
 pct = steering_length_to_percentage(L_left, L_right)

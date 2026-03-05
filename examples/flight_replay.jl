@@ -2,17 +2,14 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-CSV Replay Example
+Flight Data Replay Example
 
-Reads flight test data from CSV and replays steering inputs through the
-SymbolicAWEModel simulator. The kite is initialized to steady state,
-then CSV steering commands are applied during simulation.
-
-Uses in-package functions for steering/depower conversion, CSV parsing,
-heading calculation, and coordinate utilities.
+Reads flight test data from HDF5 and replays steering inputs
+through the SymbolicAWEModel simulator. The kite is initialized
+to steady state, then recorded steering commands are applied.
 
 Usage:
-    julia --project=examples examples/csv_replay.jl
+    julia --project=examples examples/flight_replay.jl
 """
 
 using V3Kite
@@ -23,7 +20,6 @@ using SymbolicAWEModels: reposition!, rotate_around_z,
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
-using CSV, DataFrames, DiscretePIDs
 using Statistics
 using Rotations
 using UnPack
@@ -37,8 +33,9 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
-SECTION = "straight_right"
-CSV_PATH = joinpath(v3_data_path(), "v3_2025-10-09-ekf.csv")
+SECTION = "power_depower"
+H5_PATH = joinpath(v3_data_path(),
+    "flight_data", "ekf_awe_2025-10-09.h5")
 WARN_STEP = false
 
 # Video frame mapping
@@ -46,12 +43,15 @@ VIDEO_FRAME_REF = 7182
 UTC_REF_SECONDS = 15*3600 + 36*60 + 31.0
 VIDEO_FPS = 29.97
 
+# Defaults for optional per-section settings
+EXTRA_POINTS_CSV = nothing
+EXTRA_POINTS_FRAME = nothing
+STOP_EARLY = false
+
 # Maneuver selection
 if SECTION == "straight_right"
     START_UTC = "15:36:29.0"
     END_UTC = "15:36:41.0"
-    EXTRA_POINTS_CSV = nothing
-    EXTRA_POINTS_FRAME = nothing
 elseif SECTION == "straight_left"
     START_UTC = "15:36:49.0"
     END_UTC = "15:36:52.0"
@@ -63,43 +63,16 @@ else
 end
 
 STEERING_MULTIPLIER = 1.0
-STOP_EARLY = false
 MIN_DAMPING = [0.0, 0.0, 20.0]
 
-# Tracking forces
-CSV_SPRING_K = 0.0
-CSV_DAMPING_K = 0.0
-
-# PID parameters
-HEADING_KP = 0.0
-HEADING_TAU_I = false
-PID_START_TIME = 0.0
-
 # =============================================================================
-# CSV replay helper functions
+# Replay helper functions
 # =============================================================================
 
 """Feed-forward torque from tether force."""
 function calc_feedforward_torque(tether_force_n, winch)
     return -winch.drum_radius / winch.gear_ratio *
         tether_force_n + winch.friction
-end
-
-# Heading spike filter state
-const PREV_CSV_HEADING = Ref{Float64}(NaN)
-const MAX_HEADING_CHANGE = deg2rad(20.0)
-
-function filter_csv_heading(heading)
-    if isnan(PREV_CSV_HEADING[])
-        PREV_CSV_HEADING[] = heading
-        return heading
-    end
-    delta = wrap_to_pi(heading - PREV_CSV_HEADING[])
-    if abs(delta) > MAX_HEADING_CHANGE
-        return PREV_CSV_HEADING[]
-    end
-    PREV_CSV_HEADING[] = heading
-    return heading
 end
 
 # Distance tracker state
@@ -122,50 +95,22 @@ function update_sim_distance!(wing_pos)
     return SIM_CUMULATIVE_DIST[]
 end
 
-"""Apply spring+damping forces to points 1:38."""
-function apply_csv_tracking_forces!(sim_sys, csv_sys;
-        k_spring=CSV_SPRING_K, k_damping=CSV_DAMPING_K)
-    for i in 1:38
-        sim_pt = sim_sys.points[i]
-        csv_pt = csv_sys.points[i]
-        pos_err = csv_pt.pos_w - sim_pt.pos_w
-        vel_err = csv_pt.vel_w - sim_pt.vel_w
-        sim_pt.disturb .= k_spring * pos_err +
-            k_damping * vel_err
-    end
-end
-
-function update_vel_from_csv!(sys, row, brake, heading_pid,
+function update_vel_from_csv!(sys, row, brake,
         gc::V3GeomAdjustConfig)
     @unpack wings, points, winches, segments = sys
     wing = wings[1]
-
-    raw_csv_heading = calc_csv_heading(
-        row.roll, row.pitch, row.yaw, sys)
-    csv_heading = filter_csv_heading(raw_csv_heading)
-    R_b_w = calc_R_b_w(sys)
-    curr_heading = calc_heading(sys, R_b_w)
-    delta_heading = -wrap_to_pi(csv_heading - curr_heading)
 
     update_sim_distance!(wing.pos_w)
     sys.set.v_wind = row.wind_speed
     sys.set.upwind_dir = row.wind_dir + -90
 
-    # PID steering + CSV steering
-    if row.time >= PID_START_TIME
-        steering_ctrl = DiscretePIDs.calculate_control!(
-            heading_pid, 0.0, delta_heading, 0.0)
-    else
-        steering_ctrl = 0.0
-    end
+    # CSV steering
     steering = clamp(row.steering, -100.0, 100.0)
     L_left, L_right = csv_steering_percentage_to_lengths(
         steering * STEERING_MULTIPLIER)
     min_l0 = 0.01
-    segments[V3_STEERING_LEFT_IDX].l0 = max(min_l0,
-        L_left + V3_STEERING_GAIN * steering_ctrl)
-    segments[V3_STEERING_RIGHT_IDX].l0 = max(min_l0,
-        L_right - V3_STEERING_GAIN * steering_ctrl)
+    segments[V3_STEERING_LEFT_IDX].l0 = max(min_l0, L_left)
+    segments[V3_STEERING_RIGHT_IDX].l0 = max(min_l0, L_right)
 
     # Winch feed-forward
     winch = winches[1]
@@ -177,8 +122,7 @@ function update_vel_from_csv!(sys, row, brake, heading_pid,
     # Depower from CSV
     set_depower!(sys, row.depower / 100.0, gc)
 
-    eff_steering = steering * STEERING_MULTIPLIER +
-        steering_ctrl * 100
+    eff_steering = steering * STEERING_MULTIPLIER
     return winch.set_value, eff_steering, row.depower
 end
 
@@ -186,16 +130,18 @@ end
 # Main replay function
 # =============================================================================
 
-function run_physics_replay(csv_path;
+function run_physics_replay(h5_path;
         start_utc=START_UTC, end_utc=END_UTC,
         n_substeps=20)
 
-    df = load_flight_data(csv_path)
-    limited_data, _ = limit_by_utc(df, start_utc, end_utc)
+    data = load_flight_data(h5_path)
+    limited_data, _ = limit_by_utc(
+        data, start_utc, end_utc)
     limited_data = add_distance_column(limited_data)
 
-    @info "Interpolating CSV data" n_substeps
-    csv_data = interpolate_csv_data(limited_data, n_substeps)
+    @info "Interpolating flight data" n_substeps
+    csv_data = interpolate_flight_data(
+        limited_data, n_substeps)
 
     function get_row(data, step)
         return (
@@ -236,7 +182,7 @@ function run_physics_replay(csv_path;
         tether_length=tether_len,
         geom=V3GeomAdjustConfig(
             reduce_tip=true, reduce_te=true,
-            reduce_depower=true,
+            reduce_depower=false,
             tether_length=tether_len))
     sam, syslog = settle_wing(settle_config;
         v_app=row1.v_app,
@@ -276,19 +222,14 @@ function run_physics_replay(csv_path;
     first_csv_tether = csv_data.ekf_tether_length[1]
     tether_delta = set.l_tether - first_csv_tether
 
-    PREV_CSV_HEADING[] = NaN
     reset_distance_tracker!()
-
-    heading_pid = DiscretePID(;
-        K=HEADING_KP, Ti=HEADING_TAU_I, Td=false,
-        Ts=dt, umin=-1.0, umax=1.0)
 
     try
         for step in 1:n_steps-1
             row = get_row(csv_data, step)
 
             # Update CSV reference
-            update_sys_struct_from_csv!(
+            update_sys_struct_from_data!(
                 csv_sam.sys_struct, row)
             SymbolicAWEModels.reinit!(
                 csv_sam, csv_sam.prob, FBDF())
@@ -307,7 +248,7 @@ function run_physics_replay(csv_path;
             push!(csv_tape.depower, row.depower)
 
             if step == 1
-                update_sys_struct_from_csv!(
+                update_sys_struct_from_data!(
                     sam.sys_struct, row)
                 SymbolicAWEModels.reinit!(
                     sam, sam.prob, FBDF())
@@ -315,7 +256,7 @@ function run_physics_replay(csv_path;
 
             set_value, eff_steer, eff_dep =
                 update_vel_from_csv!(
-                    sam.sys_struct, row, true, heading_pid,
+                    sam.sys_struct, row, true,
                     settle_config.geom)
 
             sam.sys_struct.winches[1].tether_len =
@@ -324,13 +265,6 @@ function run_physics_replay(csv_path;
                 row.tether_vel
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())
-
-            # Tracking forces
-            total_mass = sam.sys_struct.total_mass
-            apply_csv_tracking_forces!(
-                sam.sys_struct, csv_sam.sys_struct;
-                k_spring=CSV_SPRING_K * total_mass,
-                k_damping=CSV_DAMPING_K * total_mass)
 
             next_step!(sam; dt, set_values=[set_value])
 
@@ -381,7 +315,7 @@ end
 # =============================================================================
 
 sam, syslog, csv_sam, csvlog, csv_data, phys_tape, csv_tape,
-    extra_pts, extra_groups = run_physics_replay(CSV_PATH)
+    extra_pts, extra_groups = run_physics_replay(H5_PATH)
 
 fig = plot([sam.sys_struct, csv_sam.sys_struct],
     [syslog, csvlog];
@@ -394,4 +328,4 @@ fig = plot([sam.sys_struct, csv_sam.sys_struct],
 
 sphere = plot_sphere_trajectory([syslog, csvlog])
 
-replay([syslog, csvlog], [sam.sys_struct, csv_sam.sys_struct])
+scene = replay([syslog, csvlog], [sam.sys_struct, csv_sam.sys_struct])

@@ -43,7 +43,7 @@ WINCH_D = 50.0
 
 function run_example()
     @info "V3 Kite Simulation Example"
-    @info "Calibration:" steering_l0=V3_STEERING_L0 depower_l0=V3_DEPOWER_L0
+    @info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
 
     config = V3SimConfig(
         sim_time = SIM_TIME,
@@ -57,6 +57,8 @@ function run_example()
         damping_pattern = [0.0, 30.0, 60.0],
     )
 
+    gc = V3GeomAdjustConfig()
+
     @info "Creating V3 model..."
     sam, sys = create_v3_model(config)
 
@@ -69,7 +71,7 @@ function run_example()
     logger, sys_state = create_logger(sam, n_steps)
 
     # Heading PID (outputs steering tape delta in m)
-    nominal_steering = get_steering(sys)
+    nominal_steering = get_steering(sys, gc)
     max_heading_rad = deg2rad(MAX_HEADING)
     angular_freq = 2pi / PERIOD
     max_steering = 0.15
@@ -105,7 +107,7 @@ function run_example()
         steer_ctrl = heading_pid(target_rad, current, 0.0)
         push!(heading_setpoint, target_rad)
 
-        set_steering!(sys, nominal_steering - steer_ctrl)
+        set_steering!(sys, nominal_steering - steer_ctrl, gc)
 
         # Winch PID
         tl = sys.winches[1].tether_len
