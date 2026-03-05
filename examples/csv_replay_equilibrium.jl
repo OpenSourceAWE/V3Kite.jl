@@ -257,7 +257,7 @@ function run_physics_replay(csv_path;
     raw = load_proto_data(csv_path)
     limited = limit_frames(raw; start_frame, end_frame)
     limited = proto_add_distance(limited)
-    csv_data = interpolate_csv_data(limited, n_substeps)
+    csv_data = interpolate_flight_data(limited, n_substeps)
 
     set_data_path(v3_data_path())
     set = Settings("system.yaml")

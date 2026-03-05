@@ -2,20 +2,12 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-V3 Kite steering and depower calibration constants and conversion functions.
-Based on KCU (Kite Control Unit) documentation for the TU Delft V3 kite.
+V3 Kite steering and depower calibration constants and conversion
+functions. Based on KCU (Kite Control Unit) documentation for the
+TU Delft V3 kite.
 
-## Calibration Structure
-
-The V3 kite calibration uses a base + delta pattern:
-- **Base values**: Official measured values from KCU documentation
-- **Delta**: Empirical correction factor (default: -0.2m)
-- **Effective values**: base + delta (used in simulation)
-
-This structure allows:
-1. Transparent documentation of official measurements
-2. Easy adjustment of the empirical delta for tuning
-3. Backward compatibility with existing code using effective values
+Tape reductions (shortening of steering/depower tapes) are applied
+through `V3GeomAdjustConfig`, not through global constants.
 """
 
 # =============================================================================
@@ -34,27 +26,6 @@ const V3_DEPOWER_L0_BASE = 0.2
 """Depower range (m) for 0-100%"""
 const V3_DEPOWER_GAIN = 5.0
 
-# =============================================================================
-# Default calibration delta
-# =============================================================================
-
-"""
-Default calibration delta (m).
-This empirical correction accounts for the difference between measured
-KCU values and effective simulation values.
-"""
-const V3_DEFAULT_DELTA = -0.2
-
-# =============================================================================
-# Effective values (backward compatible exports)
-# =============================================================================
-
-"""Effective neutral steering tape length (m): V3_STEERING_L0_BASE + V3_DEFAULT_DELTA"""
-const V3_STEERING_L0 = V3_STEERING_L0_BASE + V3_DEFAULT_DELTA  # = 1.4
-
-"""Effective neutral depower tape length (m): V3_DEPOWER_L0_BASE + V3_DEFAULT_DELTA"""
-const V3_DEPOWER_L0 = V3_DEPOWER_L0_BASE + V3_DEFAULT_DELTA    # = 0.0
-
 # V3 Kite segment indices
 """Tether point indices in the V3 kite model"""
 const V3_TETHER_POINT_IDXS = 39:44
@@ -70,7 +41,8 @@ const V3_DEPOWER_IDX = 88
 
 """
     steering_percentage_to_lengths(percentage;
-        l0_base=V3_STEERING_L0_BASE, gain=V3_STEERING_GAIN, delta=V3_DEFAULT_DELTA)
+        l0_base=V3_STEERING_L0_BASE,
+        gain=V3_STEERING_GAIN)
 
 Convert steering percentage to left/right tape lengths (m).
 Percentage convention: negative = left turn, positive = right turn.
@@ -80,56 +52,49 @@ Uses half-gain on each side for symmetric actuation.
 - `percentage`: Steering percentage in range [-100, 100]
 - `l0_base`: Base neutral steering tape length (m)
 - `gain`: Maximum differential (m) at |percentage| = 100
-- `delta`: Calibration delta adjustment (m)
 
 # Returns
 - `(L_left, L_right)`: Left and right tape lengths in meters
-
-# Notes
-The effective neutral length is computed as `l0 = l0_base + delta`.
-For backward compatibility, uses the effective default V3_STEERING_L0 = 1.4m.
 """
 function steering_percentage_to_lengths(percentage;
-                                        l0_base=V3_STEERING_L0_BASE,
-                                        gain=V3_STEERING_GAIN,
-                                        delta=V3_DEFAULT_DELTA)
-    l0 = l0_base + delta
+        l0_base=V3_STEERING_L0_BASE,
+        gain=V3_STEERING_GAIN)
     u_s = percentage / 100.0
-    L_left = l0 - (gain / 2.0) * u_s
-    L_right = l0 + (gain / 2.0) * u_s
+    L_left = l0_base - (gain / 2.0) * u_s
+    L_right = l0_base + (gain / 2.0) * u_s
     return L_left, L_right
 end
 
 """
     csv_steering_percentage_to_lengths(percentage;
-        l0_base=V3_STEERING_L0_BASE, gain=V3_STEERING_GAIN, delta=V3_DEFAULT_DELTA)
+        l0_base=V3_STEERING_L0_BASE,
+        gain=V3_STEERING_GAIN)
 
 Convert CSV steering percentage to left/right tape lengths (m).
-Uses opposite sign convention and full gain (matches CSV data format from flight tests).
+Uses opposite sign convention and full gain (matches CSV data
+format from flight tests).
 
 # Arguments
-- `percentage`: Steering percentage from CSV in range [-100, 100]
+- `percentage`: Steering percentage from CSV [-100, 100]
 - `l0_base`: Base neutral steering tape length (m)
 - `gain`: Maximum differential (m) at |percentage| = 100
-- `delta`: Calibration delta adjustment (m)
 
 # Returns
 - `(L_left, L_right)`: Left and right tape lengths in meters
 """
 function csv_steering_percentage_to_lengths(percentage;
-                                            l0_base=V3_STEERING_L0_BASE,
-                                            gain=V3_STEERING_GAIN,
-                                            delta=V3_DEFAULT_DELTA)
-    l0 = l0_base + delta
+        l0_base=V3_STEERING_L0_BASE,
+        gain=V3_STEERING_GAIN)
     u_s = percentage / 100.0
-    L_left = l0 + gain * u_s
-    L_right = l0 - gain * u_s
+    L_left = l0_base + gain * u_s
+    L_right = l0_base - gain * u_s
     return L_left, L_right
 end
 
 """
     depower_percentage_to_length(percentage;
-        l0_base=V3_DEPOWER_L0_BASE, gain=V3_DEPOWER_GAIN, delta=V3_DEFAULT_DELTA)
+        l0_base=V3_DEPOWER_L0_BASE,
+        gain=V3_DEPOWER_GAIN)
 
 Convert depower percentage to tape length (m).
 
@@ -137,18 +102,15 @@ Convert depower percentage to tape length (m).
 - `percentage`: Depower percentage in range [0, 100]
 - `l0_base`: Base neutral depower tape length (m)
 - `gain`: Depower range (m) for 0-100%
-- `delta`: Calibration delta adjustment (m)
 
 # Returns
 - Depower tape length in meters
 """
 function depower_percentage_to_length(percentage;
-                                      l0_base=V3_DEPOWER_L0_BASE,
-                                      gain=V3_DEPOWER_GAIN,
-                                      delta=V3_DEFAULT_DELTA)
-    l0 = l0_base + delta
+        l0_base=V3_DEPOWER_L0_BASE,
+        gain=V3_DEPOWER_GAIN)
     u_p = percentage / 100.0
-    return l0 + gain * u_p
+    return l0_base + gain * u_p
 end
 
 """
@@ -166,9 +128,9 @@ Inverse of `steering_percentage_to_lengths`.
 - Steering percentage in range [-100, 100]
 
 # Notes
-The inverse only depends on the gain, not on l0 or delta, because:
-- L_left = l0 - (gain/2) * u_s
-- L_right = l0 + (gain/2) * u_s
+The inverse only depends on the gain, not on l0_base, because:
+- L_left = l0_base - (gain/2) * u_s
+- L_right = l0_base + (gain/2) * u_s
 - u_s = (L_right - L_left) / gain
 """
 function steering_length_to_percentage(L_left, L_right; gain=V3_STEERING_GAIN)
@@ -178,7 +140,8 @@ end
 
 """
     depower_length_to_percentage(length;
-        l0_base=V3_DEPOWER_L0_BASE, gain=V3_DEPOWER_GAIN, delta=V3_DEFAULT_DELTA)
+        l0_base=V3_DEPOWER_L0_BASE,
+        gain=V3_DEPOWER_GAIN)
 
 Convert depower tape length back to percentage.
 Inverse of `depower_percentage_to_length`.
@@ -187,17 +150,14 @@ Inverse of `depower_percentage_to_length`.
 - `length`: Depower tape length (m)
 - `l0_base`: Base neutral depower tape length (m)
 - `gain`: Depower range (m)
-- `delta`: Calibration delta adjustment (m)
 
 # Returns
 - Depower percentage in range [0, 100]
 """
 function depower_length_to_percentage(length;
-                                      l0_base=V3_DEPOWER_L0_BASE,
-                                      gain=V3_DEPOWER_GAIN,
-                                      delta=V3_DEFAULT_DELTA)
-    l0 = l0_base + delta
-    u_p = (length - l0) / gain
+        l0_base=V3_DEPOWER_L0_BASE,
+        gain=V3_DEPOWER_GAIN)
+    u_p = (length - l0_base) / gain
     return u_p * 100.0
 end
 
@@ -220,64 +180,52 @@ function build_geom_suffix(depower_l0, tip_reduction, te_frac)
 end
 
 # =============================================================================
-# Normalized control functions (KiteModels.jl compatible interface)
+# Normalized control functions (require V3GeomAdjustConfig)
 # =============================================================================
 
 """
-    set_steering!(sys, steering)
+    set_steering!(sys, steering, config::V3GeomAdjustConfig)
 
-Set the steering input. Internally converts to tape segment lengths.
+Set the steering input, accounting for steering tape reduction
+from the geometry config.
 
 # Arguments
 - `sys`: SystemStructure from the kite model
 - `steering`: Relative steering, must be between -1.0 .. 1.0
               (-1.0 = full left, 0.0 = neutral, 1.0 = full right)
+- `config`: Geometry adjustment config
 """
-function set_steering!(sys, steering)
-    L_left, L_right = steering_percentage_to_lengths(steering * 100.0)
+function set_steering!(sys, steering,
+        config::V3GeomAdjustConfig)
+    reduction = config.reduce_steering ?
+        config.steering_reduction : 0.0
+    L_left, L_right = steering_percentage_to_lengths(
+        steering * 100.0;
+        l0_base=V3_STEERING_L0_BASE - reduction)
     sys.segments[V3_STEERING_LEFT_IDX].l0 = L_left
     sys.segments[V3_STEERING_RIGHT_IDX].l0 = L_right
     return nothing
 end
 
 """
-    get_steering(sys)
+    get_steering(sys, config::V3GeomAdjustConfig)
 
 Get the current steering value as a normalized input.
 
 # Arguments
 - `sys`: SystemStructure from the kite model
+- `config`: Geometry adjustment config
 
 # Returns
 - Relative steering in range -1.0 .. 1.0
 """
-function get_steering(sys)
+function get_steering(sys, ::V3GeomAdjustConfig)
     L_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     L_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-    return steering_length_to_percentage(L_left, L_right) / 100.0
-end
-
-"""
-    set_depower!(sys, depower)
-
-Set the depower input. Internally converts to tape segment length.
-
-!!! warning
-    This method ignores `V3GeomAdjustConfig.reduce_depower`.
-    Use `set_depower!(sys, depower, config)` to account for
-    depower tape reduction.
-
-# Arguments
-- `sys`: SystemStructure from the kite model
-- `depower`: Relative depower, must be between 0.0 .. 1.0
-             (0.0 = no depower, 1.0 = full depower)
-"""
-function set_depower!(sys, depower)
-    @warn "set_depower! called without V3GeomAdjustConfig; " *
-        "depower tape reduction will not be applied" maxlog=1
-    L_depower = depower_percentage_to_length(depower * 100.0)
-    sys.segments[V3_DEPOWER_IDX].l0 = L_depower
-    return nothing
+    # l0_base cancels in the difference, so reduction
+    # doesn't affect the inverse
+    return steering_length_to_percentage(
+        L_left, L_right) / 100.0
 end
 
 """
@@ -289,10 +237,11 @@ from the geometry config.
 # Arguments
 - `sys`: SystemStructure from the kite model
 - `depower`: Relative depower, must be between 0.0 .. 1.0
-- `config`: Geometry adjustment config with optional
-            depower reduction
+             (0.0 = no depower, 1.0 = full depower)
+- `config`: Geometry adjustment config
 """
-function set_depower!(sys, depower, config::V3GeomAdjustConfig)
+function set_depower!(sys, depower,
+        config::V3GeomAdjustConfig)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
     L_depower = depower_percentage_to_length(
@@ -303,17 +252,22 @@ function set_depower!(sys, depower, config::V3GeomAdjustConfig)
 end
 
 """
-    get_depower(sys)
+    get_depower(sys, config::V3GeomAdjustConfig)
 
 Get the current depower value as a normalized input.
 
 # Arguments
 - `sys`: SystemStructure from the kite model
+- `config`: Geometry adjustment config
 
 # Returns
 - Relative depower in range 0.0 .. 1.0
 """
-function get_depower(sys)
+function get_depower(sys, config::V3GeomAdjustConfig)
+    reduction = config.reduce_depower ?
+        config.depower_reduction : 0.0
     L_depower = sys.segments[V3_DEPOWER_IDX].l0
-    return depower_length_to_percentage(L_depower) / 100.0
+    return depower_length_to_percentage(
+        L_depower;
+        l0_base=V3_DEPOWER_L0_BASE - reduction) / 100.0
 end

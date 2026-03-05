@@ -24,6 +24,9 @@ Base.@kwdef struct V3GeomAdjustConfig
     reduce_depower::Bool = false
     depower_reduction::Float64 = 0.2
 
+    reduce_steering::Bool = false
+    steering_reduction::Float64 = 0.2
+
     tether_length::Union{Nothing,Float64} = nothing
 end
 

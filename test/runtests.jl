@@ -12,103 +12,95 @@ using V3Kite
         @test V3_DEPOWER_L0_BASE == 0.2
         @test V3_STEERING_GAIN == 1.4
         @test V3_DEPOWER_GAIN == 5.0
-
-        # Test default delta
-        @test V3_DEFAULT_DELTA == -0.2
-
-        # Test effective values (base + delta)
-        @test V3_STEERING_L0 == V3_STEERING_L0_BASE + V3_DEFAULT_DELTA
-        @test V3_STEERING_L0 == 1.4  # 1.6 + (-0.2)
-        @test V3_DEPOWER_L0 == V3_DEPOWER_L0_BASE + V3_DEFAULT_DELTA
-        @test V3_DEPOWER_L0 == 0.0   # 0.2 + (-0.2)
     end
 
     @testset "Steering Conversion" begin
-        # Test zero steering
+        # Test zero steering — uses base value directly
         L_left, L_right = steering_percentage_to_lengths(0.0)
-        @test L_left ≈ V3_STEERING_L0
-        @test L_right ≈ V3_STEERING_L0
+        @test L_left ≈ V3_STEERING_L0_BASE
+        @test L_right ≈ V3_STEERING_L0_BASE
         @test L_left ≈ L_right
 
         # Test full left turn (negative percentage)
         L_left, L_right = steering_percentage_to_lengths(-100.0)
-        @test L_left > L_right  # Left tape longer for left turn
-        @test L_left ≈ V3_STEERING_L0 + V3_STEERING_GAIN / 2
-        @test L_right ≈ V3_STEERING_L0 - V3_STEERING_GAIN / 2
+        @test L_left > L_right
+        @test L_left ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN / 2
+        @test L_right ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN / 2
 
         # Test full right turn (positive percentage)
         L_left, L_right = steering_percentage_to_lengths(100.0)
-        @test L_right > L_left  # Right tape longer for right turn
-        @test L_left ≈ V3_STEERING_L0 - V3_STEERING_GAIN / 2
-        @test L_right ≈ V3_STEERING_L0 + V3_STEERING_GAIN / 2
+        @test L_right > L_left
+        @test L_left ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN / 2
+        @test L_right ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN / 2
 
         # Test symmetry
-        L_left_neg, L_right_neg = steering_percentage_to_lengths(-50.0)
-        L_left_pos, L_right_pos = steering_percentage_to_lengths(50.0)
+        L_left_neg, L_right_neg =
+            steering_percentage_to_lengths(-50.0)
+        L_left_pos, L_right_pos =
+            steering_percentage_to_lengths(50.0)
         @test L_left_neg ≈ L_right_pos
         @test L_right_neg ≈ L_left_pos
     end
 
     @testset "Steering Round-Trip" begin
-        # Test that conversion is invertible
-        for pct in [-100.0, -50.0, -25.0, 0.0, 25.0, 50.0, 100.0]
-            L_left, L_right = steering_percentage_to_lengths(pct)
-            pct_recovered = steering_length_to_percentage(L_left, L_right)
+        for pct in [-100.0, -50.0, -25.0, 0.0,
+                     25.0, 50.0, 100.0]
+            L_left, L_right =
+                steering_percentage_to_lengths(pct)
+            pct_recovered =
+                steering_length_to_percentage(L_left, L_right)
             @test pct_recovered ≈ pct
         end
     end
 
     @testset "Depower Conversion" begin
-        # Test zero depower
+        # Test zero depower — uses base value directly
         L_depower = depower_percentage_to_length(0.0)
-        @test L_depower ≈ V3_DEPOWER_L0
+        @test L_depower ≈ V3_DEPOWER_L0_BASE
 
         # Test full depower
         L_depower = depower_percentage_to_length(100.0)
-        @test L_depower ≈ V3_DEPOWER_L0 + V3_DEPOWER_GAIN
+        @test L_depower ≈ V3_DEPOWER_L0_BASE + V3_DEPOWER_GAIN
 
         # Test 50% depower
         L_depower = depower_percentage_to_length(50.0)
-        @test L_depower ≈ V3_DEPOWER_L0 + V3_DEPOWER_GAIN / 2
+        @test L_depower ≈ V3_DEPOWER_L0_BASE + V3_DEPOWER_GAIN / 2
     end
 
     @testset "Depower Round-Trip" begin
-        # Test that conversion is invertible
         for pct in [0.0, 25.0, 50.0, 75.0, 100.0]
             L_depower = depower_percentage_to_length(pct)
-            pct_recovered = depower_length_to_percentage(L_depower)
+            pct_recovered =
+                depower_length_to_percentage(L_depower)
             @test pct_recovered ≈ pct
         end
     end
 
-    @testset "Delta Parameter Effect" begin
-        # Test that delta parameter affects output correctly
-        delta_test = 0.0  # No delta
+    @testset "Custom l0_base Parameter" begin
+        # Steering with custom l0_base (simulates reduction)
+        custom_base = V3_STEERING_L0_BASE - 0.2
+        L_left, L_right = steering_percentage_to_lengths(
+            0.0; l0_base=custom_base)
+        @test L_left ≈ custom_base
+        @test L_right ≈ custom_base
 
-        # With delta=0, should use base values directly
-        L_left, L_right = steering_percentage_to_lengths(0.0; delta=delta_test)
-        @test L_left ≈ V3_STEERING_L0_BASE
-        @test L_right ≈ V3_STEERING_L0_BASE
-
-        L_depower = depower_percentage_to_length(0.0; delta=delta_test)
-        @test L_depower ≈ V3_DEPOWER_L0_BASE
-
-        # Test with custom delta
-        delta_custom = 0.5
-        L_left, L_right = steering_percentage_to_lengths(0.0; delta=delta_custom)
-        @test L_left ≈ V3_STEERING_L0_BASE + delta_custom
-        @test L_right ≈ V3_STEERING_L0_BASE + delta_custom
+        # Depower with custom l0_base
+        custom_base = V3_DEPOWER_L0_BASE - 0.2
+        L_depower = depower_percentage_to_length(
+            0.0; l0_base=custom_base)
+        @test L_depower ≈ custom_base
     end
 
     @testset "CSV Steering Conversion" begin
         # CSV uses opposite sign convention and full gain
-        L_left, L_right = csv_steering_percentage_to_lengths(0.0)
-        @test L_left ≈ V3_STEERING_L0
-        @test L_right ≈ V3_STEERING_L0
+        L_left, L_right =
+            csv_steering_percentage_to_lengths(0.0)
+        @test L_left ≈ V3_STEERING_L0_BASE
+        @test L_right ≈ V3_STEERING_L0_BASE
 
-        # Positive CSV percentage should result in L_left > L_right
-        # (opposite of regular steering_percentage_to_lengths)
-        L_left, L_right = csv_steering_percentage_to_lengths(100.0)
+        # Positive CSV percentage: L_left > L_right
+        L_left, L_right =
+            csv_steering_percentage_to_lengths(100.0)
         @test L_left > L_right
     end
 
@@ -118,6 +110,14 @@ using V3Kite
 
         suffix = build_geom_suffix(0.2, 0.5, 1.0)
         @test suffix == "depower0.2_tip0.5_te1.0"
+    end
+
+    @testset "V3GeomAdjustConfig Defaults" begin
+        gc = V3GeomAdjustConfig()
+        @test gc.reduce_steering == false
+        @test gc.steering_reduction == 0.2
+        @test gc.reduce_depower == false
+        @test gc.depower_reduction == 0.2
     end
 
     @testset "Coordinate Utilities" begin
@@ -131,7 +131,6 @@ using V3Kite
     end
 
     @testset "V3 Data Path" begin
-        # Test that v3_data_path returns a valid directory
         path = v3_data_path()
         @test isdir(path)
         @test isfile(joinpath(path, "system.yaml"))
@@ -139,8 +138,6 @@ using V3Kite
 
     @testset "V3SimConfig Defaults" begin
         config = V3SimConfig()
-
-        # Test default values
         @test config.sim_time == 60.0
         @test config.fps == 60
         @test config.v_wind == 10.0

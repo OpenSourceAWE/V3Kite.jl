@@ -30,8 +30,9 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Flight condition
     v_wind::Float64 = 10.72
-    elevation::Float64 = 70.0
+    cone_angle::Float64 = 70.0
     tether_length::Float64 = 240.0
+    power_zone::Bool = false
 
     # Control
     steering_pct::Float64 = 0.0
@@ -66,7 +67,7 @@ simulation is skipped and the settled geometry is loaded from file.
 function settle_wing(config::V3SettleConfig;
                      v_app=config.v_wind,
                      tether_length=config.tether_length,
-                     elevation=config.elevation,
+                     elevation=config.cone_angle,
                      data_path=nothing,
                      show_progress=true,
                      remake=false)
@@ -75,9 +76,16 @@ function settle_wing(config::V3SettleConfig;
     end
 
     gc = config.geom
+    depower_l0 = gc.reduce_depower ?
+        V3_DEPOWER_L0_BASE - gc.depower_reduction :
+        V3_DEPOWER_L0_BASE
     suffix = build_geom_suffix(
-        V3_DEPOWER_L0, gc.tip_reduction, gc.te_frac)
-    suffix *= "_vapp$(round(v_app, digits=2))_lt$(Int(round(tether_length)))"
+        depower_l0, gc.tip_reduction, gc.te_frac)
+    suffix *= "_vapp$(round(v_app, digits=2))" *
+        "_lt$(Int(round(tether_length)))"
+    if config.power_zone
+        suffix *= "_pz"
+    end
     dest_struc = joinpath(
         data_path, "struc_geometry_$(suffix).yaml")
     dest_aero = joinpath(
@@ -130,7 +138,7 @@ function _run_settling_sim!(config::V3SettleConfig;
 
     set_data_path(data_path)
     set = Settings("system.yaml")
-    set.g_earth = 0.0
+    set.g_earth = config.power_zone ? 9.81 : 0.0
     set.v_wind = v_app
     set.l_tether = tether_length
     set.profile_law = 0
@@ -155,12 +163,16 @@ function _run_settling_sim!(config::V3SettleConfig;
         te_segments=gc.te_segments,
         reduce_depower=gc.reduce_depower,
         depower_reduction=gc.depower_reduction,
+        reduce_steering=gc.reduce_steering,
+        steering_reduction=gc.steering_reduction,
         tether_length=tether_length)
 
     # Set transform from heading/elevation
-    sys.transforms[1].elevation = deg2rad(elevation)
-    sys.transforms[1].azimuth = 0.0
-    sys.transforms[1].heading = 0.0
+    if !config.power_zone
+        sys.transforms[1].elevation = deg2rad(elevation)
+        sys.transforms[1].azimuth = 0.0
+        sys.transforms[1].heading = 0.0
+    end
 
     # Set damping
     SymbolicAWEModels.set_world_frame_damping(
@@ -186,11 +198,16 @@ function _run_settling_sim!(config::V3SettleConfig;
     end
 
     # Set steering/depower
-    set_steering!(sys, config.steering_pct / 100.0)
+    set_steering!(sys, config.steering_pct / 100.0, gc)
     set_depower!(sys, config.depower_pct / 100.0, gc)
 
     # Logger
     logger, sys_state = create_logger(sam, config.num_steps)
+
+    # Save original transform values
+    saved_el = sys.transforms[1].elevation
+    saved_az = sys.transforms[1].azimuth
+    saved_hd = sys.transforms[1].heading
 
     # Simulation loop
     @info "Starting settling simulation..."
@@ -205,6 +222,14 @@ function _run_settling_sim!(config::V3SettleConfig;
         SymbolicAWEModels.set_world_frame_damping(
             sys, damping)
 
+        if config.power_zone
+            SymbolicAWEModels.reinit!(
+                sys.transforms, sys; update_vel=false)
+            SymbolicAWEModels.reinit!(
+                sam, sam.prob,
+                SymbolicAWEModels.FBDF())
+        end
+
         # Step
         if !sim_step!(sam; dt=config.dt, vsm_interval=1)
             @error "Simulation failed" step t
@@ -216,6 +241,16 @@ function _run_settling_sim!(config::V3SettleConfig;
         if show_progress && step % 20 == 0
             @info "Step $step/$(config.num_steps)" damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
         end
+    end
+
+    # Reset transform to original values for non-power-zone
+    # (physics may have drifted the wing during settling)
+    if !config.power_zone
+        sys.transforms[1].elevation = saved_el
+        sys.transforms[1].azimuth = saved_az
+        sys.transforms[1].heading = saved_hd
+        SymbolicAWEModels.reinit!(
+            sys.transforms, sys; update_vel=false)
     end
 
     # Write settled geometry to YAML
