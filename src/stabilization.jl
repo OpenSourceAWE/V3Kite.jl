@@ -30,7 +30,9 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Flight condition
     v_wind::Float64 = 10.72
-    cone_angle::Float64 = 70.0
+    elevation::Float64 = 70.0
+    azimuth::Float64 = 0.0
+    heading::Float64 = 0.0
     tether_length::Float64 = 240.0
     power_zone::Bool = false
 
@@ -51,9 +53,8 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
-    settle_wing(config::V3SettleConfig; v_app=config.v_wind,
-                tether_length=config.tether_length,
-                data_path=nothing, show_progress=true,
+    settle_wing(config::V3SettleConfig; data_path=nothing,
+                show_progress=true,
                 remake=false) -> (sam, syslog)
 
 Run a damped settling simulation to find equilibrium wing geometry.
@@ -65,9 +66,6 @@ When `remake=false` and the destination YAML already exists, the
 simulation is skipped and the settled geometry is loaded from file.
 """
 function settle_wing(config::V3SettleConfig;
-                     v_app=config.v_wind,
-                     tether_length=config.tether_length,
-                     elevation=config.cone_angle,
                      data_path=nothing,
                      show_progress=true,
                      remake=false)
@@ -76,13 +74,14 @@ function settle_wing(config::V3SettleConfig;
     end
 
     gc = config.geom
+    gc.tether_length = config.tether_length
     depower_l0 = gc.reduce_depower ?
         V3_DEPOWER_L0_BASE - gc.depower_reduction :
         V3_DEPOWER_L0_BASE
     suffix = build_geom_suffix(
         depower_l0, gc.tip_reduction, gc.te_frac)
-    suffix *= "_vapp$(round(v_app, digits=2))" *
-        "_lt$(Int(round(tether_length)))"
+    suffix *= "_vapp$(round(config.v_wind, digits=2))" *
+        "_lt$(Int(round(config.tether_length)))"
     if config.power_zone
         suffix *= "_pz"
     end
@@ -99,18 +98,17 @@ function settle_wing(config::V3SettleConfig;
     syslog = nothing
     if remake || !isfile(dest_struc)
         syslog = _run_settling_sim!(config;
-            v_app, tether_length, elevation,
             data_path, show_progress,
             source_struc, source_aero,
-            dest_struc, dest_aero, gc)
+            dest_struc, dest_aero)
     end
 
     # Always load a fresh model from settled YAML
     @info "Loading settled geometry" dest_struc
     set_data_path(data_path)
     set = Settings("system.yaml")
-    set.v_wind = v_app
-    set.l_tether = tether_length
+    set.v_wind = config.v_wind
+    set.l_tether = config.tether_length
     set.profile_law = 0
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)
@@ -131,16 +129,16 @@ end
 
 """Run the damped settling simulation and write results to YAML."""
 function _run_settling_sim!(config::V3SettleConfig;
-        v_app, tether_length, elevation,
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc, dest_aero, gc)
+        dest_struc, dest_aero)
 
+    gc = config.geom
     set_data_path(data_path)
     set = Settings("system.yaml")
     set.g_earth = config.power_zone ? 9.81 : 0.0
-    set.v_wind = v_app
-    set.l_tether = tether_length
+    set.v_wind = config.v_wind
+    set.l_tether = config.tether_length
     set.profile_law = 0
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)
@@ -153,26 +151,10 @@ function _run_settling_sim!(config::V3SettleConfig;
         system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
 
-    # Override geom tether_length from kwarg
-    gc = V3GeomAdjustConfig(;
-        reduce_tip=gc.reduce_tip,
-        tip_reduction=gc.tip_reduction,
-        tip_segments=gc.tip_segments,
-        reduce_te=gc.reduce_te,
-        te_frac=gc.te_frac,
-        te_segments=gc.te_segments,
-        reduce_depower=gc.reduce_depower,
-        depower_reduction=gc.depower_reduction,
-        reduce_steering=gc.reduce_steering,
-        steering_reduction=gc.steering_reduction,
-        tether_length=tether_length)
-
-    # Set transform from heading/elevation
-    if !config.power_zone
-        sys.transforms[1].elevation = deg2rad(elevation)
-        sys.transforms[1].azimuth = 0.0
-        sys.transforms[1].heading = 0.0
-    end
+    # Set initial transform
+    sys.transforms[1].elevation = deg2rad(config.elevation)
+    sys.transforms[1].azimuth = deg2rad(config.azimuth)
+    sys.transforms[1].heading = deg2rad(config.heading)
 
     # Set damping
     SymbolicAWEModels.set_world_frame_damping(
@@ -194,7 +176,7 @@ function _run_settling_sim!(config::V3SettleConfig;
     # Lock tether
     for winch in sys.winches
         winch.brake = true
-        winch.tether_len = tether_length
+        winch.tether_len = config.tether_length
     end
 
     # Set steering/depower

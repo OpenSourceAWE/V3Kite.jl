@@ -279,7 +279,7 @@ function update_sys_struct_from_data!(sys, row;
     # calc target heading from data
     quat = euler_to_quaternion(
         row.roll, row.pitch, row.yaw)
-    data_heading = calc_heading(sys,
+    data_heading = calc_heading(
         SymbolicAWEModels.quaternion_to_rotation_matrix(
             quat)) + pi
     R_b_w = calc_R_b_w(sys)

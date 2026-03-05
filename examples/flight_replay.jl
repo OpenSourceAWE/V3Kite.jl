@@ -173,18 +173,27 @@ function run_physics_replay(h5_path;
     # Settle wing with first CSV conditions
     row1 = get_row(csv_data, 1)
     tether_len = Float64(row1.tether_len)
+    init_el = rad2deg(
+        calc_elevation([row1.x, row1.y, row1.z]))
+    init_az = rad2deg(
+        azimuth_east([row1.x, row1.y, row1.z]))
+    init_hd = rad2deg(calc_csv_heading(
+        row1.roll, row1.pitch, row1.yaw))
     settle_config = V3SettleConfig(
+        v_wind=row1.v_app,
         depower_pct=row1.depower,
         tether_length=tether_len,
+        elevation=init_el,
+        azimuth=init_az,
+        heading=init_hd,
+        power_zone=true,
+        num_steps=400,
         geom=V3GeomAdjustConfig(
             reduce_tip=true, reduce_te=true,
-            reduce_depower=true,
-            tether_length=tether_len))
+            reduce_depower=true))
     sam, syslog = settle_wing(settle_config;
-        v_app=row1.v_app,
-        tether_length=tether_len,
         remake=false)
-    # wait(display(replay(syslog, sam.sys_struct)))
+    wait(display(replay(syslog, sam.sys_struct)))
     sys_struct = sam.sys_struct
     set = sam.set
     set.l_tether = tether_len

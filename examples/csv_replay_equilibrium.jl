@@ -152,7 +152,7 @@ function local_update_sys_from_csv!(sys, row)
     transform = transforms[1]
 
     quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
-    csv_heading = calc_heading(sys,
+    csv_heading = calc_heading(
         SymbolicAWEModels.quaternion_to_rotation_matrix(quat)) + pi
     R_b_w = calc_R_b_w(sys)
 

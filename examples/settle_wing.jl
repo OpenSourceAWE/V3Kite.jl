@@ -32,10 +32,7 @@ config = V3SettleConfig(
 # =============================================================================
 
 @info "Running wing settling..."
-sam, syslog = settle_wing(config;
-    v_app=config.v_wind,
-    tether_length=config.tether_length,
-    remake=true)
+sam, syslog = settle_wing(config; remake=true)
 
 # =============================================================================
 # Plot
