@@ -12,7 +12,7 @@ Functions for adjusting tether length, elevation, and other model parameters.
 Configuration for wing geometry adjustments (tip reduction, trailing
 edge shortening, depower tape reduction, and tether length).
 """
-Base.@kwdef struct V3GeomAdjustConfig
+Base.@kwdef mutable struct V3GeomAdjustConfig
     reduce_tip::Bool = false
     tip_reduction::Float64 = 0.4
     tip_segments::Vector{Int} = [47, 48, 57, 58]
