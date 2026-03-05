@@ -45,8 +45,8 @@ const V3_DEPOWER_IDX = 88
         gain=V3_STEERING_GAIN)
 
 Convert steering percentage to left/right tape lengths (m).
-Percentage convention: negative = left turn, positive = right turn.
-Uses half-gain on each side for symmetric actuation.
+Matches KCU convention: positive percentage lengthens left tape
+(left turn). Full gain per side.
 
 # Arguments
 - `percentage`: Steering percentage in range [-100, 100]
@@ -57,32 +57,6 @@ Uses half-gain on each side for symmetric actuation.
 - `(L_left, L_right)`: Left and right tape lengths in meters
 """
 function steering_percentage_to_lengths(percentage;
-        l0_base=V3_STEERING_L0_BASE,
-        gain=V3_STEERING_GAIN)
-    u_s = percentage / 100.0
-    L_left = l0_base - (gain / 2.0) * u_s
-    L_right = l0_base + (gain / 2.0) * u_s
-    return L_left, L_right
-end
-
-"""
-    csv_steering_percentage_to_lengths(percentage;
-        l0_base=V3_STEERING_L0_BASE,
-        gain=V3_STEERING_GAIN)
-
-Convert CSV steering percentage to left/right tape lengths (m).
-Uses opposite sign convention and full gain (matches CSV data
-format from flight tests).
-
-# Arguments
-- `percentage`: Steering percentage from CSV [-100, 100]
-- `l0_base`: Base neutral steering tape length (m)
-- `gain`: Maximum differential (m) at |percentage| = 100
-
-# Returns
-- `(L_left, L_right)`: Left and right tape lengths in meters
-"""
-function csv_steering_percentage_to_lengths(percentage;
         l0_base=V3_STEERING_L0_BASE,
         gain=V3_STEERING_GAIN)
     u_s = percentage / 100.0
@@ -114,7 +88,8 @@ function depower_percentage_to_length(percentage;
 end
 
 """
-    steering_length_to_percentage(L_left, L_right; gain=V3_STEERING_GAIN)
+    steering_length_to_percentage(L_left, L_right;
+        gain=V3_STEERING_GAIN)
 
 Convert left/right tape lengths back to steering percentage.
 Inverse of `steering_percentage_to_lengths`.
@@ -128,13 +103,14 @@ Inverse of `steering_percentage_to_lengths`.
 - Steering percentage in range [-100, 100]
 
 # Notes
-The inverse only depends on the gain, not on l0_base, because:
-- L_left = l0_base - (gain/2) * u_s
-- L_right = l0_base + (gain/2) * u_s
-- u_s = (L_right - L_left) / gain
+The inverse only depends on the gain, not on l0_base:
+- L_left = l0_base + gain * u_s
+- L_right = l0_base - gain * u_s
+- u_s = (L_left - L_right) / (2 * gain)
 """
-function steering_length_to_percentage(L_left, L_right; gain=V3_STEERING_GAIN)
-    u_s = (L_right - L_left) / gain
+function steering_length_to_percentage(L_left, L_right;
+        gain=V3_STEERING_GAIN)
+    u_s = (L_left - L_right) / (2.0 * gain)
     return u_s * 100.0
 end
 
@@ -184,7 +160,8 @@ end
 # =============================================================================
 
 """
-    set_steering!(sys, steering, config::V3GeomAdjustConfig)
+    set_steering!(sys, steering,
+        config::V3GeomAdjustConfig; min_l0=0.0)
 
 Set the steering input, accounting for steering tape reduction
 from the geometry config.
@@ -194,16 +171,20 @@ from the geometry config.
 - `steering`: Relative steering, must be between -1.0 .. 1.0
               (-1.0 = full left, 0.0 = neutral, 1.0 = full right)
 - `config`: Geometry adjustment config
+- `min_l0`: Minimum tape length clamp (m)
 """
 function set_steering!(sys, steering,
-        config::V3GeomAdjustConfig)
+        config::V3GeomAdjustConfig; min_l0=0.0)
     reduction = config.reduce_steering ?
         config.steering_reduction : 0.0
+    # Negate: positive steering = right turn = negative KCU %
     L_left, L_right = steering_percentage_to_lengths(
-        steering * 100.0;
+        -steering * 100.0;
         l0_base=V3_STEERING_L0_BASE - reduction)
-    sys.segments[V3_STEERING_LEFT_IDX].l0 = L_left
-    sys.segments[V3_STEERING_RIGHT_IDX].l0 = L_right
+    sys.segments[V3_STEERING_LEFT_IDX].l0 =
+        max(min_l0, L_left)
+    sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+        max(min_l0, L_right)
     return nothing
 end
 
@@ -222,9 +203,8 @@ Get the current steering value as a normalized input.
 function get_steering(sys, ::V3GeomAdjustConfig)
     L_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     L_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-    # l0_base cancels in the difference, so reduction
-    # doesn't affect the inverse
-    return steering_length_to_percentage(
+    # Negate: KCU convention → right-positive convention
+    return -steering_length_to_percentage(
         L_left, L_right) / 100.0
 end
 

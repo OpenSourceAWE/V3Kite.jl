@@ -13,8 +13,6 @@ Usage:
 """
 
 using V3Kite
-using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
-    V3_DEPOWER_IDX, V3_STEERING_GAIN
 using SymbolicAWEModels: reposition!, rotate_around_z,
     rotate_around_y, calc_steady_torque, FBDF
 using GLMakie
@@ -104,13 +102,11 @@ function update_vel_from_csv!(sys, row, brake,
     sys.set.v_wind = row.wind_speed
     sys.set.upwind_dir = row.wind_dir + -90
 
-    # CSV steering
+    # CSV steering (KCU convention: positive = left turn)
     steering = clamp(row.steering, -100.0, 100.0)
-    L_left, L_right = csv_steering_percentage_to_lengths(
-        steering * STEERING_MULTIPLIER)
-    min_l0 = 0.01
-    segments[V3_STEERING_LEFT_IDX].l0 = max(min_l0, L_left)
-    segments[V3_STEERING_RIGHT_IDX].l0 = max(min_l0, L_right)
+    set_steering!(sys,
+        -steering * STEERING_MULTIPLIER / 100.0, gc;
+        min_l0=0.01)
 
     # Winch feed-forward
     winch = winches[1]

@@ -31,11 +31,10 @@ using Printf
 TETHER_LENGTH = 262
 ELEVATION = 20.0
 
-# Geometry (must match settle output)
-TE_FRAC = 0.95
-TIP_REDUCTION = 0.4
+# Geometry config
+gc = V3GeomAdjustConfig()
 GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, TIP_REDUCTION, TE_FRAC)
+    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
 
 # Base control values
 UP = 0.42                  # Depower fraction (old 0-1)
@@ -96,11 +95,8 @@ sys.points[1].area = 0.2
 dt = 1.0 / FPS
 display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
 
-# Store nominal segment lengths
-nominal_l0_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-nominal_l0_right =
-    sys.segments[V3_STEERING_RIGHT_IDX].l0
-nominal_l0_depower = sys.segments[V3_DEPOWER_IDX].l0
+# Get nominal depower for ramping
+nominal_depower = get_depower(sys, gc)
 
 # =============================================================================
 # Create visualization
@@ -205,18 +201,14 @@ try
         steering_pct[] += clamp(diff, -max_delta, max_delta)
 
         # Apply steering
-        L_left, L_right =
-            steering_percentage_to_lengths(steering_pct[])
-        sys.segments[V3_STEERING_LEFT_IDX].l0 = L_left
-        sys.segments[V3_STEERING_RIGHT_IDX].l0 = L_right
+        set_steering!(sys, steering_pct[] / 100.0, gc)
 
         # Ramp depower
         rf_up = ramp_factor(t, RAMP_START_UP, RAMP_END_UP)
-        up_pct = UP * 100 + depower_pct_delta[]
-        L_dp = depower_percentage_to_length(up_pct)
-        sys.segments[V3_DEPOWER_IDX].l0 =
-            nominal_l0_depower +
-            rf_up * (L_dp - nominal_l0_depower)
+        up_target = UP + depower_pct_delta[] / 100.0
+        depower_val = nominal_depower +
+            rf_up * (up_target - nominal_depower)
+        set_depower!(sys, depower_val, gc)
 
         # Step simulation
         step_start = time()
@@ -238,7 +230,7 @@ try
             progress_text[] = @sprintf("t = %.1fs", t)
             control_text[] = @sprintf(
                 "Steering: %.1f%% | Depower: %.1f%%",
-                steering_pct[], up_pct * rf_up)
+                steering_pct[], depower_val * 100)
             record_video && recordframe!(io)
             sleep(0.001)
         end
@@ -254,7 +246,8 @@ try
                 [p.pos_w for p in wing_points])
             @printf(
                 "  t=%.1fs z=%.1fm st=%.1f%% dp=%.1f%%\n",
-                t, avg_pos[3], steering_pct[], up_pct)
+                t, avg_pos[3], steering_pct[],
+                up_target * 100)
         end
     end
 catch e

@@ -163,14 +163,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
     sys_state.time = 0.0
     log!(logger, sys_state)
 
-    # Store nominal segment lengths
-    nominal_l0_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    nominal_l0_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-    nominal_l0_depower = sys.segments[V3_DEPOWER_IDX].l0
-
-    # Calculate target tape lengths
-    L_left_target, L_right_target = steering_percentage_to_lengths(config.us)
-    L_depower_target = depower_percentage_to_length(config.up)
+    gc = V3GeomAdjustConfig()
 
     # Storage for tape lengths
     tape_times = Float64[]
@@ -202,13 +195,11 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
                             (config.ramp_end_time_us - config.ramp_start_time_us)
         end
 
-        # Apply ramped tape lengths
-        sys.segments[V3_STEERING_LEFT_IDX].l0 =
-            nominal_l0_left + steering_ramp * (L_left_target - nominal_l0_left)
-        sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-            nominal_l0_right + steering_ramp * (L_right_target - nominal_l0_right)
-        sys.segments[V3_DEPOWER_IDX].l0 =
-            nominal_l0_depower + power_ramp * (L_depower_target - nominal_l0_depower)
+        # Apply ramped control inputs
+        set_steering!(sys,
+            steering_ramp * config.us / 100.0, gc)
+        set_depower!(sys,
+            power_ramp * config.up / 100.0, gc)
 
         # Log tape percentages
         push!(tape_times, t)
