@@ -105,7 +105,7 @@ function run_zenith_circles(;
             geom=V3GeomAdjustConfig(
                 reduce_tip=is_reduce_tip,
                 reduce_te=is_reduce_te,
-                reduce_depower=is_reduce_depower,
+                reduce_depower_tape_by=is_reduce_depower ? 0.2 : 0.0,
                 tether_length=init_tether))
         sam, _ = settle_wing(settle_cfg;
             v_app=init_v_app,
@@ -136,7 +136,7 @@ function run_zenith_circles(;
         apply_geom_adjustments!(sys, V3GeomAdjustConfig(
             reduce_tip=is_reduce_tip,
             reduce_te=is_reduce_te,
-            reduce_depower=is_reduce_depower,
+            reduce_depower_tape_by=is_reduce_depower ? 0.2 : 0.0,
             tether_length=tether_length))
     end
 

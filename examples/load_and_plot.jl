@@ -266,8 +266,150 @@ end
 # Time series plotting
 # =============================================================================
 
+"""Reconstruct steering command [%] from left-right tape length difference."""
+function steering_tape_trace(lg, sam)
+    sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+    if isempty(sl)
+        return (time=Float64[], steering=Float64[])
+    end
+
+    seg_left = sam.sys_struct.segments[V3_STEERING_LEFT_IDX]
+    seg_right = sam.sys_struct.segments[V3_STEERING_RIGHT_IDX]
+    li_l, lj_l = seg_left.point_idxs
+    li_r, lj_r = seg_right.point_idxs
+
+    n = length(sl)
+    time = Vector{Float64}(undef, n)
+    steering = Vector{Float64}(undef, n)
+
+    @inbounds for k in 1:n
+        state = sl[k]
+        X, Y, Z = state.X, state.Y, state.Z
+
+        l_left = sqrt(
+            (X[lj_l] - X[li_l])^2 +
+            (Y[lj_l] - Y[li_l])^2 +
+            (Z[lj_l] - Z[li_l])^2)
+        l_right = sqrt(
+            (X[lj_r] - X[li_r])^2 +
+            (Y[lj_r] - Y[li_r])^2 +
+            (Z[lj_r] - Z[li_r])^2)
+
+        # Match calibration inverse:
+        # u_s[%] = (L_right - L_left) / V3_STEERING_GAIN * 100
+        # steering[k] = (l_right - l_left) / V3_STEERING_GAIN * 100.0
+        # l_left = 1.6 + 1.4*u_s
+        steering[k] = abs((l_left - 1.6) / 1.4 * 100.0)
+        time[k] = Float64(state.time)
+    end
+    return (time=time, steering=steering)
+end
+
+function unwrap_heading(heading)
+    hw = copy(heading)
+    for j in 2:length(hw)
+        while hw[j] - hw[j-1] > pi
+            hw[j] -= 2pi
+        end
+        while hw[j] - hw[j-1] < -pi
+            hw[j] += 2pi
+        end
+    end
+    return hw
+end
+
+function heading_rate_from_states(sl)
+    n = length(sl)
+    n < 2 && return Float64[], Float64[]
+    heading = Vector{Float64}(undef, n)
+    time = Vector{Float64}(undef, n)
+    @inbounds for k in 1:n
+        state = sl[k]
+        heading[k] = Float64(state.heading)
+        time[k] = Float64(state.time)
+    end
+    hw = unwrap_heading(heading)
+    rates = diff(hw) ./ diff(time)
+    return rates, time[1:end-1]
+end
+
+function steering_command_from_states(sl, sys; steering_l0=1.6)
+    seg = sys.segments[V3_STEERING_LEFT_IDX]
+    pi_, pj = seg.point_idxs
+    n = length(sl)
+    us_cmd = zeros(Float64, n)
+    @inbounds for k in 1:n
+        state = sl[k]
+        X, Y, Z = state.X, state.Y, state.Z
+        l_left = sqrt(
+            (X[pj] - X[pi_])^2 +
+            (Y[pj] - Y[pi_])^2 +
+            (Z[pj] - Z[pi_])^2)
+        d = l_left - steering_l0
+        us_cmd[k] = abs(d) > 1e-6 ? d / V3_STEERING_GAIN : 0.0
+    end
+    return us_cmd
+end
+
+function gk_series(lg, sam)
+    sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+    n = length(sl)
+    n < 2 && return Float64[], Float64[]
+
+    hr, _ = heading_rate_from_states(sl)
+    us_cmd = steering_command_from_states(sl, sam.sys_struct;
+        steering_l0=1.6)
+
+    v_app = Vector{Float64}(undef, n)
+    time = Vector{Float64}(undef, n)
+    @inbounds for k in 1:n
+        state = sl[k]
+        v_app[k] = Float64(state.v_app)
+        time[k] = Float64(state.time)
+    end
+
+    va = v_app[2:end]
+    us_seg = us_cmd[2:end]
+    gk = similar(hr)
+    @inbounds for k in eachindex(gk)
+        gk[k] = abs(us_seg[k]) > 1e-8 ?
+                hr[k] / (va[k] * us_seg[k]) : NaN
+    end
+    return gk, time[2:end]
+end
+
+function print_gk_window_summary(lg, sam;
+    udp::Float64, window_sec::Float64=5.0)
+    gk, gk_time = gk_series(lg, sam)
+    @info "udp = $(round(udp, digits=3))"
+    isempty(gk) && return
+
+    rel_t = gk_time .- gk_time[1]
+    t_end = rel_t[end]
+    n_bins = max(1, Int(ceil(t_end / window_sec)))
+
+    for b in 0:(n_bins-1)
+        t0 = b * window_sec
+        t1 = (b + 1) * window_sec
+        if b == n_bins - 1
+            mask = (rel_t .>= t0) .& (rel_t .<= t1)
+        else
+            mask = (rel_t .>= t0) .& (rel_t .< t1)
+        end
+        vals = gk[mask]
+        vals = vals[isfinite.(vals)]
+        gk_mean = isempty(vals) ? NaN : mean(vals)
+        gk_s = isfinite(gk_mean) ?
+               string(round(gk_mean, digits=4)) : "NaN"
+        println("| t = $(Int(round(t0)))-$(Int(round(t1)))s " *
+                "gk = $gk_s")
+    end
+end
+
 function plot_time_series(lg, sam)
+    tape_lengths = [steering_tape_trace(lg, sam)]
     return plot(sam.sys_struct, lg;
+        tape_lengths=tape_lengths,
         plot_turn_rates=false, plot_reelout=false,
         plot_twist=false,
         plot_yaw_rate_paper=false,
@@ -757,5 +899,7 @@ scr2 = display(scene)
 wait(scr2)
 scr3 = display(fig_wing)
 wait(scr3)
+
+print_gk_window_summary(lg, sam; udp=u_dp, window_sec=5.0)
 
 nothing

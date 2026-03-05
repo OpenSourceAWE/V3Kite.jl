@@ -236,7 +236,7 @@ function run_physics_replay(csv_path;
         tether_length=tether_len,
         geom=V3GeomAdjustConfig(
             reduce_tip=true, reduce_te=true,
-            reduce_depower=true,
+            reduce_depower_tape_by=0.2,
             tether_length=tether_len))
     sam, syslog = settle_wing(settle_config;
         v_app=row1.v_app,

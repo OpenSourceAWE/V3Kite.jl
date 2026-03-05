@@ -13,14 +13,14 @@ using V3Kite
         @test V3_STEERING_GAIN == 1.4
         @test V3_DEPOWER_GAIN == 5.0
 
-        # Test default delta
-        @test V3_DEFAULT_DELTA == -0.2
+        # Legacy global delta defaults to zero
+        @test V3_DEFAULT_DELTA == 0.0
 
         # Test effective values (base + delta)
         @test V3_STEERING_L0 == V3_STEERING_L0_BASE + V3_DEFAULT_DELTA
-        @test V3_STEERING_L0 == 1.4  # 1.6 + (-0.2)
+        @test V3_STEERING_L0 == 1.6
         @test V3_DEPOWER_L0 == V3_DEPOWER_L0_BASE + V3_DEFAULT_DELTA
-        @test V3_DEPOWER_L0 == 0.0   # 0.2 + (-0.2)
+        @test V3_DEPOWER_L0 == 0.2
     end
 
     @testset "Steering Conversion" begin
@@ -110,6 +110,21 @@ using V3Kite
         # (opposite of regular steering_percentage_to_lengths)
         L_left, L_right = csv_steering_percentage_to_lengths(100.0)
         @test L_left > L_right
+    end
+
+    @testset "Tape Reductions From Geometry Config" begin
+        geom = V3GeomAdjustConfig(
+            reduce_depower_tape_by=0.1,
+            reduce_steering_tapes_by=0.2)
+
+        # Steering neutral should shift from 1.6 to 1.4 m
+        L_left, L_right = steering_percentage_to_lengths(0.0; delta=-geom.reduce_steering_tapes_by)
+        @test L_left ≈ 1.4
+        @test L_right ≈ 1.4
+
+        # Depower neutral should shift from 0.2 to 0.1 m
+        L_depower = depower_percentage_to_length(0.0; delta=-geom.reduce_depower_tape_by)
+        @test L_depower ≈ 0.1
     end
 
     @testset "Geometry Suffix" begin
