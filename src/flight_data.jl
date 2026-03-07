@@ -69,7 +69,7 @@ function load_flight_data(h5_path::String)
         if haskey(fid, "ekf_output")
             for name in keys(fid["ekf_output"])
                 ds = read(fid["ekf_output"][name])
-                if eltype(ds) <: AbstractFloat
+                if eltype(ds) <: Real
                     data[Symbol("ekf_", name)] =
                         convert(Vector{Float64}, ds)
                 end
@@ -80,7 +80,7 @@ function load_flight_data(h5_path::String)
         if haskey(fid, "flight_data")
             for name in keys(fid["flight_data"])
                 ds = read(fid["flight_data"][name])
-                if eltype(ds) <: AbstractFloat
+                if eltype(ds) <: Real
                     data[Symbol(name)] =
                         convert(Vector{Float64}, ds)
                 end
@@ -208,6 +208,31 @@ function add_distance_column(data)
 end
 
 """
+    get_row_at_distance(data, target_dist)
+
+Interpolate all fields of `data` at a given cumulative
+distance. Uses `searchsortedlast` on `cumulative_distance`
+to find the bracketing interval and linearly interpolates.
+
+Returns a NamedTuple with the same fields as `data`.
+"""
+function get_row_at_distance(data, target_dist)
+    cd = data.cumulative_distance
+    idx = searchsortedlast(cd, target_dist)
+    idx = clamp(idx, 1, length(cd) - 1)
+    d0, d1 = cd[idx], cd[idx + 1]
+    alpha = (d1 > d0) ?
+        clamp((target_dist - d0) / (d1 - d0), 0.0, 1.0) :
+        0.0
+    ks = keys(data)
+    vals = Tuple(
+        (1 - alpha) * data[k][idx] +
+        alpha * data[k][idx + 1]
+        for k in ks)
+    return NamedTuple{ks}(vals)
+end
+
+"""
     interpolate_flight_data(data, n_substeps)
 
 Linearly interpolate flight data to create `n_substeps`
@@ -306,10 +331,8 @@ function update_sys_struct_from_data!(sys, row;
     # update winch
     winches[1].brake = true
 
-    # Set steering/depower from CSV data (KCU convention)
-    # row.steering is KCU: positive = left turn
-    # set_steering! expects positive = right turn, so negate
-    set_steering!(sys, -row.steering / 100.0, config;
+    # Set steering/depower from CSV data
+    set_steering!(sys, row.steering / 100.0, config;
         min_l0=0.01)
     set_depower!(sys, row.depower / 100.0, config)
 end

@@ -28,8 +28,9 @@ ELEVATION = 20.0            # degrees
 
 # Geometry config
 gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
+GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
+    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
+    gc.tip_reduction, gc.te_frac)
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]

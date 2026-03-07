@@ -74,7 +74,8 @@ export calc_R_b_w
 export parse_time_to_seconds, unix_to_utc_seconds
 export utc_to_video_frame
 export load_flight_data, find_indices_by_utc, limit_by_utc
-export add_distance_column, interpolate_flight_data
+export add_distance_column, get_row_at_distance
+export interpolate_flight_data
 export update_sys_struct_from_data!
 
 # Simulation helper exports
