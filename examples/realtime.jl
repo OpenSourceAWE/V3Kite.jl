@@ -33,8 +33,9 @@ ELEVATION = 20.0
 
 # Geometry config
 gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
+GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
+    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
+    gc.tip_reduction, gc.te_frac)
 
 # Base control values
 UP = 0.42                  # Depower fraction (old 0-1)

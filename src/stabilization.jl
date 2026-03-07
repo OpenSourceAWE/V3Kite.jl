@@ -20,13 +20,14 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Simulation parameters
     num_steps::Int = 8000
+    num_substeps::Int = 1
     dt::Float64 = 0.01
 
     # Damping
-    world_damping::Float64 = 1000.0
-    min_damping::Float64 = 50.0
+    world_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
+    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
     decay_steps::Int = 2000
-    body_damping::Float64 = 300.0
+    body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -34,11 +35,8 @@ Base.@kwdef mutable struct V3SettleConfig
     azimuth::Float64 = 0.0
     heading::Float64 = 0.0
     tether_length::Float64 = 240.0
-    power_zone::Bool = false
 
     # Control
-    steering_pct::Float64 = 0.0
-    depower_pct::Float64 = 39.37
     heading_setpoint::Float64 = -1.562
     heading_kp::Float64 = 0.5
     heading_tau_i::Union{Float64,Bool} = false
@@ -48,41 +46,72 @@ Base.@kwdef mutable struct V3SettleConfig
         reduce_tip=true, reduce_te=true,
         tether_length=240.0)
 
+    # Depower ramp (power-zone settling only)
+    start_depower::Union{Nothing,Float64} = nothing
+    end_depower::Union{Nothing,Float64} = nothing
+
     # Model options
     n_panels::Int = 36
+    fix_sphere_idxs::Vector{Int} = Int[]
 end
 
 """
     settle_wing(config::V3SettleConfig; data_path=nothing,
-                show_progress=true,
-                remake=false) -> (sam, syslog)
+                show_progress=true, remake=false,
+                init_row=nothing,
+                power_zone=false) -> (sam, syslog)
 
-Run a damped settling simulation to find equilibrium wing geometry.
+Run a damped settling simulation to find equilibrium wing
+geometry.
 
-Always returns a fresh model loaded from the settled YAML, so the
-caller gets clean settings (normal gravity, no settling damping).
+Always returns a fresh model loaded from the settled YAML, so
+the caller gets clean settings (normal gravity, no settling
+damping).
 
-When `remake=false` and the destination YAML already exists, the
-simulation is skipped and the settled geometry is loaded from file.
+When `remake=false` and the destination YAML already exists,
+the simulation is skipped and the settled geometry is loaded
+from file.
+
+When `power_zone=true`, runs power-zone settling with gravity
+using `init_row` for position/orientation/controls. When
+`power_zone=false`, runs zero-gravity geometry settling; pass
+`init_row` to set steering/depower from flight data.
 """
 function settle_wing(config::V3SettleConfig;
                      data_path=nothing,
                      show_progress=true,
-                     remake=false)
+                     remake=false,
+                     init_row=nothing,
+                     power_zone::Bool=false)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
 
     gc = config.geom
     gc.tether_length = config.tether_length
-    depower_l0 = gc.reduce_depower ?
-        V3_DEPOWER_L0_BASE - gc.depower_reduction :
-        V3_DEPOWER_L0_BASE
-    suffix = build_geom_suffix(
-        depower_l0, gc.tip_reduction, gc.te_frac)
+
+    dp_reduction = gc.reduce_depower ?
+        gc.depower_reduction : 0.0
+    st_reduction = gc.reduce_steering ?
+        gc.steering_reduction : 0.0
+    dp_pct = if !isnothing(config.end_depower)
+        config.end_depower
+    elseif !isnothing(init_row)
+        init_row.depower
+    else
+        0.0
+    end
+    st_pct = isnothing(init_row) ? 0.0 : init_row.steering
+    depower_tape = depower_percentage_to_length(dp_pct;
+        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
+    L_left, L_right = steering_percentage_to_lengths(
+        st_pct;
+        l0_base=V3_STEERING_L0_BASE - st_reduction)
+    suffix = build_geom_suffix(depower_tape,
+        L_left, L_right, gc.tip_reduction, gc.te_frac)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))"
-    if config.power_zone
+    if power_zone
         suffix *= "_pz"
     end
     dest_struc = joinpath(
@@ -97,10 +126,17 @@ function settle_wing(config::V3SettleConfig;
     # Run settling simulation if needed
     syslog = nothing
     if remake || !isfile(dest_struc)
-        syslog = _run_settling_sim!(config;
-            data_path, show_progress,
-            source_struc, source_aero,
-            dest_struc, dest_aero)
+        if power_zone
+            syslog = _run_power_zone_settling!(config;
+                data_path, show_progress,
+                source_struc, source_aero,
+                dest_struc, dest_aero, init_row)
+        else
+            syslog = _run_zero_g_settling!(config;
+                data_path, show_progress,
+                source_struc, source_aero,
+                dest_struc, dest_aero, init_row)
+        end
     end
 
     # Always load a fresh model from settled YAML
@@ -110,6 +146,9 @@ function settle_wing(config::V3SettleConfig;
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.profile_law = 0
+    if power_zone
+        set.v_wind = init_row.wind_speed
+    end
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
@@ -127,16 +166,17 @@ function settle_wing(config::V3SettleConfig;
     return sam, syslog
 end
 
-"""Run the damped settling simulation and write results to YAML."""
-function _run_settling_sim!(config::V3SettleConfig;
-        data_path, show_progress,
-        source_struc, source_aero,
-        dest_struc, dest_aero)
-
+"""
+Set up a settling model: settings, VSM, sys struct, damping,
+SAM creation, geometry adjustments, init, and lock tether.
+Returns `(sam, sys, gc)`.
+"""
+function _setup_settling_model(config::V3SettleConfig;
+        g_earth, data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
     set = Settings("system.yaml")
-    set.g_earth = config.power_zone ? 9.81 : 0.0
+    set.g_earth = g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.profile_law = 0
@@ -151,39 +191,46 @@ function _run_settling_sim!(config::V3SettleConfig;
         system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
 
-    # Set initial transform
-    sys.transforms[1].elevation = deg2rad(config.elevation)
-    sys.transforms[1].azimuth = deg2rad(config.azimuth)
-    sys.transforms[1].heading = deg2rad(config.heading)
-
-    # Set damping
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_damping)
     SymbolicAWEModels.set_body_frame_damping(
         sys, config.body_damping)
 
-    # Create and init model
     sam = SymbolicAWEModel(set, sys)
-
-    # Apply geometry modifications
     apply_geom_adjustments!(sys, gc)
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
-    @show sys.winches[1].tether_len sys.segments[90].l0 set.l_tether
 
     @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
-    # Lock tether
     for winch in sys.winches
         winch.brake = true
         winch.tether_len = config.tether_length
     end
 
-    # Set steering/depower
-    set_steering!(sys, config.steering_pct / 100.0, gc)
-    set_depower!(sys, config.depower_pct / 100.0, gc)
+    return sam, sys, gc
+end
 
-    # Logger
+"""Run zero-gravity settling to find equilibrium geometry."""
+function _run_zero_g_settling!(config::V3SettleConfig;
+        data_path, show_progress,
+        source_struc, source_aero,
+        dest_struc, dest_aero,
+        init_row=nothing)
+    sam, sys, gc = _setup_settling_model(config;
+        g_earth=0.0, data_path, source_struc, source_aero)
+
+    # Set initial transform from config
+    sys.transforms[1].elevation = deg2rad(config.elevation)
+    sys.transforms[1].azimuth = deg2rad(config.azimuth)
+    sys.transforms[1].heading = deg2rad(config.heading)
+
+    # Set control from init_row if provided
+    if !isnothing(init_row)
+        set_steering!(sys, init_row.steering / 100.0, gc)
+        set_depower!(sys, init_row.depower / 100.0, gc)
+    end
+
     logger, sys_state = create_logger(sam, config.num_steps)
 
     # Save original transform values
@@ -191,28 +238,17 @@ function _run_settling_sim!(config::V3SettleConfig;
     saved_az = sys.transforms[1].azimuth
     saved_hd = sys.transforms[1].heading
 
-    # Simulation loop
-    @info "Starting settling simulation..."
+    @info "Starting zero-g settling..."
     wing = sys.wings[1]
     for step in 1:config.num_steps
         t = step * config.dt
 
-        # Damping decay
         damping = max(config.world_damping *
             (1.0 - step / config.decay_steps),
             config.min_damping)
         SymbolicAWEModels.set_world_frame_damping(
             sys, damping)
 
-        if config.power_zone
-            SymbolicAWEModels.reinit!(
-                sys.transforms, sys; update_vel=false)
-            SymbolicAWEModels.reinit!(
-                sam, sam.prob,
-                SymbolicAWEModels.FBDF())
-        end
-
-        # Step
         if !sim_step!(sam; dt=config.dt, vsm_interval=1)
             @error "Simulation failed" step t
             break
@@ -225,17 +261,94 @@ function _run_settling_sim!(config::V3SettleConfig;
         end
     end
 
-    # Reset transform to original values for non-power-zone
-    # (physics may have drifted the wing during settling)
-    if !config.power_zone
-        sys.transforms[1].elevation = saved_el
-        sys.transforms[1].azimuth = saved_az
-        sys.transforms[1].heading = saved_hd
-        SymbolicAWEModels.reinit!(
-            sys.transforms, sys; update_vel=false)
+    # Reset transform to saved values
+    sys.transforms[1].elevation = saved_el
+    sys.transforms[1].azimuth = saved_az
+    sys.transforms[1].heading = saved_hd
+    SymbolicAWEModels.reinit!(
+        sys.transforms, sys; update_vel=false)
+
+    @info "Updating YAML with settled positions..."
+    SymbolicAWEModels.update_yaml_from_sys_struct!(
+        sys, source_struc, dest_struc,
+        source_aero, dest_aero)
+
+    syslog = save_and_load_log(logger, "settle_refine_wing")
+    @info "Settling complete" dest_struc dest_aero
+    return syslog
+end
+
+"""Run power-zone settling initialized from flight data."""
+function _run_power_zone_settling!(config::V3SettleConfig;
+        data_path, show_progress,
+        source_struc, source_aero,
+        dest_struc, dest_aero,
+        init_row)
+    sam, sys, gc = _setup_settling_model(config;
+        g_earth=9.81, data_path, source_struc, source_aero)
+    sam.set.v_wind = init_row.wind_speed
+
+    update_sys_struct_from_data!(sys, init_row; config=gc)
+
+    # Override initial depower if ramp is configured
+    if !isnothing(config.start_depower)
+        set_depower!(sys, config.start_depower / 100.0, gc)
     end
 
-    # Write settled geometry to YAML
+    SymbolicAWEModels.reinit!(
+        sam, sam.prob, SymbolicAWEModels.FBDF())
+
+    for idx in config.fix_sphere_idxs
+        sys.points[idx].fix_sphere = true
+    end
+
+    total_steps = config.num_steps * config.num_substeps
+    logger, sys_state = create_logger(sam, total_steps)
+
+    @info "Starting power-zone settling..." num_substeps=config.num_substeps
+    wing = sys.wings[1]
+    failed = false
+    for step in 1:config.num_steps
+        damping = max(config.world_damping *
+            (1.0 - step / config.decay_steps),
+            config.min_damping)
+        SymbolicAWEModels.set_world_frame_damping(
+            sys, damping)
+
+        # Ramp depower linearly over settling steps
+        if !isnothing(config.start_depower)
+            dp_end = isnothing(config.end_depower) ?
+                init_row.depower : config.end_depower
+            frac = (step - 1) / max(config.num_steps - 1, 1)
+            dp = config.start_depower +
+                frac * (dp_end - config.start_depower)
+            set_depower!(sys, dp / 100.0, gc)
+        end
+
+        SymbolicAWEModels.reposition!(
+            sys.transforms, sys)
+        SymbolicAWEModels.reinit!(
+            sam, sam.prob, SymbolicAWEModels.FBDF())
+
+        for sub in 1:config.num_substeps
+            global_step = (step - 1) * config.num_substeps + sub
+            t = global_step * config.dt
+
+            if !sim_step!(sam; dt=config.dt, vsm_interval=1)
+                @error "Simulation failed" step sub t
+                failed = true
+                break
+            end
+
+            log_state!(logger, sys_state, sam, t)
+
+            if show_progress && global_step % 20 == 0
+                @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+            end
+        end
+        failed && break
+    end
+
     @info "Updating YAML with settled positions..."
     SymbolicAWEModels.update_yaml_from_sys_struct!(
         sys, source_struc, dest_struc,

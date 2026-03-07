@@ -90,11 +90,11 @@ using V3Kite
     end
 
     @testset "Geometry Suffix" begin
-        suffix = build_geom_suffix(0.0, 0.4, 0.95)
-        @test suffix == "depower0.0_tip0.4_te0.95"
+        suffix = build_geom_suffix(0.0, 1.6, 1.6, 0.4, 0.95)
+        @test suffix == "dp0.0_sl1.6_sr1.6_tip0.4_te0.95"
 
-        suffix = build_geom_suffix(0.2, 0.5, 1.0)
-        @test suffix == "depower0.2_tip0.5_te1.0"
+        suffix = build_geom_suffix(0.2, 1.4, 1.8, 0.5, 1.0)
+        @test suffix == "dp0.2_sl1.4_sr1.8_tip0.5_te1.0"
     end
 
     @testset "V3GeomAdjustConfig Defaults" begin

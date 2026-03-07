@@ -31,10 +31,10 @@ const V3_DEPOWER_GAIN = 5.0
 const V3_TETHER_POINT_IDXS = 39:44
 
 """Left steering tape segment index"""
-const V3_STEERING_LEFT_IDX = 87
+const V3_STEERING_LEFT_IDX = 89
 
 """Right steering tape segment index"""
-const V3_STEERING_RIGHT_IDX = 89
+const V3_STEERING_RIGHT_IDX = 87
 
 """Depower tape segment index"""
 const V3_DEPOWER_IDX = 88
@@ -45,8 +45,8 @@ const V3_DEPOWER_IDX = 88
         gain=V3_STEERING_GAIN)
 
 Convert steering percentage to left/right tape lengths (m).
-Matches KCU convention: positive percentage lengthens left tape
-(left turn). Full gain per side.
+Positive percentage shortens left tape (right turn when sitting
+on kite). Full gain per side.
 
 # Arguments
 - `percentage`: Steering percentage in range [-100, 100]
@@ -60,8 +60,8 @@ function steering_percentage_to_lengths(percentage;
         l0_base=V3_STEERING_L0_BASE,
         gain=V3_STEERING_GAIN)
     u_s = percentage / 100.0
-    L_left = l0_base + gain * u_s
-    L_right = l0_base - gain * u_s
+    L_left = l0_base - gain * u_s
+    L_right = l0_base + gain * u_s
     return L_left, L_right
 end
 
@@ -104,13 +104,13 @@ Inverse of `steering_percentage_to_lengths`.
 
 # Notes
 The inverse only depends on the gain, not on l0_base:
-- L_left = l0_base + gain * u_s
-- L_right = l0_base - gain * u_s
-- u_s = (L_left - L_right) / (2 * gain)
+- L_left = l0_base - gain * u_s
+- L_right = l0_base + gain * u_s
+- u_s = (L_right - L_left) / (2 * gain)
 """
 function steering_length_to_percentage(L_left, L_right;
         gain=V3_STEERING_GAIN)
-    u_s = (L_left - L_right) / (2.0 * gain)
+    u_s = (L_right - L_left) / (2.0 * gain)
     return u_s * 100.0
 end
 
@@ -138,21 +138,26 @@ function depower_length_to_percentage(length;
 end
 
 """
-    build_geom_suffix(depower_l0, tip_reduction, te_frac)
+    build_geom_suffix(depower_tape, steering_left,
+        steering_right, tip_reduction, te_frac)
 
-Build geometry filename suffix from configuration parameters.
-Used for parametric geometry variations.
+Build geometry filename suffix from tape lengths.
 
 # Arguments
-- `depower_l0`: Depower tape neutral length
+- `depower_tape`: Depower tape length (m)
+- `steering_left`: Left steering tape length (m)
+- `steering_right`: Right steering tape length (m)
 - `tip_reduction`: Tip leading edge reduction (m)
 - `te_frac`: Trailing edge wire factor
-
-# Returns
-- String suffix for geometry filenames
 """
-function build_geom_suffix(depower_l0, tip_reduction, te_frac)
-    return "depower$(depower_l0)_tip$(tip_reduction)_te$(te_frac)"
+function build_geom_suffix(depower_tape,
+        steering_left, steering_right,
+        tip_reduction, te_frac)
+    dp = round(depower_tape, digits=2)
+    sl = round(steering_left, digits=2)
+    sr = round(steering_right, digits=2)
+    return "dp$(dp)_sl$(sl)_sr$(sr)" *
+        "_tip$(tip_reduction)_te$(te_frac)"
 end
 
 # =============================================================================
@@ -177,9 +182,8 @@ function set_steering!(sys, steering,
         config::V3GeomAdjustConfig; min_l0=0.0)
     reduction = config.reduce_steering ?
         config.steering_reduction : 0.0
-    # Negate: positive steering = right turn = negative KCU %
     L_left, L_right = steering_percentage_to_lengths(
-        -steering * 100.0;
+        steering * 100.0;
         l0_base=V3_STEERING_L0_BASE - reduction)
     sys.segments[V3_STEERING_LEFT_IDX].l0 =
         max(min_l0, L_left)
@@ -203,8 +207,7 @@ Get the current steering value as a normalized input.
 function get_steering(sys, ::V3GeomAdjustConfig)
     L_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     L_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-    # Negate: KCU convention → right-positive convention
-    return -steering_length_to_percentage(
+    return steering_length_to_percentage(
         L_left, L_right) / 100.0
 end
 
