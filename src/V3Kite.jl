@@ -85,6 +85,7 @@ export sim_step!, log_state!, should_report
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
+export build_replay_name
 
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
@@ -98,6 +99,7 @@ export load_extra_points
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
 export plot_body_frame_local
+export plot_yaw_rate_vs_steering
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -108,6 +110,16 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_body_frame_local end
+
+"""
+    plot_yaw_rate_vs_steering(syslogs, tapes; kwargs...)
+
+Scatter plot of |yaw rate| vs |u_s * v_a|. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_yaw_rate_vs_steering end
 
 # include("precompile.jl") # disabled: precompilation workload
 

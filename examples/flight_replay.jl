@@ -32,11 +32,11 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
-SECTION = "straight_right_2019"
-# H5_PATH = joinpath(v3_data_path(),
-#     "flight_data", "ekf_awe_2025-10-09.h5")
+SECTION = "straight_right_2"
 H5_PATH = joinpath(v3_data_path(),
-    "flight_data", "ekf_awe_2019-10-08.h5")
+    "flight_data", "ekf_awe_2025-10-09.h5")
+# H5_PATH = joinpath(v3_data_path(),
+#     "flight_data", "ekf_awe_2019-10-08.h5")
 WARN_STEP = false
 
 # Video frame mapping
@@ -49,7 +49,8 @@ EXTRA_POINTS_FRAME = nothing
 STOP_EARLY = false
 SETTLE_ONLY = false
 SETTLE = true
-CONVERT_2019_DEPOWER = true
+DEPOWER_OFFSET_2019 = 7.0
+DEPOWER_OFFSET_2025 = -4.0
 
 # Maneuver selection
 if SECTION == "straight_right"
@@ -141,15 +142,19 @@ function run_physics_replay(h5_path;
     limited_data = add_distance_column(limited_data)
 
     @info "Interpolating flight data" n_substeps
-    csv_data = interpolate_flight_data(
+    data = interpolate_flight_data(
         limited_data, n_substeps)
+
+    is_2019 = occursin("2019", basename(h5_path))
 
     function make_row(raw)
         dp = raw.kcu_actual_depower
-        if CONVERT_2019_DEPOWER
+        if is_2019
             # u_dp_2025 = 0.2564 - 0.0768 * u_p_2019
             dp = (0.2564 - 0.0768 * dp / 100.0) * 100.0
-            dp += 7
+            dp += DEPOWER_OFFSET_2019
+        else
+            dp += DEPOWER_OFFSET_2025
         end
         return (
             time = raw.time,
@@ -186,7 +191,7 @@ function run_physics_replay(h5_path;
     end
 
     # Settle wing with first CSV conditions
-    row1 = get_row(csv_data, 1)
+    row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         world_damping=0.0,
@@ -204,7 +209,7 @@ function run_physics_replay(h5_path;
         fix_sphere_idxs=[])
     if SETTLE
         sam, settle_log = settle_wing(settle_config;
-            init_row=row1, power_zone=true, remake=true)
+            init_row=row1, power_zone=true, remake=false)
     else
         data_path = v3_data_path()
         set_data_path(data_path)
@@ -237,7 +242,7 @@ function run_physics_replay(h5_path;
         settle_log = nothing
     end
     if SETTLE_ONLY
-        return sam, nothing, nothing, nothing, csv_data,
+        return sam, nothing, nothing, nothing, data,
             nothing, nothing, nothing, nothing,
             settle_config, settle_log
     end
@@ -245,20 +250,20 @@ function run_physics_replay(h5_path;
     set = sam.set
     set.l_tether = tether_len
 
-    n_steps = length(csv_data.time)
+    n_steps = length(data.time)
     sys_state = SysState(sam)
     logger = Logger(sam, n_steps)
 
     # CSV reference model
-    csv_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
-    init!(csv_sam)
-    csv_state = SysState(csv_sam)
-    csv_logger = Logger(csv_sam, n_steps)
+    data_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
+    init!(data_sam)
+    data_state = SysState(data_sam)
+    data_logger = Logger(data_sam, n_steps)
 
     # Tape storage
-    csv_tape = (time=Float64[], steering=Float64[],
+    data_tape = (time=Float64[], steering=Float64[],
         depower=Float64[])
-    phys_tape = (time=Float64[], steering=Float64[],
+    sim_tape = (time=Float64[], steering=Float64[],
         depower=Float64[])
 
     extra_pts = nothing
@@ -270,42 +275,39 @@ function run_physics_replay(h5_path;
     SymbolicAWEModels.set_body_frame_damping(
         sys, BODY_DAMPING, 1:38)
 
-    dt = csv_data.time[2] - csv_data.time[1]
-    first_csv_tether = csv_data.ekf_tether_length[1]
-    tether_delta = set.l_tether - first_csv_tether
-
+    dt = data.time[2] - data.time[1]
     reset_distance_tracker!()
     heading_pid = create_heading_pid(;
         K=HEADING_KP, dt)
 
-    max_dist = csv_data.cumulative_distance[end]
+    max_dist = data.cumulative_distance[end]
 
     # Log full CSV reference independently of sim
     for step in 1:n_steps-1
-        row = get_row(csv_data, step)
+        row = get_row(data, step)
         update_sys_struct_from_data!(
-            csv_sam.sys_struct, row)
+            data_sam.sys_struct, row)
         SymbolicAWEModels.reinit!(
-            csv_sam, csv_sam.prob, FBDF())
-        update_sys_state!(csv_state, csv_sam)
-        csv_state.winch_force[1] = row.tether_force
-        csv_state.AoA = row.angle_of_attack
-        csv_state.v_app = row.v_app
-        csv_state.time = row.cumulative_distance
-        csv_state.l_tether[1] = row.tether_len
-        csv_state.v_reelout[1] = row.tether_vel
-        csv_state.v_wind_gnd[1] = row.wind_speed
-        log!(csv_logger, csv_state)
+            data_sam, data_sam.prob, FBDF())
+        update_sys_state!(data_state, data_sam)
+        data_state.winch_force[1] = row.tether_force
+        data_state.AoA = row.angle_of_attack
+        data_state.v_app = row.v_app
+        data_state.time = row.cumulative_distance
+        data_state.l_tether[1] = row.tether_len
+        data_state.v_reelout[1] = row.tether_vel
+        data_state.v_wind_gnd[1] = row.wind_speed
+        log!(data_logger, data_state)
 
-        push!(csv_tape.time,
+        push!(data_tape.time,
             row.cumulative_distance)
-        push!(csv_tape.steering, row.steering)
-        push!(csv_tape.depower, row.depower)
+        push!(data_tape.steering, row.steering)
+        push!(data_tape.depower, row.depower)
     end
 
     try
         for step in 1:n_steps-1
-            row = get_row(csv_data, step)
+            row = get_row(data, step)
 
             if step == 1
                 update_sys_struct_from_data!(
@@ -324,7 +326,7 @@ function run_physics_replay(h5_path;
             # Distance-based input lookup for physics
             phys_row = make_row(
                 get_row_at_distance(
-                    csv_data, SIM_CUMULATIVE_DIST[]))
+                    data, SIM_CUMULATIVE_DIST[]))
 
             data_heading = calc_csv_heading(
                 phys_row.roll, phys_row.pitch,
@@ -342,16 +344,10 @@ function run_physics_replay(h5_path;
                     settle_config.geom;
                     heading_correction)
 
-            sam.sys_struct.winches[1].tether_len +=
-                tether_delta
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())
 
             next_step!(sam; dt)
-            # left_len = sam.sys_struct.segments[V3Kite.V3_STEERING_LEFT_IDX].l0
-            # right_len = sam.sys_struct.segments[V3Kite.V3_STEERING_RIGHT_IDX].l0
-            # steer_mag = (left_len - right_len) / phys_row.steering
-            # @show steer_mag
 
             # Extra points comparison
             if !isnothing(EXTRA_POINTS_CSV) &&
@@ -367,10 +363,10 @@ function run_physics_replay(h5_path;
             log_state!(logger, sys_state, sam,
                 SIM_CUMULATIVE_DIST[])
 
-            push!(phys_tape.time,
+            push!(sim_tape.time,
                 SIM_CUMULATIVE_DIST[])
-            push!(phys_tape.steering, eff_steer)
-            push!(phys_tape.depower, eff_dep)
+            push!(sim_tape.steering, eff_steer)
+            push!(sim_tape.depower, eff_dep)
 
             if should_report(step, n_steps)
                 elapsed = time() - replay_start
@@ -392,36 +388,44 @@ function run_physics_replay(h5_path;
 
     @info "Replay done" elapsed=round(time() - replay_start, digits=2)
 
-    save_log(logger, "csv_replay")
-    save_log(csv_logger, "csv_reference")
-    syslog = load_log("csv_replay")
-    csvlog = load_log("csv_reference")
+    base_name = build_replay_name(h5_path, start_utc,
+        end_utc, row1.depower, row1.steering,
+        settle_config.geom)
+    save_log(logger, base_name * "_sim")
+    save_log(data_logger, base_name * "_data")
+    syslog = load_log(base_name * "_sim")
+    datalog = load_log(base_name * "_data")
 
-    return sam, syslog, csv_sam, csvlog, csv_data,
-        phys_tape, csv_tape, extra_pts, extra_groups,
-        settle_config, settle_log
+    return sam, syslog, data_sam, datalog, data,
+        sim_tape, data_tape, extra_pts, extra_groups,
+        settle_config, settle_log, dt
 end
 
 # =============================================================================
 # Main execution
 # =============================================================================
 
-sam, syslog, csv_sam, csvlog, csv_data, phys_tape, csv_tape,
+sam, syslog, data_sam, datalog, data, sim_tape, data_tape,
     extra_pts, extra_groups,
-    settle_config, settle_log = run_physics_replay(H5_PATH)
+    settle_config, settle_log, dt = run_physics_replay(H5_PATH)
 geom_config = settle_config.geom
 
 if !SETTLE_ONLY
-    fig = plot([sam.sys_struct, csv_sam.sys_struct],
-        [syslog, csvlog];
+    fig = plot([sam.sys_struct, data_sam.sys_struct],
+        [syslog, datalog];
         plot_tether=true, plot_aero_force=true,
         plot_kite_vel=true, plot_wind=false,
         plot_reelout=false, plot_v_app=true,
-        tape_lengths=[phys_tape, csv_tape],
-        suffixes=["phys", "csv"])
+        tape_lengths=[sim_tape, data_tape],
+        suffixes=["sim", "data"])
 
-    sphere = plot_sphere_trajectory([syslog, csvlog])
+    sphere = plot_sphere_trajectory([syslog, datalog])
 
-    scene = replay([syslog, csvlog],
-        [sam.sys_struct, csv_sam.sys_struct])
+    yaw_fig = plot_yaw_rate_vs_steering(
+        [syslog, datalog],
+        [sim_tape, data_tape];
+        labels=["sim", "data"], dt)
+
+    scene = replay([syslog, datalog],
+        [sam.sys_struct, data_sam.sys_struct])
 end

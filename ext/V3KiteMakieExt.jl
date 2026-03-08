@@ -235,4 +235,68 @@ function V3Kite.plot_body_frame_local(sys_structs;
     return fig
 end
 
+"""
+    plot_yaw_rate_vs_steering(syslogs, tapes; labels, figsize)
+
+Scatter plot of |yaw rate| vs |u_s * v_a| for one or more logs.
+
+# Arguments
+- `syslogs`: Single syslog or vector of syslogs
+- `tapes`: Matching tape(s) with `.steering` and `.time` fields
+- `labels`: Optional vector of series labels
+- `figsize`: Figure size tuple (default: (600, 400))
+"""
+function V3Kite.plot_yaw_rate_vs_steering(
+        syslogs, tapes;
+        labels=nothing, figsize=(600, 400),
+        min_steering=0.0, dt=0.01)
+    logs = syslogs isa Vector ? syslogs : [syslogs]
+    tps = tapes isa Vector ? tapes : [tapes]
+    n = length(logs)
+
+    if isnothing(labels)
+        labels = n == 1 ? ["series"] :
+            ["series_$i" for i in 1:n]
+    end
+
+    fig = Figure(size=figsize)
+    ax = Axis(fig[1, 1];
+        xlabel="|u_s v_a| [m/s]",
+        ylabel="|yaw rate| [rad/s]")
+
+    for (i, (lg, tape)) in enumerate(zip(logs, tps))
+        sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+
+        # Unwrap heading and compute yaw rate
+        hw = copy(sl.heading)
+        for j in 2:length(hw)
+            while hw[j] - hw[j-1] > pi
+                hw[j] -= 2pi
+            end
+            while hw[j] - hw[j-1] < -pi
+                hw[j] += 2pi
+            end
+        end
+        yaw_rate = diff(hw) ./ dt
+
+        us = tape.steering[2:end] / 100
+        mask = abs.(us) .> min_steering / 100
+        x = abs.(us[mask] .* sl.v_app[2:end][mask])
+        y = abs.(yaw_rate[mask])
+        color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
+        scatter!(ax, x, y; markersize=4, color=color,
+            label=labels[i])
+
+        # Best fit line through origin: gk = sum(x.*y) / sum(x.^2)
+        gk = dot(x, y) / dot(x, x)
+        x_fit = range(0, maximum(x); length=50)
+        lines!(ax, collect(x_fit), gk .* collect(x_fit);
+            color=color, linewidth=2,
+            label="$(labels[i]) gk=$(round(gk; digits=2))")
+    end
+
+    axislegend(ax; position=:lt)
+    return fig
+end
+
 end # module
