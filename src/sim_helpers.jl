@@ -146,3 +146,34 @@ function report_performance(sim_time, wall_time; label="")
     @info msg wall_time=round(wall_time, digits=2) times_realtime=round(times_rt, digits=2)
     return nothing
 end
+
+"""
+    build_replay_name(h5_path, start_utc, end_utc,
+        depower_pct, steering_pct,
+        gc::V3GeomAdjustConfig) -> String
+
+Build a descriptive log name encoding flight year, time
+window, and geometry configuration.
+"""
+function build_replay_name(h5_path, start_utc, end_utc,
+        depower_pct, steering_pct,
+        gc::V3GeomAdjustConfig)
+    year = match(r"(\d{4})", basename(h5_path))[1]
+    sanitize(s) = replace(s, r"[:\.]" => "")
+    start_san = sanitize(start_utc)
+    end_san = sanitize(end_utc)
+
+    dp_reduction = gc.reduce_depower ?
+        gc.depower_reduction : 0.0
+    st_reduction = gc.reduce_steering ?
+        gc.steering_reduction : 0.0
+    dp_tape = depower_percentage_to_length(depower_pct;
+        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
+    L_left, L_right = steering_percentage_to_lengths(
+        steering_pct;
+        l0_base=V3_STEERING_L0_BASE - st_reduction)
+    suffix = build_geom_suffix(dp_tape, L_left, L_right,
+        gc.tip_reduction, gc.te_frac)
+    suffix = replace(suffix, "." => "")
+    return "$(year)_$(start_san)_$(end_san)_$(suffix)"
+end
