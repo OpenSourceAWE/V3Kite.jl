@@ -32,79 +32,105 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
-SECTION = "straight_right_2"
-H5_PATH = joinpath(v3_data_path(),
-    "flight_data", "ekf_awe_2025-10-09.h5")
-# H5_PATH = joinpath(v3_data_path(),
-#     "flight_data", "ekf_awe_2019-10-08.h5")
-WARN_STEP = false
-
-# Video frame mapping
-VIDEO_FRAME_REF = 7182
-UTC_REF_SECONDS = 15*3600 + 36*60 + 31.0
-VIDEO_FPS = 29.97
-
-EXTRA_POINTS_CSV = nothing
-EXTRA_POINTS_FRAME = nothing
-STOP_EARLY = false
+SECTION = "straight_right"
+YEAR = 2025
+PLOT_FRAME = true
 SETTLE_ONLY = false
 SETTLE = true
+CONST_WIND = false
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -4.0
+WING_SYMMETRIC_FORCE = [0.0, 0.0, 0.0]
+STEERING_MULTIPLIER = 1.0
+HEADING_KP = 0.3
+HEADING_TI = 1.0
+LATERAL_KP = 0.0
+STEERING_OFFSET = 4.16
+BODY_DAMPING = [0.0, 0.0, 20.0]
 
 # Maneuver selection
-if SECTION == "straight_right"
-    START_UTC = "15:36:29.0"
-    END_UTC = "15:36:41.0"
-elseif SECTION == "straight_left"
-    START_UTC = "15:36:49.0"
-    END_UTC = "15:36:52.0"
-elseif SECTION == "power_depower"
-    START_UTC = "15:42:11.0"
-    END_UTC = "15:42:21.0"
-elseif SECTION == "straight_right_2"
-    START_UTC = "15:37:39.0"
-    END_UTC = "15:37:49.0"
+if YEAR == 2025
+    h5_path = joinpath(v3_data_path(),
+        "flight_data", "ekf_awe_2025-10-09.h5")
+else
+    h5_path = joinpath(v3_data_path(),
+        "flight_data", "ekf_awe_2019-10-08.h5")
+end
+SECTION = "$(SECTION)_$(YEAR)"
+if SECTION == "straight_right_2025"
+    start_utc = "15:36:29.0"
+    end_utc = "15:36:41.0"
+elseif SECTION == "straight_left_2025"
+    start_utc = "15:36:49.0"
+    end_utc = "15:36:52.0"
+elseif SECTION == "power_depower_2025"
+    start_utc = "15:42:11.0"
+    end_utc = "15:42:21.0"
+elseif SECTION == "straight_right_2025"
+    start_utc = "15:37:39.0"
+    end_utc = "15:37:49.0"
 elseif SECTION == "straight_right_2019"
-    START_UTC = "11:10:00.0"
-    END_UTC = "11:10:10.0"
+    start_utc = "11:10:03.0"
+    end_utc = "11:10:13.0"
+elseif SECTION == "straight_left_2019"
+    start_utc = "11:10:13.0"
+    end_utc = "11:10:23.0"
 else
     error("Unknown section: $SECTION")
 end
 
-STEERING_MULTIPLIER = 1.0
-HEADING_KP = 0.3
-BODY_DAMPING = [0.0, 0.0, 20.0]
+# Auto-pick frame CSVs for 2025 flights
+if PLOT_FRAME && YEAR == 2025
+    _start_f = utc_to_video_frame(
+        parse_time_to_seconds(start_utc))
+    _end_f = utc_to_video_frame(
+        parse_time_to_seconds(end_utc))
+    frame_csvs = Tuple{String, Int}[]
+    for f in readdir(v3_data_path(); join=true)
+        m = match(r"frame_(\d+)\.csv$", f)
+        isnothing(m) && continue
+        frame = parse(Int, m.captures[1])
+        if _start_f <= frame <= _end_f
+            push!(frame_csvs, (f, frame))
+        end
+    end
+    isempty(frame_csvs) &&
+        @warn "No frame CSV in range" _start_f _end_f
+else
+    frame_csvs = Tuple{String, Int}[]
+end
 
 # =============================================================================
 # Replay helper functions
 # =============================================================================
 
 # Distance tracker state
-const SIM_PREV_POS = Ref{Vector{Float64}}(zeros(3))
-const SIM_CUMULATIVE_DIST = Ref{Float64}(0.0)
+const sim_prev_pos = Ref{Vector{Float64}}(zeros(3))
+const sim_cumulative_dist = Ref{Float64}(0.0)
 
 function reset_distance_tracker!()
-    SIM_PREV_POS[] = zeros(3)
-    SIM_CUMULATIVE_DIST[] = 0.0
+    sim_prev_pos[] = zeros(3)
+    sim_cumulative_dist[] = 0.0
 end
 
 function update_sim_distance!(wing_pos)
-    if SIM_PREV_POS[] == zeros(3)
-        SIM_PREV_POS[] = copy(wing_pos)
+    if sim_prev_pos[] == zeros(3)
+        sim_prev_pos[] = copy(wing_pos)
         return 0.0
     end
-    dist = norm(wing_pos - SIM_PREV_POS[])
-    SIM_CUMULATIVE_DIST[] += dist
-    SIM_PREV_POS[] = copy(wing_pos)
-    return SIM_CUMULATIVE_DIST[]
+    dist = norm(wing_pos - sim_prev_pos[])
+    sim_cumulative_dist[] += dist
+    sim_prev_pos[] = copy(wing_pos)
+    return sim_cumulative_dist[]
 end
 
 function update_vel_from_csv!(sys, row,
         gc::V3GeomAdjustConfig;
         heading_correction=0.0)
-    sys.set.v_wind = row.wind_speed
-    sys.set.upwind_dir = row.wind_dir + -90
+    if !CONST_WIND
+        sys.set.v_wind = row.wind_speed
+        sys.set.upwind_dir = row.wind_dir + -90
+    end
 
     # CSV steering (positive = right turn)
     steering = clamp(row.steering, -100.0, 100.0)
@@ -132,11 +158,10 @@ end
 # =============================================================================
 
 function run_physics_replay(h5_path;
-        start_utc=START_UTC, end_utc=END_UTC,
+        start_utc=start_utc, end_utc=end_utc,
         n_substeps=20)
 
     data = load_flight_data(h5_path)
-    @show unix2datetime(data.unix_time[1])
     limited_data, _ = limit_by_utc(
         data, start_utc, end_utc)
     limited_data = add_distance_column(limited_data)
@@ -204,7 +229,7 @@ function run_physics_replay(h5_path;
         num_substeps=5,
         start_depower=row1.depower+10.0,
         geom=V3GeomAdjustConfig(
-            reduce_tip=true, reduce_te=true,
+            reduce_tip=false, reduce_te=true,
             reduce_depower=false),
         fix_sphere_idxs=[])
     if SETTLE
@@ -243,8 +268,8 @@ function run_physics_replay(h5_path;
     end
     if SETTLE_ONLY
         return sam, nothing, nothing, nothing, data,
-            nothing, nothing, nothing, nothing,
-            settle_config, settle_log
+            nothing, nothing, Tuple{Int, Int}[],
+            settle_config, settle_log, nothing, ""
     end
     sys_struct = sam.sys_struct
     set = sam.set
@@ -266,8 +291,7 @@ function run_physics_replay(h5_path;
     sim_tape = (time=Float64[], steering=Float64[],
         depower=Float64[])
 
-    extra_pts = nothing
-    extra_groups = nothing
+    frame_syslog_idxs = Tuple{Int, Int}[]
 
     @info "Replaying CSV data..."
     replay_start = time()
@@ -278,7 +302,9 @@ function run_physics_replay(h5_path;
     dt = data.time[2] - data.time[1]
     reset_distance_tracker!()
     heading_pid = create_heading_pid(;
-        K=HEADING_KP, dt)
+        K=HEADING_KP, Ti=HEADING_TI, dt)
+    lateral_pid = create_heading_pid(;
+        K=LATERAL_KP, dt)
 
     max_dist = data.cumulative_distance[end]
 
@@ -296,7 +322,10 @@ function run_physics_replay(h5_path;
         data_state.time = row.cumulative_distance
         data_state.l_tether[1] = row.tether_len
         data_state.v_reelout[1] = row.tether_vel
-        data_state.v_wind_gnd[1] = row.wind_speed
+        upwind_dir = deg2rad(row.wind_dir - 90)
+        wind_vec = rotate_around_z(
+            [0.0, -1.0, 0.0], -upwind_dir)
+        data_state.v_wind_gnd .= row.wind_speed .* wind_vec
         log!(data_logger, data_state)
 
         push!(data_tape.time,
@@ -319,14 +348,14 @@ function run_physics_replay(h5_path;
             # Update sim distance before input lookup
             update_sim_distance!(
                 sam.sys_struct.wings[1].pos_w)
-            if SIM_CUMULATIVE_DIST[] >= max_dist
+            if sim_cumulative_dist[] >= max_dist
                 break
             end
 
             # Distance-based input lookup for physics
             phys_row = make_row(
                 get_row_at_distance(
-                    data, SIM_CUMULATIVE_DIST[]))
+                    data, sim_cumulative_dist[]))
 
             data_heading = calc_csv_heading(
                 phys_row.roll, phys_row.pitch,
@@ -338,49 +367,89 @@ function run_physics_replay(h5_path;
             heading_correction = heading_pid(
                 heading_error, 0.0, 0.0)
 
+            # Lateral position feedback
+            data_pos = [phys_row.x, phys_row.y, phys_row.z]
+            sim_pos = sam.sys_struct.wings[1].pos_w
+            body_y_world =
+                sam.sys_struct.wings[1].R_b_to_w[:, 2]
+            lateral_error = dot(
+                sim_pos - data_pos, body_y_world)
+            lateral_correction = lateral_pid(
+                lateral_error, 0.0, 0.0)
+
             eff_steer, eff_dep =
                 update_vel_from_csv!(
                     sam.sys_struct, phys_row,
                     settle_config.geom;
-                    heading_correction)
+                    heading_correction=heading_correction +
+                        lateral_correction + STEERING_OFFSET/100)
+
+            R = sam.sys_struct.wings[1].R_b_to_w
+            f_w = R * WING_SYMMETRIC_FORCE
+            for i in 2:11
+                sam.sys_struct.points[i].disturb .= f_w
+            end
+            for i in 12:21
+                sam.sys_struct.points[i].disturb .= -f_w
+            end
 
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())
 
             next_step!(sam; dt)
 
-            # Extra points comparison
-            if !isnothing(EXTRA_POINTS_CSV) &&
-               row.video_frame == EXTRA_POINTS_FRAME
-                extra_pts, extra_groups =
-                    load_extra_points(
-                        EXTRA_POINTS_CSV, sam.sys_struct)
-                if STOP_EARLY
-                    break
+            if step % n_substeps == 0
+                sys = sam.sys_struct
+                for i in (4, 5)
+                    f = sys.points[i].aero_force_b[2]
+                    if f < 0.0
+                        @warn "Aero y-force negative" point=i force=round(f, digits=2)
+                    end
+                end
+                for i in (18, 19)
+                    f = sys.points[i].aero_force_b[2]
+                    if f > 0.0
+                        @warn "Aero y-force positive" point=i force=round(f, digits=2)
+                    end
+                end
+            end
+
+            # Record syslog index for matched frames
+            for (_, frame) in frame_csvs
+                if row.video_frame == frame &&
+                        !any(x -> x[1] == frame,
+                            frame_syslog_idxs)
+                    push!(frame_syslog_idxs,
+                        (frame, logger.index))
                 end
             end
 
             log_state!(logger, sys_state, sam,
-                SIM_CUMULATIVE_DIST[])
+                sim_cumulative_dist[])
 
             push!(sim_tape.time,
-                SIM_CUMULATIVE_DIST[])
+                sim_cumulative_dist[])
             push!(sim_tape.steering, eff_steer)
             push!(sim_tape.depower, eff_dep)
 
             if should_report(step, n_steps)
                 elapsed = time() - replay_start
                 dist = round(
-                    SIM_CUMULATIVE_DIST[], digits=1)
+                    sim_cumulative_dist[], digits=1)
                 @info "Step $step/$n_steps" *
                     " (d=$(dist)m," *
                     " frame=$(row.video_frame))"
             end
         end
     catch err
+        is_interrupt = err isa InterruptException ||
+            any(e isa InterruptException
+                for (e, _) in current_exceptions())
         if err isa ErrorException &&
                 contains(err.msg, "Unstable")
             @warn "Solver unstable, stopping replay" msg=err.msg
+        elseif is_interrupt
+            @warn "Interrupted, stopping sim"
         else
             rethrow(err)
         end
@@ -397,8 +466,8 @@ function run_physics_replay(h5_path;
     datalog = load_log(base_name * "_data")
 
     return sam, syslog, data_sam, datalog, data,
-        sim_tape, data_tape, extra_pts, extra_groups,
-        settle_config, settle_log, dt
+        sim_tape, data_tape, frame_syslog_idxs,
+        settle_config, settle_log, dt, base_name
 end
 
 # =============================================================================
@@ -406,26 +475,66 @@ end
 # =============================================================================
 
 sam, syslog, data_sam, datalog, data, sim_tape, data_tape,
-    extra_pts, extra_groups,
-    settle_config, settle_log, dt = run_physics_replay(H5_PATH)
+    frame_syslog_idxs,
+    settle_config, settle_log, dt,
+    base_name = run_physics_replay(h5_path)
 geom_config = settle_config.geom
 
 if !SETTLE_ONLY
-    fig = plot([sam.sys_struct, data_sam.sys_struct],
+    fig = plot_replay(
+        [sam.sys_struct, data_sam.sys_struct],
         [syslog, datalog];
-        plot_tether=true, plot_aero_force=true,
-        plot_kite_vel=true, plot_wind=false,
-        plot_reelout=false, plot_v_app=true,
         tape_lengths=[sim_tape, data_tape],
         suffixes=["sim", "data"])
 
-    sphere = plot_sphere_trajectory([syslog, datalog])
+    trajectory = plot_2d_trajectory([syslog, datalog];
+        gradient=:steering,
+        tapes=[sim_tape, data_tape],
+        labels=["sim", "data"])
+    CairoMakie.activate!()
+    traj_2d = plot_2d_trajectory([syslog, datalog];
+        gradient=:steering,
+        tapes=[sim_tape, data_tape],
+        labels=["sim", "data"])
+    save("trajectory_2d.pdf", traj_2d)
+    GLMakie.activate!()
 
     yaw_fig = plot_yaw_rate_vs_steering(
         [syslog, datalog],
         [sim_tape, data_tape];
+        min_steering=5.0,
         labels=["sim", "data"], dt)
+
+    # Body frame plots for matched photogrammetry frames
+    CairoMakie.activate!()
+    for (csv, target_frame) in frame_csvs
+        idx = findfirst(
+            x -> x[1] == target_frame,
+            frame_syslog_idxs)
+        isnothing(idx) && continue
+        _, syslog_idx = frame_syslog_idxs[idx]
+        update_from_sysstate!(
+            sam.sys_struct, syslog.syslog[syslog_idx])
+        pts, groups = load_extra_points(
+            csv, sam.sys_struct)
+        for dir in (:front, :side, :top)
+            scene = plot_body_frame_local(
+                sam.sys_struct;
+                extra_points=pts,
+                extra_groups=groups, dir,
+                legend=false, title=false,
+                figsize=(400, 400),
+                show_point_idxs=false)
+            save("body_frame_$(dir)" *
+                "_frame$(target_frame)" *
+                "_$(base_name).pdf", scene)
+        end
+        @info "Saved body frame plots" target_frame
+    end
+    GLMakie.activate!()
 
     scene = replay([syslog, datalog],
         [sam.sys_struct, data_sam.sys_struct])
+
+    trajectory
 end

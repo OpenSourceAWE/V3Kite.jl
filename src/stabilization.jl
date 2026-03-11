@@ -107,8 +107,10 @@ function settle_wing(config::V3SettleConfig;
     L_left, L_right = steering_percentage_to_lengths(
         st_pct;
         l0_base=V3_STEERING_L0_BASE - st_reduction)
+    tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
+    te_f = gc.reduce_te ? gc.te_frac : 1.0
     suffix = build_geom_suffix(depower_tape,
-        L_left, L_right, gc.tip_reduction, gc.te_frac)
+        L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))"
     if power_zone

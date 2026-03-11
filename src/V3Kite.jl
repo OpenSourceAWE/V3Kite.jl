@@ -100,6 +100,7 @@ export load_extra_points
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
 export plot_body_frame_local
 export plot_yaw_rate_vs_steering
+export plot_replay, plot_sphere_trajectory, plot_2d_trajectory
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -120,6 +121,38 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_yaw_rate_vs_steering end
+
+"""
+    plot_replay(syss, logs; tape_lengths, suffixes, size)
+
+Custom time-series plot for V3 kite replay data. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_replay end
+
+"""
+    plot_sphere_trajectory(logs; radius, colors, labels, kwargs...)
+
+Plot kite trajectories on a unit sphere with body-frame axes
+at final positions. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_sphere_trajectory end
+
+"""
+    plot_2d_trajectory(logs; kwargs...)
+
+Plot kite y vs z position colored by a gradient quantity
+(`:vel` or `:steering`). Requires GLMakie/CairoMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_2d_trajectory end
 
 # include("precompile.jl") # disabled: precompilation workload
 
