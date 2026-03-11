@@ -11,7 +11,9 @@ module V3KiteMakieExt
 using V3Kite
 using GLMakie
 using LinearAlgebra
+using LaTeXStrings
 import V3Kite: SymbolicAWEModels
+using VortexStepMethod: calculate_projected_area
 
 const PLOT_COLORS = [:blue, :green, :orange, :purple, :cyan, :magenta]
 
@@ -261,8 +263,8 @@ function V3Kite.plot_yaw_rate_vs_steering(
 
     fig = Figure(size=figsize)
     ax = Axis(fig[1, 1];
-        xlabel="|u_s v_a| [m/s]",
-        ylabel="|yaw rate| [rad/s]")
+        xlabel=L"|u_s \cdot v_a| \; [m/s]",
+        ylabel=L"|\dot{\psi}| \; [rad/s]")
 
     for (i, (lg, tape)) in enumerate(zip(logs, tps))
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
@@ -296,6 +298,451 @@ function V3Kite.plot_yaw_rate_vs_steering(
     end
 
     axislegend(ax; position=:lt)
+    return fig
+end
+
+# =====================================================================
+# plot_replay — custom time-series panels for V3 kite replay data
+# =====================================================================
+
+"""
+    plot_replay(syss, logs; tape_lengths, suffixes, size)
+
+Custom time-series plot for V3 kite replay data with panels for
+tether force, apparent wind, wind speed, kite velocity, force
+coefficient, steering gain, and steering input.
+"""
+function V3Kite.plot_replay(
+        syss::Vector{<:SymbolicAWEModels.SystemStructure},
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        tape_lengths=nothing,
+        suffixes=nothing,
+        size=(1200, 800))
+
+    n = length(logs)
+    actual_suffixes = if n == 1
+        [""]
+    elseif isnothing(suffixes)
+        [" ($i)" for i in 1:n]
+    else
+        [" (" * s * ")" for s in suffixes]
+    end
+
+    panels = []
+
+    # --- Tether force panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        wf = [sl.winch_force[k][1]
+              for k in eachindex(sl.winch_force)]
+        push!(all_data, wf)
+        push!(all_labels, L"F_t" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times, ylabel=L"F_t \; [N]"))
+
+    # --- Apparent wind speed panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        push!(all_data, collect(sl.v_app))
+        push!(all_labels, L"v_a" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times, ylabel=L"v_a \; [m/s]"))
+
+    # --- Wind speed panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        vw = [sl.v_wind_gnd[k][1]
+              for k in eachindex(sl.v_wind_gnd)]
+        push!(all_data, vw)
+        push!(all_labels, L"v_w" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times, ylabel=L"v_w \; [m/s]"))
+
+    # --- Wind direction panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        wd = [rad2deg(atan(sl.v_wind_gnd[k][2],
+                           sl.v_wind_gnd[k][1]))
+              for k in eachindex(sl.v_wind_gnd)]
+        push!(all_data, wd)
+        push!(all_labels,
+            L"\theta_w" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times,
+        ylabel=L"\theta_w \; [°]"))
+
+    # --- Kite velocity panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        vk = [norm(sl.vel_kite[k])
+              for k in eachindex(sl.vel_kite)]
+        push!(all_data, vk)
+        push!(all_labels, L"v_k" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times, ylabel=L"v_k \; [m/s]"))
+
+    # --- Force coefficient panel ---
+    all_data, all_labels, all_times = [], [], []
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        A_proj = calculate_projected_area(
+            syss[i].wings[1].vsm_wing)
+        cf = [sl.winch_force[k][1] /
+              (0.5 * 1.225 * sl.v_app[k]^2 * A_proj)
+              for k in eachindex(sl.winch_force)]
+        push!(all_data, cf)
+        push!(all_labels, L"C_F" * actual_suffixes[i])
+        push!(all_times, sl.time)
+    end
+    push!(panels, (data=all_data, labels=all_labels,
+        times=all_times, ylabel=L"C_F \; [-]"))
+
+    # --- gk panel (only when tape_lengths provided) ---
+    if !isnothing(tape_lengths)
+        all_data, all_labels, all_times = [], [], []
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            tl = tape_lengths[i]
+
+            # Interpolate tape steering to syslog times
+            us_pct = similar(sl.time)
+            for k in eachindex(us_pct)
+                t = sl.time[k]
+                idx = searchsortedfirst(tl.time, t)
+                idx = clamp(idx, 1, length(tl.steering))
+                us_pct[k] = tl.steering[idx]
+            end
+
+            # Unwrap heading, compute heading rate
+            hw = copy(sl.heading)
+            for j in 2:length(hw)
+                while hw[j] - hw[j-1] > pi
+                    hw[j] -= 2pi
+                end
+                while hw[j] - hw[j-1] < -pi
+                    hw[j] += 2pi
+                end
+            end
+            heading_rate = (diff(rad2deg.(hw))
+                            ./ diff(sl.time))
+            v_app = sl.v_app[2:end]
+            us_seg = us_pct[2:end]
+
+            gk = similar(heading_rate)
+            for k in eachindex(gk)
+                gk[k] = abs(us_seg[k]) > 1.0 ?
+                    heading_rate[k] /
+                        (v_app[k] * us_seg[k] / 100.0) :
+                    NaN
+            end
+
+            push!(all_data, gk)
+            push!(all_labels,
+                L"g_k" * actual_suffixes[i])
+            push!(all_times, sl.time[2:end])
+        end
+        push!(panels, (data=all_data, labels=all_labels,
+            times=all_times, ylabel=L"g_k \; [-]"))
+    end
+
+    # --- Steering panel (only when tape_lengths) ---
+    if !isnothing(tape_lengths)
+        all_data, all_labels, all_times = [], [], []
+        for (i, _) in enumerate(logs)
+            tl = tape_lengths[i]
+            push!(all_data, collect(tl.steering))
+            push!(all_labels,
+                L"u_s" * actual_suffixes[i])
+            push!(all_times, collect(tl.time))
+        end
+        push!(panels, (data=all_data, labels=all_labels,
+            times=all_times,
+            ylabel=L"u_s \; [\%]"))
+    end
+
+    # --- Render panels ---
+    n_panels = length(panels)
+    fig = Figure(; size)
+    axes = Axis[]
+    label_fontsize = 16
+    ticklabelsize = 12
+
+    for (i, panel) in enumerate(panels)
+        if i == 1
+            ax = Axis(fig[i, 1];
+                ylabel=panel.ylabel,
+                ylabelsize=label_fontsize,
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+        else
+            ax = Axis(fig[i, 1];
+                ylabel=panel.ylabel,
+                ylabelsize=label_fontsize,
+                xticklabelsvisible=false,
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+            linkxaxes!(axes[1], ax)
+        end
+
+        for (j, (data_series, label, time_vec)) in
+                enumerate(zip(panel.data,
+                    panel.labels, panel.times))
+            if length(data_series) != length(time_vec)
+                @warn "Skipping '$label': " *
+                    "len $(length(data_series)) " *
+                    "!= $(length(time_vec))"
+                continue
+            end
+            lines!(ax, time_vec, data_series;
+                label=label)
+        end
+
+        if length(panel.data) > 1
+            axislegend(ax; position=:rt,
+                labelsize=10, patchsize=(10, 5))
+        end
+
+        push!(axes, ax)
+    end
+
+    # x-label on bottom axis only
+    axes[end].xlabel = L"d \; [m]"
+    axes[end].xlabelsize = label_fontsize
+    axes[end].xticklabelsvisible = true
+
+    Makie.resize_to_layout!(fig)
+    return fig
+end
+
+# =====================================================================
+# plot_sphere_trajectory — trajectories on unit sphere with body axes
+# =====================================================================
+
+"""
+    plot_sphere_trajectory(logs; radius, colors, labels, kwargs...)
+
+Plot kite trajectories on a unit sphere. Adds body-frame axes
+(red=x, green=y, blue=z) at the final position of each trajectory.
+"""
+function V3Kite.plot_sphere_trajectory(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        radius=1.0,
+        colors=nothing,
+        labels=nothing,
+        sphere_alpha=0.2,
+        linewidth=2.0,
+        size=(800, 800))
+
+    fig = Figure(; size)
+    ax = LScene(fig[1, 1], show_axis=false)
+    ax.scene.camera.projection[] =
+        Makie.orthographicprojection(
+            -2f0, 2f0, -2f0, 2f0, -10f0, 10f0)
+
+    # Semi-transparent sphere
+    sphere_mesh = Sphere(Point3f(0, 0, 0),
+        Float32(radius))
+    mesh!(ax, sphere_mesh;
+        color=(:gray, sphere_alpha), transparency=true)
+
+    # Reference axes
+    axis_len = radius * 1.3
+    scatter!(ax, [Point3f(0, 0, 0)];
+        color=:black, markersize=10)
+    lines!(ax, [Point3f(0, 0, 0),
+        Point3f(axis_len, 0, 0)];
+        color=:red, linewidth=3)
+    text!(ax, Point3f(axis_len * 1.1, 0, 0);
+        text="X (az=0)", fontsize=14, color=:red)
+    lines!(ax, [Point3f(0, 0, 0),
+        Point3f(0, axis_len, 0)];
+        color=:green, linewidth=3)
+    text!(ax, Point3f(0, axis_len * 1.1, 0);
+        text="Y (az=-90)", fontsize=14, color=:green)
+    lines!(ax, [Point3f(0, 0, 0),
+        Point3f(0, 0, axis_len)];
+        color=:blue, linewidth=3)
+    text!(ax, Point3f(0, 0, axis_len * 1.1);
+        text="Z (el=90)", fontsize=14, color=:blue)
+
+    default_colors = [:blue, :red, :green,
+        :orange, :purple, :cyan]
+    actual_colors = isnothing(colors) ?
+        default_colors : colors
+
+    arrow_scale = 0.3 * radius
+
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        elevation = sl.elevation
+        azimuth = sl.azimuth
+
+        # ENU frame, azimuth_east convention
+        x = radius .* cos.(elevation) .* cos.(azimuth)
+        y = -radius .* cos.(elevation) .* sin.(azimuth)
+        z = radius .* sin.(elevation)
+
+        color = actual_colors[
+            mod1(i, length(actual_colors))]
+        label = isnothing(labels) ?
+            "trajectory $i" : labels[i]
+        lines!(ax, x, y, z; color, linewidth, label)
+
+        # Body-frame axes at final position
+        orient_last = sl.orient[end]
+        R_b_w = SymbolicAWEModels.quaternion_to_rotation_matrix(
+            orient_last)
+        pos = Point3f(x[end], y[end], z[end])
+
+        for (col, arrow_color) in enumerate(
+                (:red, :green, :blue))
+            dir = Vec3f(R_b_w[:, col]...) * arrow_scale
+            arrows3d!(ax, [pos], [dir];
+                color=arrow_color, shaftradius=0.01 * radius,
+                tipradius=0.02 * radius,
+                tiplength=0.05 * radius)
+        end
+    end
+
+    if length(logs) > 1 || !isnothing(labels)
+        Legend(fig[1, 2], ax)
+    end
+    return fig
+end
+
+# =====================================================================
+# plot_2d_trajectory — y vs z colored by gradient
+# =====================================================================
+
+"""
+    plot_2d_trajectory(logs; gradient=:vel, tapes=nothing,
+        labels, colormap, size)
+
+Plot kite y vs z position colored by a gradient quantity.
+
+- `gradient=:vel`: color by velocity magnitude (default)
+- `gradient=:steering`: color by steering input (requires
+  `tapes` — a vector of named tuples with a `steering` field)
+"""
+function V3Kite.plot_2d_trajectory(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        gradient::Symbol=:vel,
+        tapes=nothing,
+        labels=nothing,
+        colormap=:viridis,
+        size=(800, 600))
+
+    if gradient == :steering && isnothing(tapes)
+        error("tapes required for gradient=:steering")
+    end
+
+    has_tapes = !isnothing(tapes)
+    fig = Figure(; size)
+    ax = Axis(fig[1, 1];
+        xlabel=L"y \; [m]", ylabel=L"z \; [m]",
+        aspect=DataAspect())
+
+    # Collect all gradient values for consistent range
+    all_vals = Float64[]
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        if gradient == :vel
+            for k in eachindex(sl.vel_kite)
+                push!(all_vals,
+                    norm(sl.vel_kite[k]))
+            end
+        elseif gradient == :steering
+            append!(all_vals, tapes[i].steering)
+        else
+            error("Unknown gradient: $gradient")
+        end
+    end
+    vmin, vmax = extrema(all_vals)
+
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        y_pos = [sl.Y[k][1]
+                 for k in eachindex(sl.Y)]
+        z_pos = [sl.Z[k][1]
+                 for k in eachindex(sl.Z)]
+        vals = if gradient == :vel
+            [norm(sl.vel_kite[k])
+             for k in eachindex(sl.vel_kite)]
+        else
+            collect(Float64, tapes[i].steering)
+        end
+
+        label = isnothing(labels) ?
+            "trajectory $i" : labels[i]
+        n = min(length(y_pos), length(vals))
+        lw = i == 1 ? 4.0 : 2.5
+        lines!(ax, y_pos[1:n], z_pos[1:n];
+            color=vals[1:n], colormap,
+            colorrange=(vmin, vmax),
+            linewidth=lw,
+            label=i == 1 ? label : nothing)
+        # Overlay dotted line for non-primary traces
+        # (CairoMakie ignores linestyle with vector color)
+        if i > 1
+            lines!(ax, y_pos[1:n], z_pos[1:n];
+                color=:white, linewidth=lw,
+                linestyle=Makie.Linestyle([0, 2, 5, 7]))
+            # Invisible entry for legend with visible style
+            lines!(ax, Float64[], Float64[];
+                color=:black, linewidth=lw,
+                linestyle=Makie.Linestyle([0, 2, 5, 7]),
+                label)
+        end
+    end
+
+    cb_label = if gradient == :vel
+        L"v_k \; [m/s]"
+    else
+        L"steering \; [\%]"
+    end
+    Colorbar(fig[1, 2]; colormap,
+        colorrange=(vmin, vmax), label=cb_label)
+
+    # Steering comparison subplot
+    if has_tapes
+        ax2 = Axis(fig[2, 1];
+            xlabel=L"distance \; [m]",
+            ylabel=L"steering \; [\%]")
+        for (i, tp) in enumerate(tapes)
+            label = isnothing(labels) ?
+                "trajectory $i" : labels[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax2,
+                collect(Float64, tp.time),
+                collect(Float64, tp.steering);
+                linewidth=lw, linestyle=ls, label)
+        end
+        axislegend(ax2; position=:rt)
+        rowsize!(fig.layout, 2, Relative(0.25))
+    end
+
+    if length(logs) > 1 || !isnothing(labels)
+        row = has_tapes ? 3 : 2
+        Legend(fig[row, 1], ax;
+            orientation=:horizontal)
+    end
+
     return fig
 end
 
