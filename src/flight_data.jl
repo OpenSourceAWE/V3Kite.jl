@@ -332,7 +332,7 @@ function update_sys_struct_from_data!(sys, row;
     winches[1].brake = true
 
     # Set steering/depower from CSV data
-    set_steering!(sys, row.steering / 100.0, config;
+    set_steering!(sys, row.steering, config;
         min_l0=0.01)
-    set_depower!(sys, row.depower / 100.0, config)
+    set_depower!(sys, row.depower, config)
 end

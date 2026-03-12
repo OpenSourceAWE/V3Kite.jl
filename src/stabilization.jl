@@ -94,18 +94,19 @@ function settle_wing(config::V3SettleConfig;
         gc.depower_reduction : 0.0
     st_reduction = gc.reduce_steering ?
         gc.steering_reduction : 0.0
-    dp_pct = if !isnothing(config.end_depower)
-        config.end_depower
+    dp_norm = if !isnothing(config.end_depower)
+        config.end_depower / 100.0
     elseif !isnothing(init_row)
         init_row.depower
     else
         0.0
     end
-    st_pct = isnothing(init_row) ? 0.0 : init_row.steering
-    depower_tape = depower_percentage_to_length(dp_pct;
+    st_norm = isnothing(init_row) ? 0.0 : init_row.steering
+    depower_tape = depower_percentage_to_length(
+        dp_norm * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
     L_left, L_right = steering_percentage_to_lengths(
-        st_pct;
+        st_norm * 100.0;
         l0_base=V3_STEERING_L0_BASE - st_reduction)
     tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
     te_f = gc.reduce_te ? gc.te_frac : 1.0
@@ -229,8 +230,8 @@ function _run_zero_g_settling!(config::V3SettleConfig;
 
     # Set control from init_row if provided
     if !isnothing(init_row)
-        set_steering!(sys, init_row.steering / 100.0, gc)
-        set_depower!(sys, init_row.depower / 100.0, gc)
+        set_steering!(sys, init_row.steering, gc)
+        set_depower!(sys, init_row.depower, gc)
     end
 
     logger, sys_state = create_logger(sam, config.num_steps)
@@ -320,7 +321,8 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         # Ramp depower linearly over settling steps
         if !isnothing(config.start_depower)
             dp_end = isnothing(config.end_depower) ?
-                init_row.depower : config.end_depower
+                init_row.depower * 100.0 :
+                config.end_depower
             frac = (step - 1) / max(config.num_steps - 1, 1)
             dp = config.start_depower +
                 frac * (dp_end - config.start_depower)

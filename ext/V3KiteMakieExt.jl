@@ -281,8 +281,8 @@ function V3Kite.plot_yaw_rate_vs_steering(
         end
         yaw_rate = diff(hw) ./ dt
 
-        us = tape.steering[2:end] / 100
-        mask = abs.(us) .> min_steering / 100
+        us = tape.steering[2:end]
+        mask = abs.(us) .> min_steering
         x = abs.(us[mask] .* sl.v_app[2:end][mask])
         y = abs.(yaw_rate[mask])
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
@@ -445,9 +445,9 @@ function V3Kite.plot_replay(
 
             gk = similar(heading_rate)
             for k in eachindex(gk)
-                gk[k] = abs(us_seg[k]) > 1.0 ?
+                gk[k] = abs(us_seg[k]) > 0.01 ?
                     heading_rate[k] /
-                        (v_app[k] * us_seg[k] / 100.0) :
+                        (v_app[k] * us_seg[k]) :
                     NaN
             end
 
@@ -465,7 +465,7 @@ function V3Kite.plot_replay(
         all_data, all_labels, all_times = [], [], []
         for (i, _) in enumerate(logs)
             tl = tape_lengths[i]
-            push!(all_data, collect(tl.steering))
+            push!(all_data, collect(tl.steering .* 100))
             push!(all_labels,
                 L"u_s" * actual_suffixes[i])
             push!(all_times, collect(tl.time))
@@ -667,7 +667,7 @@ function V3Kite.plot_2d_trajectory(
                     norm(sl.vel_kite[k]))
             end
         elseif gradient == :steering
-            append!(all_vals, tapes[i].steering)
+            append!(all_vals, tapes[i].steering .* 100)
         else
             error("Unknown gradient: $gradient")
         end
@@ -684,7 +684,7 @@ function V3Kite.plot_2d_trajectory(
             [norm(sl.vel_kite[k])
              for k in eachindex(sl.vel_kite)]
         else
-            collect(Float64, tapes[i].steering)
+            collect(Float64, tapes[i].steering .* 100)
         end
 
         label = isnothing(labels) ?
@@ -721,25 +721,40 @@ function V3Kite.plot_2d_trajectory(
     # Steering comparison subplot
     if has_tapes
         ax2 = Axis(fig[2, 1];
-            xlabel=L"distance \; [m]",
-            ylabel=L"steering \; [\%]")
+            ylabel=L"steering \; [\%]",
+            xticklabelsvisible=false)
         for (i, tp) in enumerate(tapes)
-            label = isnothing(labels) ?
-                "trajectory $i" : labels[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             lines!(ax2,
                 collect(Float64, tp.time),
-                collect(Float64, tp.steering);
-                linewidth=lw, linestyle=ls, label)
+                collect(Float64, tp.steering .* 100);
+                linewidth=lw, linestyle=ls)
         end
-        axislegend(ax2; position=:rt)
-        rowsize!(fig.layout, 2, Relative(0.25))
+        rowsize!(fig.layout, 2, Relative(0.2))
     end
 
+    # Winch force subplot
+    next_row = has_tapes ? 3 : 2
+    ax_wf = Axis(fig[next_row, 1];
+        xlabel=L"distance \; [m]",
+        ylabel=L"F_t \; [N]")
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        wf = [sl.winch_force[k][1]
+              for k in eachindex(sl.winch_force)]
+        lw = i == 1 ? 2.0 : 1.5
+        ls = i == 1 ? :solid : :dash
+        lines!(ax_wf, collect(sl.time), wf;
+            linewidth=lw, linestyle=ls)
+    end
+    if has_tapes
+        linkxaxes!(ax2, ax_wf)
+    end
+    rowsize!(fig.layout, next_row, Relative(0.2))
+
     if length(logs) > 1 || !isnothing(labels)
-        row = has_tapes ? 3 : 2
-        Legend(fig[row, 1], ax;
+        Legend(fig[next_row + 1, 1], ax;
             orientation=:horizontal)
     end
 
