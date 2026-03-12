@@ -39,13 +39,13 @@ SETTLE_ONLY = false
 SETTLE = true
 CONST_WIND = false
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -4.0
+DEPOWER_OFFSET_2025 = -10.0
 WING_SYMMETRIC_FORCE = [0.0, 0.0, 0.0]
 STEERING_MULTIPLIER = 1.0
-HEADING_KP = 0.3
-HEADING_TI = 1.0
+HEADING_KP = 0.0
+HEADING_TI = 0.0
 LATERAL_KP = 0.0
-STEERING_OFFSET = 4.16
+STEERING_OFFSET = 0.0
 BODY_DAMPING = [0.0, 0.0, 20.0]
 
 # Maneuver selection
@@ -59,10 +59,10 @@ end
 SECTION = "$(SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
-    end_utc = "15:36:41.0"
+    end_utc = "15:36:49.0"
 elseif SECTION == "straight_left_2025"
     start_utc = "15:36:49.0"
-    end_utc = "15:36:52.0"
+    end_utc = "15:36:59.0"
 elseif SECTION == "power_depower_2025"
     start_utc = "15:42:11.0"
     end_utc = "15:42:21.0"
@@ -133,9 +133,9 @@ function update_vel_from_csv!(sys, row,
     end
 
     # CSV steering (positive = right turn)
-    steering = clamp(row.steering, -100.0, 100.0)
+    steering = clamp(row.steering, -1.0, 1.0)
     set_steering!(sys,
-        steering * STEERING_MULTIPLIER / 100.0 +
+        steering * STEERING_MULTIPLIER +
             heading_correction, gc;
         min_l0=0.01)
 
@@ -146,10 +146,10 @@ function update_vel_from_csv!(sys, row,
     winch.tether_len = row.tether_len
 
     # Depower from CSV
-    set_depower!(sys, row.depower / 100.0, gc)
+    set_depower!(sys, row.depower, gc)
 
     eff_steering = steering * STEERING_MULTIPLIER +
-        heading_correction * 100.0
+        heading_correction
     return eff_steering, row.depower
 end
 
@@ -176,10 +176,11 @@ function run_physics_replay(h5_path;
         dp = raw.kcu_actual_depower
         if is_2019
             # u_dp_2025 = 0.2564 - 0.0768 * u_p_2019
-            dp = (0.2564 - 0.0768 * dp / 100.0) * 100.0
-            dp += DEPOWER_OFFSET_2019
+            dp = 0.2564 - 0.0768 * dp / 100.0
+            dp += DEPOWER_OFFSET_2019 / 100.0
         else
-            dp += DEPOWER_OFFSET_2025
+            dp = dp / 100.0
+            dp += DEPOWER_OFFSET_2025 / 100.0
         end
         return (
             time = raw.time,
@@ -196,7 +197,7 @@ function run_physics_replay(h5_path;
             tether_len = raw.ekf_tether_length,
             tether_vel = raw.tether_reelout_speed,
             tether_force = raw.ground_tether_force,
-            steering = raw.kcu_actual_steering,
+            steering = raw.kcu_actual_steering / 100.0,
             depower = dp,
             distance = raw.distance,
             cumulative_distance = raw.cumulative_distance,
@@ -227,9 +228,9 @@ function run_physics_replay(h5_path;
         dt=0.001,
         num_steps=100,
         num_substeps=5,
-        start_depower=row1.depower+10.0,
+        start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
-            reduce_tip=false, reduce_te=true,
+            reduce_tip=true, reduce_te=true,
             reduce_depower=false),
         fix_sphere_idxs=[])
     if SETTLE
@@ -298,6 +299,7 @@ function run_physics_replay(h5_path;
     sys = sam.sys_struct
     SymbolicAWEModels.set_body_frame_damping(
         sys, BODY_DAMPING, 1:38)
+    distribute_wing_mass!(sys, 11.0; dist=0.6)
 
     dt = data.time[2] - data.time[1]
     reset_distance_tracker!()
@@ -502,7 +504,7 @@ if !SETTLE_ONLY
     yaw_fig = plot_yaw_rate_vs_steering(
         [syslog, datalog],
         [sim_tape, data_tape];
-        min_steering=5.0,
+        min_steering=0.05,
         labels=["sim", "data"], dt)
 
     # Body frame plots for matched photogrammetry frames

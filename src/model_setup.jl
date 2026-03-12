@@ -67,6 +67,32 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 end
 
 """
+    distribute_wing_mass!(sys, mass; dist=0.75)
+
+Distribute wing mass over LE-TE pairs proportional to chord
+length. `dist` controls the LE/TE split (0.75 = 75% on LE).
+"""
+function distribute_wing_mass!(sys, mass; dist=0.75)
+    wing_pts = sort(
+        [p for p in sys.points if p.type == WING],
+        by=p -> p.idx)
+    n = length(wing_pts)
+    iseven(n) || error(
+        "Expected even number of wing points, got $n")
+    pairs = [(wing_pts[i], wing_pts[i+1])
+             for i in 1:2:n]
+    chords = [norm(le.pos_b - te.pos_b)
+              for (le, te) in pairs]
+    total_chord = sum(chords)
+    for (i, (le, te)) in enumerate(pairs)
+        pair_mass = mass * chords[i] / total_chord
+        le.extra_mass = pair_mass * dist
+        te.extra_mass = pair_mass * (1 - dist)
+    end
+    return nothing
+end
+
+"""
     adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw; tether_point_idxs=V3_TETHER_POINT_IDXS)
 
 Update the winch rest length, reposition tether points in CAD/body frames,
