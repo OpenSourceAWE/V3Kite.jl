@@ -107,6 +107,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
     sys = load_sys_struct_from_yaml(struc_yaml_full;
         system_name=model_name, set, wing_type=config.wing_type, vsm_set)
+    apply_vsm_solver_settings!(sys)
 
     # Initialize damping
     SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)
@@ -151,6 +152,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
     wing_type_str = config.wing_type == SymbolicAWEModels.REFINE ? "REFINE" : "QUATERNION"
     @info "Initializing $wing_type_str model..."
     SymbolicAWEModels.init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sam.sys_struct)
 
     # Set winch brake
     sam.sys_struct.winches[1].brake = config.brake

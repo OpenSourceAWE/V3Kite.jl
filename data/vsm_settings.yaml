@@ -76,7 +76,7 @@ solver_settings:
 
   # --- Initial Conditions ---
   type_initial_gamma_distribution: ELLIPTIC # Starting circulation distribution
-  use_gamma_prev: false # avoid delayed stall predictions
+  use_gamma_prev: false # false is good to avoid delayed stall predictions
 
   # --- Output Control ---
   calc_only_f_and_gamma: false # true=compute only forces & circulation

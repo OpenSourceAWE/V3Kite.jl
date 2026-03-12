@@ -94,6 +94,7 @@ function run_zenith_circles(;
 
     init!(sam; remake=false,
         ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sys)
 
     for wing in sys.wings
         wing.vsm_wing.use_prior_polar = true

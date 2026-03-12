@@ -75,6 +75,7 @@ sam, sys = create_v3_model(config)
 
 @info "Initializing model..."
 init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
+apply_vsm_solver_settings!(sys)
 sys.winches[1].brake = true
 
 # Logger

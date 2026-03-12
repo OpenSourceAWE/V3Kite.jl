@@ -14,8 +14,9 @@ Usage:
 
 using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
-    V3_DEPOWER_IDX, V3_STEERING_GAIN
+    V3_DEPOWER_IDX
 using GLMakie
+using CairoMakie
 using LinearAlgebra
 using Statistics
 
@@ -26,6 +27,17 @@ using Statistics
 DATA_DIR = joinpath(
     dirname(@__DIR__),
     "processed_data")
+
+# Replay styling (post-processed on the Makie scene).
+# `REPLAY_SEGMENT_LINEWIDTH` targets the main tether/segment plot.
+# `REPLAY_OTHER_LINEWIDTH` applies to other line plots that expose linewidth.
+REPLAY_SEGMENT_LINEWIDTH = nothing
+REPLAY_OTHER_LINEWIDTH = nothing
+# Segment IDs to emphasize in replay (from `data/struc_geometry.yaml`):
+# 1:9 leading edge tubes, 10:19 struts (chords).
+REPLAY_THICK_SEGMENT_IDS = collect(1:19)
+REPLAY_THICK_SEGMENT_LINEWIDTH = 5.0
+REPLAY_THICK_SEGMENT_COLOR = :black
 
 # =============================================================================
 # Helper functions
@@ -63,6 +75,177 @@ function resolve_log_file(log_name, base_dir)
           join(unique(candidates), "\n"))
 end
 
+function _read_plot_attr(attr)
+    try
+        return attr[]
+    catch
+        return attr
+    end
+end
+
+function _set_linewidth!(plot_obj, width::Real)
+    hasproperty(plot_obj, :linewidth) || return false
+    lw_attr = getproperty(plot_obj, :linewidth)
+    try
+        lw_attr[] = float(width)
+    catch
+        return false
+    end
+    return true
+end
+
+function _walk_scene_plots!(f::Function, obj)
+    f(obj)
+    hasproperty(obj, :plots) || return
+    for child in getproperty(obj, :plots)
+        _walk_scene_plots!(f, child)
+    end
+end
+
+# Backward-compatible argument order.
+_walk_scene_plots!(obj, f::Function) = _walk_scene_plots!(f, obj)
+
+function _normalize_segment_ids(segment_ids)
+    ids = Int[]
+    for sid in segment_ids
+        sid_int = Int(sid)
+        sid_int > 0 || continue
+        push!(ids, sid_int)
+    end
+    sort!(ids)
+    unique!(ids)
+    return ids
+end
+
+function _subset_segment_points(points, segment_ids)
+    out = Point3f[]
+    for seg_id in segment_ids
+        i1 = 2 * seg_id - 1
+        i2 = i1 + 1
+        if i2 <= length(points)
+            push!(out, points[i1])
+            push!(out, points[i2])
+        end
+    end
+    return out
+end
+
+function _find_plot_by_label(scene, target_label::AbstractString)
+    found = Ref{Any}(nothing)
+    _walk_scene_plots!(scene) do plot_obj
+        found[] === nothing || return
+        hasproperty(plot_obj, :label) || return
+        label = _read_plot_attr(getproperty(plot_obj, :label))
+        if label == target_label
+            found[] = plot_obj
+        end
+    end
+    return found[]
+end
+
+function _overlay_thick_segments!(scene, segment_ids;
+    linewidth::Union{Nothing,Real}=nothing, color=:black)
+    linewidth === nothing && return nothing
+    ids = _normalize_segment_ids(segment_ids)
+    isempty(ids) && return nothing
+
+    segment_plot = _find_plot_by_label(scene, "Segments")
+    segment_plot === nothing && return nothing
+
+    segment_points_attr = try
+        segment_plot[1]
+    catch
+        return nothing
+    end
+
+    overlay_points = try
+        lift(points -> _subset_segment_points(points, ids),
+            segment_points_attr)
+    catch
+        _subset_segment_points(_read_plot_attr(segment_points_attr),
+            ids)
+    end
+
+    return linesegments!(scene, overlay_points;
+        color=color, linewidth=float(linewidth), transparency=true)
+end
+
+function style_replay_scene!(scene;
+    segment_linewidth::Union{Nothing,Real}=nothing,
+    other_linewidth::Union{Nothing,Real}=nothing,
+    thick_segment_ids=Int[],
+    thick_segment_linewidth::Union{Nothing,Real}=nothing,
+    thick_segment_color=:black)
+    if segment_linewidth === nothing &&
+       other_linewidth === nothing &&
+       thick_segment_linewidth === nothing
+        return scene
+    end
+
+    _walk_scene_plots!(scene) do plot_obj
+        hasproperty(plot_obj, :linewidth) || return
+
+        label = hasproperty(plot_obj, :label) ?
+                _read_plot_attr(getproperty(plot_obj, :label)) : nothing
+
+        if segment_linewidth !== nothing && label == "Segments"
+            _set_linewidth!(plot_obj, segment_linewidth)
+        elseif other_linewidth !== nothing
+            _set_linewidth!(plot_obj, other_linewidth)
+        end
+    end
+
+    _overlay_thick_segments!(scene, thick_segment_ids;
+        linewidth=thick_segment_linewidth,
+        color=thick_segment_color)
+
+    return scene
+end
+
+function udp_tag_from_log_name(log_name::AbstractString, fallback_udp::Real)
+    m = match(r"_udp_([0-9]{3})", log_name)
+    if m !== nothing
+        return String(m.captures[1])
+    end
+    return lpad(string(Int(round(fallback_udp * 100))), 3, '0')
+end
+
+function find_initial_state_geometry(; lt::Int, udp_tag::AbstractString,
+    v_wind::Real, data_root::String=v3_data_path())
+    udp_tag_s = String(udp_tag)
+    pat = Regex("^struc_geometry_initial_state_lt_$(lt)_vw_([0-9]+)_udp_$(udp_tag_s)\\.yaml" * "\$")
+    target_vw = Int(round(v_wind * 10))
+    candidates = Tuple{String,Int}[]
+    for name in readdir(data_root)
+        m = match(pat, name)
+        m === nothing && continue
+        push!(candidates, (name, parse(Int, m.captures[1])))
+    end
+    isempty(candidates) && return nothing
+
+    sort!(candidates; by=x -> (abs(x[2] - target_vw), x[2], x[1]))
+    struc_name = first(candidates)[1]
+    aero_name = replace(struc_name,
+        "struc_geometry_" => "aero_geometry_")
+    isfile(joinpath(data_root, aero_name)) || return nothing
+    return (struc_yaml_path=struc_name,
+        aero_yaml_path=aero_name)
+end
+
+function effective_v_wind_from_log(lg, fallback::Real)
+    sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+    if !isempty(sl) && hasproperty(sl[1], :v_wind_gnd)
+        vw = getproperty(sl[1], :v_wind_gnd)
+        if !isempty(vw)
+            v = abs(float(vw[1]))
+            if isfinite(v) && v > 0
+                return v
+            end
+        end
+    end
+    return float(fallback)
+end
+
 function load_log_and_system(; log_name)
     m = match(
         r"_(?:u_dp|up)_([0-9]+(?:\\.[0-9]+)?)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
@@ -74,25 +257,46 @@ function load_log_and_system(; log_name)
     us = parse(Float64, us_token) / 100.0
     v_wind = parse(Int, m.captures[3])
     lt = parse(Int, m.captures[4])
-    @info "Parsed tags" u_dp us v_wind lt
-
-    config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
-        v_wind=Float64(v_wind),
-        tether_length=Float64(lt),
-        wing_type=REFINE,
-    )
-    sam, sys = create_v3_model(config)
-    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
-        reduce_te=true))
-
     log_file, log_dir, log_path = resolve_log_file(
         log_name, DATA_DIR)
     @info "Resolved log file" log_path
     lg = load_log(log_file; path=log_dir)
-    return lg, sam, u_dp, us, v_wind, lt
+    v_wind_ref = effective_v_wind_from_log(lg, v_wind)
+    @info "Parsed tags" u_dp us v_wind lt v_wind_ref
+
+    struc_yaml_path = "struc_geometry.yaml"
+    aero_yaml_path = "aero_geometry.yaml"
+    geom_adjust_cfg = V3GeomAdjustConfig(
+        reduce_tip=true, reduce_te=true)
+
+    if occursin("circles_from_initial_state", log_name)
+        udp_tag = udp_tag_from_log_name(log_name, u_dp)
+        geom = find_initial_state_geometry(;
+            lt, udp_tag, v_wind=v_wind_ref)
+        if geom !== nothing
+            struc_yaml_path = geom.struc_yaml_path
+            aero_yaml_path = geom.aero_yaml_path
+            geom_adjust_cfg = nothing
+            @info "Using initial-state geometry" struc_yaml_path aero_yaml_path
+        else
+            @warn "Initial-state geometry not found; falling back to base geometry + model_setup adjustments" lt udp_tag
+        end
+    end
+
+    config = V3SimConfig(
+        struc_yaml_path=struc_yaml_path,
+        aero_yaml_path=aero_yaml_path,
+        vsm_settings_path="vsm_settings.yaml",
+        v_wind=v_wind_ref,
+        tether_length=Float64(lt),
+        wing_type=REFINE,
+    )
+    sam, sys = create_v3_model(config)
+    if geom_adjust_cfg !== nothing
+        apply_geom_adjustments!(sys, geom_adjust_cfg)
+    end
+
+    return lg, sam, u_dp, us, v_wind_ref, lt
 end
 
 # =============================================================================
@@ -266,7 +470,7 @@ end
 # Time series plotting
 # =============================================================================
 
-"""Reconstruct steering command [%] from left-right tape length difference."""
+"""Reconstruct steering command [%] from left-right tape lengths."""
 function steering_tape_trace(lg, sam)
     sl = hasproperty(lg, :syslog) ? lg.syslog : lg
     if isempty(sl)
@@ -295,11 +499,8 @@ function steering_tape_trace(lg, sam)
             (Y[lj_r] - Y[li_r])^2 +
             (Z[lj_r] - Z[li_r])^2)
 
-        # Match calibration inverse:
-        # u_s[%] = (L_right - L_left) / V3_STEERING_GAIN * 100
-        # steering[k] = (l_right - l_left) / V3_STEERING_GAIN * 100.0
-        # l_left = 1.6 + 1.4*u_s
-        steering[k] = abs((l_left - 1.6) / 1.4 * 100.0)
+        steering[k] = steering_length_to_percentage(
+            l_left, l_right)
         time[k] = Float64(state.time)
     end
     return (time=time, steering=steering)
@@ -333,20 +534,26 @@ function heading_rate_from_states(sl)
     return rates, time[1:end-1]
 end
 
-function steering_command_from_states(sl, sys; steering_l0=1.6)
-    seg = sys.segments[V3_STEERING_LEFT_IDX]
-    pi_, pj = seg.point_idxs
+function steering_command_from_states(sl, sys)
+    seg_left = sys.segments[V3_STEERING_LEFT_IDX]
+    seg_right = sys.segments[V3_STEERING_RIGHT_IDX]
+    li_l, lj_l = seg_left.point_idxs
+    li_r, lj_r = seg_right.point_idxs
     n = length(sl)
     us_cmd = zeros(Float64, n)
     @inbounds for k in 1:n
         state = sl[k]
         X, Y, Z = state.X, state.Y, state.Z
         l_left = sqrt(
-            (X[pj] - X[pi_])^2 +
-            (Y[pj] - Y[pi_])^2 +
-            (Z[pj] - Z[pi_])^2)
-        d = l_left - steering_l0
-        us_cmd[k] = abs(d) > 1e-6 ? d / V3_STEERING_GAIN : 0.0
+            (X[lj_l] - X[li_l])^2 +
+            (Y[lj_l] - Y[li_l])^2 +
+            (Z[lj_l] - Z[li_l])^2)
+        l_right = sqrt(
+            (X[lj_r] - X[li_r])^2 +
+            (Y[lj_r] - Y[li_r])^2 +
+            (Z[lj_r] - Z[li_r])^2)
+        us_cmd[k] = steering_length_to_percentage(
+            l_left, l_right) / 100.0
     end
     return us_cmd
 end
@@ -357,8 +564,7 @@ function gk_series(lg, sam)
     n < 2 && return Float64[], Float64[]
 
     hr, _ = heading_rate_from_states(sl)
-    us_cmd = steering_command_from_states(sl, sam.sys_struct;
-        steering_l0=1.6)
+    us_cmd = steering_command_from_states(sl, sam.sys_struct)
 
     v_app = Vector{Float64}(undef, n)
     time = Vector{Float64}(undef, n)
@@ -379,7 +585,7 @@ function gk_series(lg, sam)
 end
 
 function print_gk_window_summary(lg, sam;
-    udp::Float64, window_sec::Float64=5.0)
+    udp::Float64, window_sec::Float64=1.0)
     gk, gk_time = gk_series(lg, sam)
     @info "udp = $(round(udp, digits=3))"
     isempty(gk) && return
@@ -387,6 +593,12 @@ function print_gk_window_summary(lg, sam;
     rel_t = gk_time .- gk_time[1]
     t_end = rel_t[end]
     n_bins = max(1, Int(ceil(t_end / window_sec)))
+    window_3_10 = (rel_t .>= 3.0) .& (rel_t .<= 10.0)
+    vals_3_10 = gk[window_3_10]
+    vals_3_10 = vals_3_10[isfinite.(vals_3_10)]
+    gk_3_10_mean = isempty(vals_3_10) ? NaN : mean(vals_3_10)
+    gk_3_10_s = isfinite(gk_3_10_mean) ?
+                string(round(gk_3_10_mean, digits=4)) : "NaN"
 
     for b in 0:(n_bins-1)
         t0 = b * window_sec
@@ -404,10 +616,29 @@ function print_gk_window_summary(lg, sam;
         println("| t = $(Int(round(t0)))-$(Int(round(t1)))s " *
                 "gk = $gk_s")
     end
+    println("| t = 3-10s gk(avg) = $gk_3_10_s")
 end
 
 function plot_time_series(lg, sam)
     tape_lengths = [steering_tape_trace(lg, sam)]
+    # return plot(sam.sys_struct, lg;
+    #     tape_lengths=tape_lengths,
+    #     plot_turn_rates=false, plot_reelout=false,
+    #     plot_twist=false,
+    #     plot_yaw_rate_paper=false,
+    #     yaw_rate_paper_ylims=(-90.0, 90.0),
+    #     yaw_rate_paper_compare=false,
+    #     plot_v_app=true, plot_kite_vel=false,
+    #     plot_gk=false,
+    #     plot_aoa=true,
+    #     ylims=Dict(:aoa => (0.0, 15.0), :gk => (0.0, 15.0)),
+    #     plot_heading=false, plot_elevation=true,
+    #     plot_azimuth=true, plot_winch_force=false,
+    #     plot_set_values=false, plot_us=true,
+    #     plot_tether_actual=false,
+    #     plot_turn_radius=true,
+    #     turn_radius_ylims=(0.0, 40.0),
+    #     plot_cs=true, cs_ylims=(0.0, 0.02))
     return plot(sam.sys_struct, lg;
         tape_lengths=tape_lengths,
         plot_turn_rates=false, plot_reelout=false,
@@ -417,16 +648,20 @@ function plot_time_series(lg, sam)
         yaw_rate_paper_compare=false,
         plot_v_app=true, plot_kite_vel=false,
         plot_gk=false,
-        plot_aoa=true,
+        plot_aoa=false,
         ylims=Dict(:aoa => (0.0, 15.0), :gk => (0.0, 15.0)),
         plot_heading=false, plot_elevation=true,
-        plot_azimuth=true, plot_winch_force=false,
+        plot_azimuth=true, plot_winch_force=true,
         plot_set_values=false, plot_us=true,
         plot_tether_actual=false,
-        plot_turn_radius=true,
+        plot_turn_radius=false,
         turn_radius_ylims=(0.0, 40.0),
-        plot_cs=true, cs_ylims=(0.0, 0.02))
+        plot_cs=false, cs_ylims=(0.0, 0.02),
+        plot_aero_force=false)
 end
+
+
+# lot(::Vector{<:SystemStructure}, ::Vector{<:KiteUtils.SysLog}; plot_default, plot_reelout, plot_aero_force, plot_twist, plot_us, plot_gk, gk_ylims, plot_yaw_rate, plot_yaw_rate_paper, yaw_rate_paper_ylims, yaw_rate_paper_compare, plot_gk_paper, plot_cs, cs_ylims, turn_radius_ylims, plot_v_app, plot_kite_vel, plot_aoa, plot_sideslip, plot_heading, plot_course, plot_kiteutils_course, plot_aero_moment, plot_turn_rates, plot_turn_radius, plot_elevation, plot_azimuth, plot_wind, plot_tether_moment, plot_tether_actual, plot_winch_force, plot_set_values, plot_distance, plot_cone_angle, plot_old_heading, plot_tether, setpoints, ylims, tape_lengths, suffixes, size, show_legend, ticklabelsize, compact_labels, legend_position, legendsize)
 
 # =============================================================================
 # Tether direction analysis
@@ -827,8 +1062,12 @@ end
 # Set to "" to auto-select the latest dated directory and log file.
 log_name = ""
 # log_name =
-#     "zenith_2019_batch_2026_02_23_15_09_48/" *
-#     "hold_at_zenith_then_circles__u_dp_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
+#     "vw8_lt_270_circles_udp_042__2026_03_06_14_58_08/" *
+#     "circles_from_initial_state__up_42_us_15_vw_8_lt_269_g_0_run_002_date_2026_03_06_15_04_40"
+
+log_name =
+    "vw8_lt_270_circles_udp_034__2026_03_06_18_56_10/" *
+    "circles_from_initial_state__up_34_us_10_vw_8_lt_269_g_0_run_001_date_2026_03_06_18_56_10"
 
 # add an if log is empty, use dir name that has the last date.
 # then inside that dir, use the file_name with the last date
@@ -875,12 +1114,13 @@ seg88_nom = Float64(
     sam.sys_struct.segments[V3_DEPOWER_IDX].l0)
 seg89_nom = Float64(
     sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].l0)
-steering_tape_change = V3_STEERING_GAIN * us
-power_target_l0 = 0.2 + 5.0 * u_dp
+left_target_l0, right_target_l0 =
+    steering_percentage_to_lengths(us * 100.0)
+power_target_l0 = depower_percentage_to_length(u_dp * 100.0)
 segment_l0_adjustments = Dict(
-    V3_STEERING_LEFT_IDX => steering_tape_change,
+    V3_STEERING_LEFT_IDX => left_target_l0 - seg87_nom,
     V3_DEPOWER_IDX => power_target_l0 - seg88_nom,
-    V3_STEERING_RIGHT_IDX => -steering_tape_change,
+    V3_STEERING_RIGHT_IDX => right_target_l0 - seg89_nom,
 )
 
 stretch_info = compute_line_stretch(lg, sam;
@@ -889,8 +1129,21 @@ stretch_info = compute_line_stretch(lg, sam;
 
 # Plots
 fig_time = plot_time_series(lg, sam)
+time_series_pdf_path = let
+    log_file, log_dir, _ = resolve_log_file(log_name, DATA_DIR)
+    joinpath(log_dir, "$(log_file)_time_series.pdf")
+end
+CairoMakie.save(time_series_pdf_path, fig_time)
+@info "Saved time series PDF" time_series_pdf_path
+
 scene = replay(lg, sam.sys_struct;
     autoplay=false, loop=true, show_panes=false)
+style_replay_scene!(scene;
+    segment_linewidth=REPLAY_SEGMENT_LINEWIDTH,
+    other_linewidth=REPLAY_OTHER_LINEWIDTH,
+    thick_segment_ids=REPLAY_THICK_SEGMENT_IDS,
+    thick_segment_linewidth=REPLAY_THICK_SEGMENT_LINEWIDTH,
+    thick_segment_color=REPLAY_THICK_SEGMENT_COLOR)
 fig_wing = print_and_plot_wing(lg, sam, is_print=true)
 
 scr1 = display(fig_time)
@@ -900,6 +1153,6 @@ wait(scr2)
 scr3 = display(fig_wing)
 wait(scr3)
 
-print_gk_window_summary(lg, sam; udp=u_dp, window_sec=5.0)
+# print_gk_window_summary(lg, sam; udp=u_dp, window_sec=1.0)
 
 nothing

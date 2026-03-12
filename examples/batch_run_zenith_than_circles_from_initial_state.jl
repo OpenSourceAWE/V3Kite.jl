@@ -138,6 +138,7 @@ function make_model_from_user_geometry(;
 
     sam = SymbolicAWEModel(set, sys)
     init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sys)
 
     for ws in sys.vsm_set.wings
         ws.use_prior_polar = true
@@ -389,33 +390,129 @@ end
 # aero_yaml_input = "aero_geometry_initial_state_lt_269_vw_84_udp_019.yaml"
 # vsm_settings_input = "vsm_settings.yaml"
 
+# # =============================================================================
+# #### 0.2
+# # =============================================================================
+# udp = 0.2
+# udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+# struc_yaml_input = "struc_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
+# aero_yaml_input = "aero_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
+# vsm_settings_input = "vsm_settings.yaml"
+# snapshot_input = "initial_state_snapshot_lt_271_vw_76_udp_$udp_str.jls"
+# g_earth_vals = [0.0]
+# us_vals = [0.25] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+# vw_vals = [8.4]
+# kcu_mass_vals = [nothing]
+
+# batch_tag = "2019_circles_udp_$udp_str" *
+#             Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+# batch_dir = joinpath("processed_data", batch_tag)
+# isdir(batch_dir) || mkpath(batch_dir)
+
+# sim_time_circles = 300
+# fps_circles = 500
+# start_ramp_time = 0.0
+# ramp_time_us = 3.0
+# # startup_decay_time = sim_time_circles * 0.75
+# # startup_damping_pattern = [0.0, 20.0, 20.0]
+# # damping_pattern = [0.0, 6.0, 20.0]
+# startup_decay_time = ramp_time_us
+# startup_damping_pattern = [0.0, 10.0, 20.0]
+# damping_pattern = [0.0, 0.0, 20.0]
+
+# failed_runs = NamedTuple[]
+
+# for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+#     Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+#     run_tag = "run_" * lpad(string(run_id), 3, '0')
+#     @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+#     try
+#         run_circles_from_initial_state(;
+#             struc_yaml_path=struc_yaml_input,
+#             aero_yaml_path=aero_yaml_input,
+#             vsm_settings_path=vsm_settings_input,
+#             v_wind=vw,
+#             v_wind_base=vw,
+#             us=us,
+#             g_earth=g,
+#             kcu_mass=kcu_mass_val,
+#             sim_time_circles,
+#             fps_circles,
+#             start_ramp_time,
+#             ramp_time_us,
+#             startup_damping_pattern,
+#             damping_pattern,
+#             startup_decay_time,
+#             save_subdir=batch_tag,
+#             run_tag)
+#         @info "Completed" run_id
+#     catch err
+#         @error "Failed" run_id err
+#         push!(failed_runs, (run_id=run_id,
+#             g_earth=g,
+#             us=us,
+#             vw=vw,
+#             kcu_mass=kcu_mass_val,
+#             struc_yaml=struc_yaml_input,
+#             aero_yaml=aero_yaml_input,
+#             error=err))
+#     end
+#     GC.gc()
+# end
+
+# if !isempty(failed_runs)
+#     fp = joinpath(batch_dir, "failed_runs.txt")
+#     open(fp, "w") do io
+#         for fr in failed_runs
+#             println(io, "Run $(fr.run_id): " *
+#                         "g=$(fr.g_earth), " *
+#                         "us=$(fr.us), " *
+#                         "vw=$(fr.vw), " *
+#                         "kcu_mass=$(fr.kcu_mass), " *
+#                         "struc=$(fr.struc_yaml), " *
+#                         "aero=$(fr.aero_yaml)")
+#             println(io, "  Error: $(fr.error)")
+#         end
+#     end
+#     @info "Wrote failure list" path = fp
+# end
+
+# n_total = length(collect(Iterators.product(
+#     g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+# @info "Batch completed" total = n_total failed = length(failed_runs)
+
+
 
 # =============================================================================
-#### 0.25
-# =============================================================================
-udp = 0.25
+udp = 0.24
+lt = 270
+vw = 8.0
 udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
-struc_yaml_input = "struc_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
-aero_yaml_input = "aero_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
 vsm_settings_input = "vsm_settings.yaml"
-snapshot_input = "initial_state_snapshot_lt_271_vw_76_udp_$udp_str.jls"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
 g_earth_vals = [0.0]
-us_vals = [0.2] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
-vw_vals = [8.4]
+us_vals = [0.15, 0.2] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
 kcu_mass_vals = [nothing]
 
-batch_tag = "2019_circles_udp_$udp_str" *
-            Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
 batch_dir = joinpath("processed_data", batch_tag)
 isdir(batch_dir) || mkpath(batch_dir)
 
-sim_time_circles = 20
-fps_circles = 420
+sim_time_circles = 300
+fps_circles = 500
 start_ramp_time = 0.0
 ramp_time_us = 3.0
-startup_decay_time = sim_time_circles * 0.75
-startup_damping_pattern = [0.0, 20.0, 20.0]
-damping_pattern = [0.0, 6.0, 20.0]
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
 
 failed_runs = NamedTuple[]
 
@@ -479,178 +576,654 @@ n_total = length(collect(Iterators.product(
 @info "Batch completed" total = n_total failed = length(failed_runs)
 
 
-# # =============================================================================
-# #### 0.30
-# # =============================================================================
-# udp = 0.30
-# udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
-# struc_yaml_input = "struc_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
-# aero_yaml_input = "aero_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
-# vsm_settings_input = "vsm_settings.yaml"
-# snapshot_input = "initial_state_snapshot_lt_271_vw_76_udp_$udp_str.jls"
-# g_earth_vals = [0.0]
-# us_vals = [0.2] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
-# vw_vals = [8.4]
-# kcu_mass_vals = [nothing]
 
-# batch_tag = "circles_from_initial_state_2019_$udp_str" *
-#             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
-# batch_dir = joinpath("processed_data", batch_tag)
-# isdir(batch_dir) || mkpath(batch_dir)
+# =============================================================================
+udp = 0.26
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.15, 0.2] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
 
-# sim_time_circles = 30
-# fps_circles = 240
-# start_ramp_time = 0.0
-# ramp_time_us = 3.0
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
 # startup_decay_time = sim_time_circles * 0.75
 # startup_damping_pattern = [0.0, 20.0, 20.0]
 # damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
 
-# failed_runs = NamedTuple[]
+failed_runs = NamedTuple[]
 
-# for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
-#     Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
-#     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
-#     try
-#         run_circles_from_initial_state(;
-#             struc_yaml_path=struc_yaml_input,
-#             aero_yaml_path=aero_yaml_input,
-#             vsm_settings_path=vsm_settings_input,
-#             v_wind=vw,
-#             v_wind_base=vw,
-#             us=us,
-#             g_earth=g,
-#             kcu_mass=kcu_mass_val,
-#             sim_time_circles,
-#             fps_circles,
-#             start_ramp_time,
-#             ramp_time_us,
-#             startup_damping_pattern,
-#             damping_pattern,
-#             startup_decay_time,
-#             save_subdir=batch_tag,
-#             run_tag)
-#         @info "Completed" run_id
-#     catch err
-#         @error "Failed" run_id err
-#         push!(failed_runs, (run_id=run_id,
-#             g_earth=g,
-#             us=us,
-#             vw=vw,
-#             kcu_mass=kcu_mass_val,
-#             struc_yaml=struc_yaml_input,
-#             aero_yaml=aero_yaml_input,
-#             error=err))
-#     end
-#     GC.gc()
-# end
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
 
-# if !isempty(failed_runs)
-#     fp = joinpath(batch_dir, "failed_runs.txt")
-#     open(fp, "w") do io
-#         for fr in failed_runs
-#             println(io, "Run $(fr.run_id): " *
-#                         "g=$(fr.g_earth), " *
-#                         "us=$(fr.us), " *
-#                         "vw=$(fr.vw), " *
-#                         "kcu_mass=$(fr.kcu_mass), " *
-#                         "struc=$(fr.struc_yaml), " *
-#                         "aero=$(fr.aero_yaml)")
-#             println(io, "  Error: $(fr.error)")
-#         end
-#     end
-#     @info "Wrote failure list" path = fp
-# end
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
 
-# n_total = length(collect(Iterators.product(
-#     g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
-# @info "Batch completed" total = n_total failed = length(failed_runs)
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
 
-# # =============================================================================
-# #### 0.35
-# # =============================================================================
-# udp = 0.35
-# udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
-# struc_yaml_input = "struc_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
-# aero_yaml_input = "aero_geometry_initial_state_lt_269_vw_84_udp_$udp_str.yaml"
-# vsm_settings_input = "vsm_settings.yaml"
-# snapshot_input = "initial_state_snapshot_lt_271_vw_76_udp_$udp_str.jls"
-# g_earth_vals = [0.0]
-# us_vals = [0.1] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
-# vw_vals = [8.4]
-# kcu_mass_vals = [nothing]
 
-# batch_tag = "circles_from_initial_state_2019_$udp_str" *
-#             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
-# batch_dir = joinpath("processed_data", batch_tag)
-# isdir(batch_dir) || mkpath(batch_dir)
 
-# sim_time_circles = 100
-# fps_circles = 240
-# start_ramp_time = 0.0
-# ramp_time_us = 20.0
-# startup_decay_time = 100.0
+# =============================================================================
+udp = 0.28
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
 # startup_damping_pattern = [0.0, 20.0, 20.0]
-# damping_pattern = [0.0, 5.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
 
-# failed_runs = NamedTuple[]
+failed_runs = NamedTuple[]
 
-# for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
-#     Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
-#     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
-#     try
-#         run_circles_from_initial_state(;
-#             struc_yaml_path=struc_yaml_input,
-#             aero_yaml_path=aero_yaml_input,
-#             vsm_settings_path=vsm_settings_input,
-#             v_wind=vw,
-#             v_wind_base=vw,
-#             us=us,
-#             g_earth=g,
-#             kcu_mass=kcu_mass_val,
-#             sim_time_circles,
-#             fps_circles,
-#             start_ramp_time,
-#             ramp_time_us,
-#             startup_damping_pattern,
-#             damping_pattern,
-#             startup_decay_time,
-#             save_subdir=batch_tag,
-#             run_tag)
-#         @info "Completed" run_id
-#     catch err
-#         @error "Failed" run_id err
-#         push!(failed_runs, (run_id=run_id,
-#             g_earth=g,
-#             us=us,
-#             vw=vw,
-#             kcu_mass=kcu_mass_val,
-#             struc_yaml=struc_yaml_input,
-#             aero_yaml=aero_yaml_input,
-#             error=err))
-#     end
-#     GC.gc()
-# end
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
 
-# if !isempty(failed_runs)
-#     fp = joinpath(batch_dir, "failed_runs.txt")
-#     open(fp, "w") do io
-#         for fr in failed_runs
-#             println(io, "Run $(fr.run_id): " *
-#                         "g=$(fr.g_earth), " *
-#                         "us=$(fr.us), " *
-#                         "vw=$(fr.vw), " *
-#                         "kcu_mass=$(fr.kcu_mass), " *
-#                         "struc=$(fr.struc_yaml), " *
-#                         "aero=$(fr.aero_yaml)")
-#             println(io, "  Error: $(fr.error)")
-#         end
-#     end
-#     @info "Wrote failure list" path = fp
-# end
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
 
-# n_total = length(collect(Iterators.product(
-#     g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
-# @info "Batch completed" total = n_total failed = length(failed_runs)
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
+
+
+# =============================================================================
+udp = 0.30
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
+
+failed_runs = NamedTuple[]
+
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
+
+
+# =============================================================================
+udp = 0.34
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
+
+failed_runs = NamedTuple[]
+
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
+
+
+# =============================================================================
+udp = 0.36
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
+
+failed_runs = NamedTuple[]
+
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
+
+
+# =============================================================================
+udp = 0.38
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
+
+failed_runs = NamedTuple[]
+
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)
+
+
+# =============================================================================
+udp = 0.40
+lt = 270
+vw = 8.0
+udp_str = lpad(string(Int(round(udp * 100))), 3, '0')
+struc_yaml_input = "struc_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+aero_yaml_input = "aero_geometry_initial_state_lt_270_vw_80_udp_$udp_str.yaml"
+vsm_settings_input = "vsm_settings.yaml"
+snapshot_input = "initial_state_snapshot_lt_270_vw_80_udp_$udp_str.jls"
+g_earth_vals = [0.0]
+us_vals = [0.1, 0.15] #[0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3]
+vw_vals = [vw]
+kcu_mass_vals = [nothing]
+
+batch_tag =
+    "vw8_lt_270_circles_udp_$udp_str" *
+    Dates.format(Dates.now(), "__yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+
+sim_time_circles = 200
+fps_circles = 500
+start_ramp_time = 0.0
+ramp_time_us = 3.0
+# startup_decay_time = sim_time_circles * 0.75
+# startup_damping_pattern = [0.0, 20.0, 20.0]
+# damping_pattern = [0.0, 6.0, 20.0]
+startup_decay_time = ramp_time_us
+startup_damping_pattern = [0.0, 10.0, 20.0]
+damping_pattern = [0.0, 0.0, 20.0]
+
+failed_runs = NamedTuple[]
+
+for (run_id, (g, us, vw, kcu_mass_val)) in enumerate(
+    Iterators.product(g_earth_vals, us_vals, vw_vals, kcu_mass_vals))
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id g_earth = g us vw kcu_mass = kcu_mass_val struc_yaml = struc_yaml_input aero_yaml = aero_yaml_input
+    try
+        run_circles_from_initial_state(;
+            struc_yaml_path=struc_yaml_input,
+            aero_yaml_path=aero_yaml_input,
+            vsm_settings_path=vsm_settings_input,
+            v_wind=vw,
+            v_wind_base=vw,
+            us=us,
+            g_earth=g,
+            kcu_mass=kcu_mass_val,
+            sim_time_circles,
+            fps_circles,
+            start_ramp_time,
+            ramp_time_us,
+            startup_damping_pattern,
+            damping_pattern,
+            startup_decay_time,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, (run_id=run_id,
+            g_earth=g,
+            us=us,
+            vw=vw,
+            kcu_mass=kcu_mass_val,
+            struc_yaml=struc_yaml_input,
+            aero_yaml=aero_yaml_input,
+            error=err))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "g=$(fr.g_earth), " *
+                        "us=$(fr.us), " *
+                        "vw=$(fr.vw), " *
+                        "kcu_mass=$(fr.kcu_mass), " *
+                        "struc=$(fr.struc_yaml), " *
+                        "aero=$(fr.aero_yaml)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+n_total = length(collect(Iterators.product(
+    g_earth_vals, us_vals, vw_vals, kcu_mass_vals)))
+@info "Batch completed" total = n_total failed = length(failed_runs)

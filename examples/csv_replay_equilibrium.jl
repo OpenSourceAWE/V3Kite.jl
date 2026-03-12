@@ -287,9 +287,11 @@ function run_physics_replay(csv_path;
 
     sam = SymbolicAWEModel(set, sys_struct)
     init!(sam)
+    apply_vsm_solver_settings!(sam.sys_struct)
 
     csv_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
     init!(csv_sam)
+    apply_vsm_solver_settings!(csv_sam.sys_struct)
 
     n_steps = length(csv_data.time)
     sys_state = SysState(sam)
@@ -384,6 +386,7 @@ function run_physics_replay(csv_path;
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())
 
+            apply_vsm_solver_settings!(sam.sys_struct)
             next_step!(sam; dt, set_values=[set_value])
 
             update_sys_state!(sys_state, sam)

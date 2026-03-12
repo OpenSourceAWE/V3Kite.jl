@@ -82,6 +82,7 @@ export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
 export save_and_load_log
+export apply_vsm_solver_settings!
 export create_heading_pid, create_winch_pid
 export report_performance
 

@@ -89,6 +89,7 @@ sam, sys = create_v3_model(config)
 
 @info "Initializing model..."
 init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+apply_vsm_solver_settings!(sys)
 sys.winches[1].brake = true
 sys.points[1].extra_mass = 2.0
 sys.points[1].area = 0.2

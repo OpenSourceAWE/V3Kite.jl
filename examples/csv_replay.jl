@@ -254,6 +254,7 @@ function run_physics_replay(csv_path;
     # CSV reference model
     csv_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
     init!(csv_sam)
+    apply_vsm_solver_settings!(csv_sam.sys_struct)
     csv_state = SysState(csv_sam)
     csv_logger = Logger(csv_sam, n_steps)
 
@@ -332,6 +333,7 @@ function run_physics_replay(csv_path;
                 k_spring=CSV_SPRING_K * total_mass,
                 k_damping=CSV_DAMPING_K * total_mass)
 
+            apply_vsm_solver_settings!(sam.sys_struct)
             next_step!(sam; dt, set_values=[set_value])
 
             # Extra points comparison

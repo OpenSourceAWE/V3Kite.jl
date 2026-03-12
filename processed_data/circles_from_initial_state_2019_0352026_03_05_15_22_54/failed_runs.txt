@@ -1,2 +1,0 @@
-Run 1: g=0.0, us=0.1, vw=8.4, kcu_mass=nothing, struc=struc_geometry_initial_state_lt_269_vw_84_udp_035.yaml, aero=aero_geometry_initial_state_lt_269_vw_84_udp_035.yaml
-  Error: ErrorException("Solver unstable at t=41.6051: Unstable")

@@ -63,6 +63,7 @@ function run_example()
     @info "Initializing model..."
     init!(sam; remake=config.remake_cache,
         ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sys)
 
     n_steps = Int(round(FPS * SIM_TIME))
     dt = SIM_TIME / n_steps

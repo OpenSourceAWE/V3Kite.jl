@@ -118,6 +118,7 @@ function settle_wing(config::V3SettleConfig;
     sam = SymbolicAWEModel(set, sys)
     SymbolicAWEModels.init!(sam;
         remake=false, ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sam.sys_struct)
 
     return sam, syslog
 end
@@ -176,6 +177,7 @@ function _run_settling_sim!(config::V3SettleConfig;
     apply_geom_adjustments!(sys, gc)
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sam.sys_struct)
     @show sys.winches[1].tether_len sys.segments[90].l0 set.l_tether
 
     @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt

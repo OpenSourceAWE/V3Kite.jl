@@ -13,7 +13,7 @@ Usage:
 """
 
 using V3Kite
-using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_GAIN
+using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 using LinearAlgebra
 using Statistics
 using Dates
@@ -37,22 +37,114 @@ function parse_up_us_vw_lt(log_name)
     return up_raw / 100, us_raw / 100, v_wind, lt
 end
 
+function udp_tag_from_log_name(log_name::AbstractString, fallback_udp::Real)
+    m = match(r"_udp_([0-9]{3})", log_name)
+    if m !== nothing
+        return String(m.captures[1])
+    end
+    return lpad(string(Int(round(fallback_udp * 100))), 3, '0')
+end
+
+function find_initial_state_geometry(; lt::Int, udp_tag::AbstractString,
+    v_wind::Real, data_root::String=v3_data_path())
+    udp_tag_s = String(udp_tag)
+    pat = Regex("^struc_geometry_initial_state_lt_$(lt)_vw_([0-9]+)_udp_$(udp_tag_s)\\.yaml" * "\$")
+    target_vw = Int(round(v_wind * 10))
+    candidates = Tuple{String,Int}[]
+    for name in readdir(data_root)
+        m = match(pat, name)
+        m === nothing && continue
+        push!(candidates, (name, parse(Int, m.captures[1])))
+    end
+    isempty(candidates) && return nothing
+
+    sort!(candidates; by=x -> (abs(x[2] - target_vw), x[2], x[1]))
+    struc_name = first(candidates)[1]
+    aero_name = replace(struc_name,
+        "struc_geometry_" => "aero_geometry_")
+    isfile(joinpath(data_root, aero_name)) || return nothing
+    return (struc_yaml_path=struc_name,
+        aero_yaml_path=aero_name)
+end
+
+function effective_v_wind_from_log(lg, fallback::Real)
+    sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+    if hasproperty(sl, :v_wind_gnd)
+        vw_col = getproperty(sl, :v_wind_gnd)
+        if !isempty(vw_col)
+            vw0 = vw_col[1]
+            v = NaN
+            if vw0 isa Number
+                v = abs(float(vw0))
+            elseif !isempty(vw0)
+                v = abs(float(vw0[1]))
+            end
+            if isfinite(v) && v > 0
+                return v
+            end
+        end
+    end
+    return float(fallback)
+end
+
+function load_log_compatible(log_name::AbstractString,
+    batch_dir::AbstractString)
+    arrow_path = joinpath(batch_dir, String(log_name) * ".arrow")
+    isfile(arrow_path) || error("Log file not found: $arrow_path")
+    filesize(arrow_path) > 0 || throw(ArgumentError(
+        "Log file is empty: $arrow_path"))
+    try
+        return load_log(String(log_name); path=String(batch_dir))
+    catch err
+        if err isa KeyError && getfield(err, :key) in (:X, :Y, :Z, :time)
+            @warn "Log schema differs from SysLog expectations; loading Arrow table directly" log_name arrow_path
+            table = V3Kite.KiteUtils.Arrow.Table(arrow_path)
+            haskey(table, :time) || throw(ArgumentError(
+                "Unsupported Arrow schema (missing :time): $arrow_path"))
+            return table
+        end
+        rethrow(err)
+    end
+end
+
 # =============================================================================
 # System construction
 # =============================================================================
 
-function build_sys(; v_wind=10.0, tether_length=150.0)
+function build_sys(; v_wind=10.0, tether_length=150.0,
+    up=0.0, log_name="")
+    struc_yaml_path = "struc_geometry.yaml"
+    aero_yaml_path = "aero_geometry.yaml"
+    geom_adjust_cfg = V3GeomAdjustConfig(
+        reduce_tip=true, reduce_te=true)
+
+    if occursin("circles_from_initial_state", log_name)
+        udp_tag = udp_tag_from_log_name(log_name, up)
+        geom = find_initial_state_geometry(;
+            lt=Int(round(tether_length)),
+            udp_tag, v_wind)
+        if geom !== nothing
+            struc_yaml_path = geom.struc_yaml_path
+            aero_yaml_path = geom.aero_yaml_path
+            geom_adjust_cfg = nothing
+            @info "Using initial-state geometry" log_name struc_yaml_path aero_yaml_path
+        else
+            @warn "Initial-state geometry not found; falling back to base geometry + model_setup adjustments" log_name
+        end
+    end
+
     config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
+        struc_yaml_path=struc_yaml_path,
+        aero_yaml_path=aero_yaml_path,
         vsm_settings_path="vsm_settings.yaml",
         v_wind=v_wind,
         tether_length=tether_length,
         wing_type=REFINE,
     )
     _, sys = create_v3_model(config)
-    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
-        reduce_te=true))
+    if geom_adjust_cfg !== nothing
+        apply_geom_adjustments!(sys, geom_adjust_cfg)
+    end
     return sys
 end
 
@@ -138,6 +230,8 @@ end
 # =============================================================================
 
 function calculate_cs(sl, sys; rho=1.225, eps=1e-12)
+    (!hasproperty(sl, :X) || !hasproperty(sl, :Y) ||
+     !hasproperty(sl, :Z)) && return Float64[], Float64[]
     s_ref = calc_ref_area(sys)
     (!isfinite(s_ref) || s_ref <= eps) &&
         return Float64[], Float64[]
@@ -232,6 +326,8 @@ function compute_ekf_yaw_and_rate(sl_in, sys; eps=1e-12)
          sl_in.syslog : sl_in
     n = length(sl.time)
     (n < 2 || isempty(sl.vel_kite)) && return nothing
+    (!hasproperty(sl, :X) || !hasproperty(sl, :Y) ||
+     !hasproperty(sl, :Z)) && return nothing
     (length(sys.wings) == 0 || length(sl.X) < n ||
      length(sl.Y) < n || length(sl.Z) < n) &&
         return nothing
@@ -299,31 +395,59 @@ function heading_rate(sl)
     return rates, sl.time[1:end-1]
 end
 
-function steering_command(sl, sys; steering_l0=nothing)
-    seg = sys.segments[V3_STEERING_LEFT_IDX]
-    pi_, pj = seg.point_idxs
+function steering_command(sl, sys)
     n = length(sl.time)
-    slen = zeros(Float64, n)
-    @inbounds for k in 1:n
-        p1 = SVector{3}(sl.X[k][pi_], sl.Y[k][pi_],
-            sl.Z[k][pi_])
-        p2 = SVector{3}(sl.X[k][pj], sl.Y[k][pj],
-            sl.Z[k][pj])
-        slen[k] = norm(p2 - p1)
+    if hasproperty(sl, :X) && hasproperty(sl, :Y) &&
+       hasproperty(sl, :Z)
+        seg_left = sys.segments[V3_STEERING_LEFT_IDX]
+        seg_right = sys.segments[V3_STEERING_RIGHT_IDX]
+        li_l, lj_l = seg_left.point_idxs
+        li_r, lj_r = seg_right.point_idxs
+        us_cmd = zeros(Float64, n)
+        @inbounds for k in 1:n
+            p1l = SVector{3}(sl.X[k][li_l], sl.Y[k][li_l],
+                sl.Z[k][li_l])
+            p2l = SVector{3}(sl.X[k][lj_l], sl.Y[k][lj_l],
+                sl.Z[k][lj_l])
+            p1r = SVector{3}(sl.X[k][li_r], sl.Y[k][li_r],
+                sl.Z[k][li_r])
+            p2r = SVector{3}(sl.X[k][lj_r], sl.Y[k][lj_r],
+                sl.Z[k][lj_r])
+            us_cmd[k] = steering_length_to_percentage(
+                norm(p2l - p1l), norm(p2r - p1r)) / 100.0
+        end
+        return us_cmd
     end
-    base_l0 = isnothing(steering_l0) ? slen[1] : steering_l0
-    us_cmd = similar(slen)
-    @inbounds for k in eachindex(us_cmd)
-        d = slen[k] - base_l0
-        us_cmd[k] = abs(d) > 1e-6 ?
-                    d / V3_STEERING_GAIN : 0.0
+
+    # Older/reduced logs may not contain node positions; use logged steering directly.
+    if hasproperty(sl, :steering)
+        return Float64.(sl.steering)
     end
+    if hasproperty(sl, :set_steering)
+        return Float64.(sl.set_steering)
+    end
+
+    us_cmd = zeros(Float64, n)
+    @warn "No steering information found in log; assuming zero steering"
     return us_cmd
+end
+
+function aoa_deg_series(sl)
+    if hasproperty(sl, :AoA)
+        return rad2deg.(Float64.(sl.AoA))
+    end
+    if hasproperty(sl, :alpha3)
+        return rad2deg.(Float64.(sl.alpha3))
+    end
+    if hasproperty(sl, :alpha4)
+        return rad2deg.(Float64.(sl.alpha4))
+    end
+    return fill(NaN, length(sl.time))
 end
 
 function gk_series(sl, sys)
     hr, _ = heading_rate(sl)
-    us_cmd = steering_command(sl, sys; steering_l0=1.6)
+    us_cmd = steering_command(sl, sys)
     va = sl.v_app[2:end]
     us_seg = us_cmd[2:end]
     gk = similar(hr)
@@ -390,7 +514,7 @@ end
 # =============================================================================
 
 function analyze_log(lg, sys; window_sec=WINDOW_SEC)
-    sl = lg.syslog
+    sl = hasproperty(lg, :syslog) ? lg.syslog : lg
     length(sl.time) < 2 && return (
         aero_force=NaN, v_app=NaN,
         yaw_rate=NaN, yaw_rate_paper=NaN,
@@ -424,7 +548,7 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
         window_sec)
     vk = [norm(v) for v in sl.vel_kite]
     kite_vel = mean_last_window(vk, sl.time; window_sec)
-    aoa_deg = rad2deg.(sl.AoA)
+    aoa_deg = aoa_deg_series(sl)
     aoa = mean_last_window(aoa_deg, sl.time; window_sec)
     elev_deg = rad2deg.(sl.elevation)
     elevation = mean_last_window(elev_deg, sl.time;
@@ -433,11 +557,15 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
     azimuth = mean_last_window(az_deg, sl.time;
         window_sec)
     cs_v, cs_t = calculate_cs(sl, sys)
-    cs = abs(mean_last_window(cs_v, cs_t; window_sec))
+    cs = if isempty(cs_v) || isempty(cs_t)
+        NaN
+    else
+        abs(mean_last_window(cs_v, cs_t; window_sec))
+    end
     tr_res = compute_turn_radius(sl, sys)
     turn_radius = tr_res === nothing ? NaN :
-                  abs(mean_last_window(tr_res[1], tr_res[2];
-        window_sec))
+                  mean_last_window(abs.(tr_res[1]), tr_res[2];
+        window_sec)
 
     us_cmd = steering_command(sl, sys)
     usva = us_cmd .* sl.v_app
@@ -475,6 +603,10 @@ function find_log_names(batch_dir)
     for file in readdir(batch_dir; join=true)
         isfile(file) || continue
         endswith(file, ".txt") && continue
+        if endswith(file, ".arrow") && filesize(file) == 0
+            @warn "Skipping empty log file" file
+            continue
+        end
         name = splitext(basename(file))[1]
         parse_up_us_vw_lt(name) === nothing && continue
         push!(names, name)
@@ -526,13 +658,16 @@ function write_csv(path, rows)
     end
 end
 
-function main()
-    batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    # batch_name = "circular_2025_batch_2026_01_11_11_29_19"
-    batch_name = "zenith_2025_batch_2026_03_03_11_26_48"
-    batch_name = "circles_from_initial_state_2019_2026_03_04_22_20_39"
-    batch_name = "circles_from_initial_state_2025_2026_03_05_08_51_36"
-    batch_name = "circles_from_initial_state_2019_0352026_03_05_15_39_37"
+function main(; batch_name::AbstractString="")
+    batch_name = strip(String(batch_name))
+    if isempty(batch_name)
+        batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
+    end
+    # # batch_name = "circular_2025_batch_2026_01_11_11_29_19"
+    # batch_name = "zenith_2025_batch_2026_03_03_11_26_48"
+    # batch_name = "circles_from_initial_state_2019_2026_03_04_22_20_39"
+    # batch_name = "circles_from_initial_state_2025_2026_03_05_08_51_36"
+    # batch_name = "circles_from_initial_state_2019_0352026_03_05_15_39_37"
     if isempty(batch_name)
         print("Enter batch folder name: ")
         batch_name = strip(readline())
@@ -544,18 +679,28 @@ function main()
     isempty(log_names) && error("No logs in: $batch_dir")
 
     rows = NamedTuple[]
-    sys_cache = Dict{Tuple{Int,Int},
+    sys_cache = Dict{Tuple{Int,Int,Int},
         SymbolicAWEModels.SystemStructure}()
 
     for log_name in log_names
         tags = parse_up_us_vw_lt(log_name)
         tags === nothing && continue
         up, us, vw, lt = tags
-        sys = get!(sys_cache, (vw, lt)) do
-            build_sys(v_wind=Float64(vw),
-                tether_length=Float64(lt))
+        lg = try
+            load_log_compatible(log_name, batch_dir)
+        catch err
+            @warn "Skipping unreadable log" log_name error = err
+            continue
         end
-        lg = load_log(log_name; path=batch_dir)
+        v_wind_ref = effective_v_wind_from_log(
+            lg, Float64(vw))
+        up_tag = Int(round(up * 100))
+        vw_ref_tag = Int(round(v_wind_ref * 10))
+        sys = get!(sys_cache, (vw_ref_tag, lt, up_tag)) do
+            build_sys(v_wind=v_wind_ref,
+                tether_length=Float64(lt),
+                up=up, log_name=log_name)
+        end
         m = analyze_log(lg, sys)
         push!(rows, (
             vw=vw, up=up, us=us, lt=lt,
@@ -572,6 +717,7 @@ function main()
             aoa_at=m.aoa_at))
     end
 
+    isempty(rows) && error("No readable logs in: $batch_dir")
     sort!(rows, by=r -> (r.vw, r.up, r.us, r.lt))
 
     out_path = joinpath(batch_dir,
@@ -580,5 +726,14 @@ function main()
     @info "Wrote CSV" path = out_path rows = length(rows)
 end
 
-main()
+main(
+    batch_name="_vw_8_lt_270_udp_sweep_2026_03_09"
+)
+# main(
+#     batch_name="vw8_lt_270_circles_udp_032__2026_03_06_14_27_33"
+# )
+# main(
+#     batch_name="vw8_lt_270_circles_udp_042__2026_03_06_14_58_08"
+# )
+
 nothing

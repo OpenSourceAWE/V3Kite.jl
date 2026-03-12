@@ -64,31 +64,58 @@ Base.@kwdef mutable struct SimpleInitConfig
     # body_damping_start::Vector{Float64} = [10.0, 50.0, 100.0]
     # body_damping_end::Vector{Float64} = [0.0, 0.0, 20.0]
 
-    ###### 2019
-    tether_length::Float64 = 269
+    # ###### 2019
+    # tether_length::Float64 = 269
+    # elevation::Float64 = 75.0
+    # azimuth::Float64 = 0.0
+    # heading::Float64 = 0.0
+    # upwind_dir::Float64 = -90.0
+    # g_earth::Float64 = 0.0
+
+    # start_wind::Float64 = 8.4
+    # target_wind::Float64 = 8.4
+
+    # t_target_udp::Union{Nothing,Float64} = 15
+    # start_udp::Float64 = 0.4
+    # target_udp::Float64 = 0.25
+    # target_steering::Float64 = 0.0
+
+    # runtime::Float64 = 35
+    # fps::Float64 = 360.0
+    # vsm_interval::Int = 1
+
+    # t_final_damping::Union{Nothing,Float64} = 20
+    # world_damping_start::Float64 = 10.0
+    # world_damping_end::Float64 = 0.0
+    # body_damping_start::Vector{Float64} = [10.0, 50.0, 100.0]
+    # body_damping_end::Vector{Float64} = [0.0, 0.0, 20.0]
+
+    ###### 22019-2025 MIX
+    tether_length::Float64 = 270
     elevation::Float64 = 75.0
     azimuth::Float64 = 0.0
     heading::Float64 = 0.0
     upwind_dir::Float64 = -90.0
     g_earth::Float64 = 0.0
 
-    start_wind::Float64 = 8.4
-    target_wind::Float64 = 8.4
+    start_wind::Float64 = 8.0
+    target_wind::Float64 = 8.0
 
-    t_target_udp::Union{Nothing,Float64} = 15
+    t_target_udp::Union{Nothing,Float64} = 13
     start_udp::Float64 = 0.4
-    target_udp::Float64 = 0.35
+    target_udp::Float64 = 0.24
     target_steering::Float64 = 0.0
 
-    runtime::Float64 = 25
-    fps::Float64 = 180.0
+    runtime::Float64 = 15
+    fps::Float64 = 360.0
     vsm_interval::Int = 1
 
-    t_final_damping::Union{Nothing,Float64} = 20
+    t_final_damping::Union{Nothing,Float64} = 15
     world_damping_start::Float64 = 10.0
     world_damping_end::Float64 = 0.0
     body_damping_start::Vector{Float64} = [10.0, 50.0, 100.0]
     body_damping_end::Vector{Float64} = [0.0, 0.0, 20.0]
+
 
     use_heading_controller::Bool = false
     heading_ctrl_p::Float64 = 1.0
@@ -227,6 +254,7 @@ function build_model(cfg::SimpleInitConfig)
     sam, sys = create_v3_model(sim_cfg)
     apply_geom_adjustments!(sys, cfg.geom)
     init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+    apply_vsm_solver_settings!(sys)
 
     if !isempty(sys.transforms)
         tr = sys.transforms[1]

@@ -23,6 +23,27 @@ function create_logger(sam, n_steps)
 end
 
 """
+    apply_vsm_solver_settings!(sys)
+
+Apply selected VSM solver settings from `sys.vsm_set` to runtime
+`wing.vsm_solver` instances.
+
+This is required because the current SymbolicAWEModels solver construction
+path does not forward all `vsm_set.solver_settings` fields.
+"""
+function apply_vsm_solver_settings!(sys)
+    if !hasproperty(sys, :vsm_set) || isnothing(sys.vsm_set)
+        return nothing
+    end
+
+    ss = sys.vsm_set.solver_settings
+    for wing in sys.wings
+        wing.vsm_solver.use_gamma_prev = ss.use_gamma_prev
+    end
+    return nothing
+end
+
+"""
     ramp_factor(t, t_start, t_end) -> Float64
 
 Linear ramp from 0 to 1 between `t_start` and `t_end`.
@@ -67,6 +88,7 @@ Returns `true` on success, `false` if an AssertionError occurs.
 All keyword arguments are forwarded to `next_step!`.
 """
 function sim_step!(sam; kwargs...)
+    apply_vsm_solver_settings!(sam.sys_struct)
     try
         next_step!(sam; kwargs...)
         return true
