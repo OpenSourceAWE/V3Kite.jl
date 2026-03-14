@@ -51,10 +51,9 @@ LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
 DISTANCE_BASED_STEERING = false
 BODY_DAMPING = [0.0, 0.0, 20.0]
-# Photogrammetry chord-bridle AoA offset model:
-#   offset = -atand((L_dp(u) - L_ref) / c)
-CHORD_C = 2.266      # chord length at strut (m)
-CHORD_L_REF = 2.34  # reference depower tape length (m)
+# Photogrammetry linear AoA offset model:
+AOA_OFFSET_A = -0.6839
+AOA_OFFSET_B = 29.69
 POINT_37_38_DAMPING = [0.0, 100.0, 0.0]
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
     "Torque2026", "figures")
@@ -212,9 +211,8 @@ function run_physics_replay(h5_path;
                 raw.ekf_wind_speed_vertical,
             angle_of_attack = deg2rad(
                 raw.ekf_wing_angle_of_attack_bridle -
-                atand((depower_percentage_to_length(
-                    raw.kcu_actual_depower) - CHORD_L_REF)
-                    / CHORD_C)),
+                (AOA_OFFSET_A * raw.kcu_actual_depower +
+                 AOA_OFFSET_B)),
             v_app = raw.ekf_kite_apparent_windspeed,
             drag_coeff = raw.ekf_wing_drag_coefficient,
             lift_coeff = raw.ekf_wing_lift_coefficient,
@@ -240,7 +238,7 @@ function run_physics_replay(h5_path;
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
-        num_steps=100,
+        num_steps=1000,
         num_substeps=5,
         start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
@@ -341,6 +339,9 @@ function run_physics_replay(h5_path;
         data_state.var_01 = row.drag_coeff
         data_state.var_02 = row.lift_coeff
         data_state.var_04 = row.bridle_aoa
+        data_state.var_05 = wrap_to_pi(row.yaw)
+        data_state.var_06 = wrap_to_pi(row.pitch)
+        data_state.var_07 = wrap_to_pi(row.roll)
         wind_elev = atan(
             row.wind_speed_vertical, row.wind_speed)
         wind_vec = rotate_around_z(
@@ -569,14 +570,47 @@ if !SETTLE_ONLY
                 extra_groups=groups, dir)
             fname = "body_frame_$(dir)" *
                 "_$(SECTION)" *
-                "_frame_$(target_frame).pdf"
+                "_frame_$(target_frame)" *
+                "_dpoff_$(DEPOWER_OFFSET_2025).pdf"
             save(fname, bf)
+            save(joinpath(FIGURES_DIR, fname), bf)
             frame_figs[dir] = bf
         end
+        # Geometric AoA distribution
+        aoa_fig = plot_geom_aoa_dist(
+            sam.sys_struct;
+            extra_points=pts,
+            extra_groups=groups)
+        aoa_fname = "geom_aoa_dist" *
+            "_$(SECTION)" *
+            "_frame_$(target_frame)" *
+            "_dpoff_$(DEPOWER_OFFSET_2025).pdf"
+        save(aoa_fname, aoa_fig)
+        save(joinpath(FIGURES_DIR, aoa_fname), aoa_fig)
+        frame_figs[:geom_aoa] = aoa_fig
+
         body[target_frame] = frame_figs
-        @info "Saved 2D body frame" target_frame
+        @info "Saved 2D body frame + geom AoA" target_frame
     end
     GLMakie.activate!()
+
+    # Average gk for |steering| > 5%
+    for (label, lg, tape) in [("sim", syslog, sim_tape),
+                               ("data", datalog, data_tape)]
+        sl = lg.syslog
+        hw = copy(sl.heading)
+        for j in 2:length(hw)
+            while hw[j] - hw[j-1] > pi; hw[j] -= 2pi; end
+            while hw[j] - hw[j-1] < -pi; hw[j] += 2pi; end
+        end
+        hdot = diff(hw) ./ dt
+        us = tape.steering[2:end]
+        va = sl.v_app[2:end]
+        mask = abs.(us) .> 0.05
+        gk_vals = hdot[mask] ./ (va[mask] .* us[mask])
+        @info "Mean gk ($label)" gk=round(
+            mean(gk_vals); digits=3)
+    end
 
     trajectory
 end

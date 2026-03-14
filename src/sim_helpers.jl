@@ -169,11 +169,38 @@ function compute_bridle_aoa(sys)
 end
 
 """
+    compute_bridle_euler(sys) -> (yaw, pitch, roll)
+
+Compute NED Euler angles (ZYX convention) of the bridle
+reference frame. This is the inverse of `euler_to_quaternion`
+which goes NED Euler → RotZYX → R_ned_to_enu → ENU rotation.
+Here we go backwards: bridle R_br_w → R_enu_to_ned → extract
+ZYX Euler angles.
+
+The bridle z-axis points downward (wing → KCU) to match
+the NED body-frame z-down convention used by the EKF.
+"""
+function compute_bridle_euler(sys)
+    mid_w = quarter_chord_mid(sys)
+    z_br = normalize(sys.points[1].pos_w - mid_w)
+    R_b_w = calc_R_b_w(sys)
+    y_br = R_b_w[:, 2]
+    x_br = normalize(cross(y_br, z_br))
+    R_br_w = hcat(x_br, y_br, z_br)
+    R_ned = [0 1 0; 1 0 0; 0 0 -1] * R_br_w
+    pitch = asin(clamp(-R_ned[3, 1], -1, 1))
+    yaw = atan(R_ned[2, 1], R_ned[1, 1])
+    roll = atan(R_ned[3, 2], R_ned[3, 3])
+    return (wrap_to_pi(yaw), pitch, wrap_to_pi(roll))
+end
+
+"""
     log_state!(logger, sys_state, sam, t)
 
 Update sys_state from the model, set time, compute drag/lift
 coefficients into `var_01`/`var_02`, mean TE segment force
-into `var_03`, bridle AoA into `var_04`, and log.
+into `var_03`, bridle AoA into `var_04`, and bridle NED Euler
+angles (yaw, pitch, roll) into `var_05`-`var_07`. Then log.
 """
 function log_state!(logger, sys_state, sam, t)
     update_sys_state!(sys_state, sam)
@@ -181,6 +208,10 @@ function log_state!(logger, sys_state, sam, t)
     sys_state.var_02 = compute_lift_coeff(sam)
     sys_state.var_03 = mean_te_segment_force(sam)
     sys_state.var_04 = compute_bridle_aoa(sam.sys_struct)
+    yaw, pitch, roll = compute_bridle_euler(sam.sys_struct)
+    sys_state.var_05 = yaw
+    sys_state.var_06 = pitch
+    sys_state.var_07 = roll
     sys_state.time = t
     log!(logger, sys_state)
     return nothing
