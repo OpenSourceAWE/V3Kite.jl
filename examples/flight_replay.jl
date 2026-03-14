@@ -528,8 +528,9 @@ if !SETTLE_ONLY
         min_steering=0.05,
         labels=["sim", "data"], dt)
 
-    # 3D plots for matched photogrammetry frames
-    photo_plot = Dict{Int, Any}()
+    # 2D body frame plots for PDF export
+    body = Dict{Int, Dict{Symbol, Any}}()
+    CairoMakie.activate!()
     for (csv, target_frame) in frame_csvs
         idx = findfirst(
             x -> x[1] == target_frame,
@@ -537,16 +538,26 @@ if !SETTLE_ONLY
         isnothing(idx) && continue
         _, syslog_idx = frame_syslog_idxs[idx]
         update_from_sysstate!(
-            sam.sys_struct, syslog.syslog[syslog_idx])
+            sam.sys_struct,
+            syslog.syslog[syslog_idx])
         pts, groups = load_extra_points(
             csv, sam.sys_struct)
-        photo_plot[target_frame] = plot(
-            sam.sys_struct;
-            extra_points=pts,
-            extra_groups=groups)
-        wait(display(photo_plot[target_frame]))
-        @info "Created 3D plot" target_frame
+        frame_figs = Dict{Symbol, Any}()
+        for dir in (:front, :side, :top)
+            bf = plot_body_frame_local(
+                sam.sys_struct;
+                extra_points=pts,
+                extra_groups=groups, dir)
+            fname = "body_frame_$(dir)" *
+                "_$(SECTION)" *
+                "_frame_$(target_frame).pdf"
+            save(fname, bf)
+            frame_figs[dir] = bf
+        end
+        body[target_frame] = frame_figs
+        @info "Saved 2D body frame" target_frame
     end
+    GLMakie.activate!()
 
     scene = replay([syslog, datalog],
         [sam.sys_struct, data_sam.sys_struct])
