@@ -17,6 +17,33 @@ using VortexStepMethod: calculate_projected_area
 
 const PLOT_COLORS = [:blue, :green, :orange, :purple, :cyan, :magenta]
 
+"""Find closest point on polyline to a line through
+`origin` along `dir`."""
+function _closest_on_polyline_to_line(
+        origin, dir, polyline)
+    d_hat = normalize(dir)
+    best_dist = Inf
+    best_pt = polyline[1]
+    for i in 1:(length(polyline)-1)
+        a, b = polyline[i], polyline[i+1]
+        v = b - a
+        u = a - origin
+        cu = cross(u, d_hat)
+        cv = cross(v, d_hat)
+        denom = dot(cv, cv)
+        s = denom > 1e-12 ?
+            clamp(-dot(cu, cv) / denom, 0.0, 1.0) :
+            0.0
+        proj = a + s * v
+        d = norm(cross(proj - origin, d_hat))
+        if d < best_dist
+            best_dist = d
+            best_pt = proj
+        end
+    end
+    return best_pt
+end
+
 """
     plot_body_frame_local(sys_structs; extra_points, extra_groups, dir, labels)
 
@@ -36,6 +63,7 @@ Extra points connected per-strut and LE.
 - `legend`: Show legend (default: true)
 - `title`: Show title (default: true)
 - `show_point_idxs`: Show point index labels (default: true)
+- `show_aoa`: Show geometric AoA panel below (default: true)
 """
 function V3Kite.plot_body_frame_local(sys_structs;
                                extra_points=nothing,
@@ -48,7 +76,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                point_idxs=nothing,
                                legend=true,
                                title=true,
-                               show_point_idxs=true)
+                               show_point_idxs=true,
+                               show_aoa=true)
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -67,10 +96,19 @@ function V3Kite.plot_body_frame_local(sys_structs;
         xlabel, ylabel = "y [m]", "z [m]"
     end
 
-    fig = Figure(size=figsize)
+    aoa_figsize = show_aoa ?
+        (figsize[1], figsize[2] + 150) : figsize
+    fig = Figure(size=aoa_figsize)
     ax_title = title ? "Wing Points (Body Frame)" : ""
     ax = Axis(fig[1, 1]; xlabel, ylabel,
               title=ax_title, aspect=DataAspect())
+    ax_aoa = nothing
+    if show_aoa
+        ax_aoa = Axis(fig[2, 1];
+            xlabel="y [m]",
+            ylabel="Geo. AoA [deg]")
+        rowsize!(fig.layout, 2, Fixed(150))
+    end
 
     function get_2d(pos_b)
         if dir == :top
@@ -85,6 +123,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
     # Collect all coordinates for auto-zoom
     all_x_vals = Float64[]
     all_y_vals = Float64[]
+    sim_aoa_data = []
 
     # Plot each sys_struct
     for (s_idx, sys_struct) in enumerate(structs)
@@ -103,6 +142,41 @@ function V3Kite.plot_body_frame_local(sys_structs;
                     end
                 end
             end
+        end
+
+        # Geometric AoA for WING point pairs
+        if show_aoa
+            wing_pts = sort(
+                [p for p in points
+                 if p.type == SymbolicAWEModels.WING],
+                by=p -> p.idx)
+            span_ys = Float64[]
+            aoas = Float64[]
+            le_pos = [wing_pts[i].pos_b
+                      for i in 1:2:length(wing_pts)]
+            n_le = length(le_pos)
+            body_x = [1.0, 0.0, 0.0]
+            for k in 1:n_le
+                le = wing_pts[2k - 1]
+                te = wing_pts[2k]
+                chord_b = te.pos_b - le.pos_b
+                y_airf = if k == 1
+                    normalize(le_pos[2] - le_pos[1])
+                elseif k == n_le
+                    normalize(le_pos[n_le] - le_pos[n_le-1])
+                else
+                    normalize(le_pos[k+1] - le_pos[k-1])
+                end
+                z_loc = normalize(cross(body_x, y_airf))
+                push!(aoas, rad2deg(atan(
+                    dot(chord_b, z_loc),
+                    dot(chord_b, body_x))))
+                push!(span_ys,
+                    (le.pos_b[2] + te.pos_b[2]) / 2)
+            end
+            push!(sim_aoa_data,
+                (span_ys, aoas, color,
+                 labels[s_idx]))
         end
 
         # Select points to plot: use point_idxs if provided, otherwise WING points
@@ -126,10 +200,10 @@ function V3Kite.plot_body_frame_local(sys_structs;
         append!(all_x_vals, x_vals)
         append!(all_y_vals, y_vals)
 
-        # Plot segments (skip diagonals 29-46)
+        # Plot segments (skip TE 20-28 and diagonals 29-46)
         plot_point_idxs = Set(p.idx for p in plot_points)
         for seg in segments
-            if 29 <= seg.idx <= 46
+            if 20 <= seg.idx <= 46
                 continue
             end
             from_idx, to_idx = seg.point_idxs
@@ -138,8 +212,11 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 p2 = points[to_idx]
                 c1 = get_2d(p1.pos_b)
                 c2 = get_2d(p2.pos_b)
+                is_le = seg.idx <= 9
+                lw = is_le ? 5 : 3
+                clr = is_le ? color : (color, 0.5)
                 lines!(ax, [c1[1], c2[1]], [c1[2], c2[2]];
-                       color=(color, 0.5), linewidth=3)
+                       color=clr, linewidth=lw)
             end
         end
 
@@ -191,21 +268,106 @@ function V3Kite.plot_body_frame_local(sys_structs;
             extra_coords = [(p[2], p[3]) for p in extra_body]
         end
 
-        # Draw lines connecting points within each group
+        # Draw lines and points per group
+        te_idxs = Set{Int}()
         for (gname, indices) in extra_groups
+            is_le = gname == "LE"
+            is_strut = startswith(gname, "strut")
+            clr = is_le ? :red : (:red, 0.6)
+            lw = is_le ? 3 : 2
             for i in 1:(length(indices)-1)
                 c1 = extra_coords[indices[i]]
                 c2 = extra_coords[indices[i+1]]
                 lines!(ax, [c1[1], c2[1]], [c1[2], c2[2]];
-                       color=(:red, 0.6), linewidth=2)
+                       color=clr, linewidth=lw)
+            end
+            if is_strut
+                push!(te_idxs, indices[1])
             end
         end
 
-        # Plot all extra points as circles
-        ex_x = [c[1] for c in extra_coords]
-        ex_y = [c[2] for c in extra_coords]
-        scatter!(ax, ex_x, ex_y;
-                 markersize=extra_point_size, color=:red, marker=:circle)
+        # Collect strut non-TE indices (transparent)
+        strut_inner = Set{Int}()
+        for (gname, indices) in extra_groups
+            if startswith(gname, "strut")
+                for idx in indices[2:end]
+                    push!(strut_inner, idx)
+                end
+            end
+        end
+        # Opaque points (LE, TE, other)
+        opaque = [i for i in eachindex(extra_coords)
+                  if i ∉ strut_inner]
+        scatter!(ax,
+            [extra_coords[i][1] for i in opaque],
+            [extra_coords[i][2] for i in opaque];
+            markersize=extra_point_size,
+            color=:red, marker=:circle)
+        # Transparent strut inner points
+        if !isempty(strut_inner)
+            inner = collect(strut_inner)
+            scatter!(ax,
+                [extra_coords[i][1] for i in inner],
+                [extra_coords[i][2] for i in inner];
+                markersize=extra_point_size,
+                color=(:red, 0.4), marker=:circle)
+        end
+
+        # Photogrammetry geometric AoA
+        if show_aoa && !isnothing(ax_aoa)
+            le_idxs = Int[]
+            strut_groups =
+                Tuple{String,Vector{Int}}[]
+            for (gname, indices) in extra_groups
+                if gname == "LE"
+                    le_idxs = indices
+                elseif startswith(gname, "strut")
+                    push!(strut_groups,
+                        (gname, indices))
+                end
+            end
+            if !isempty(le_idxs)
+                le_body = [extra_body[i]
+                           for i in le_idxs]
+                n_le = length(le_body)
+                body_x = [1.0, 0.0, 0.0]
+                photo_span = Float64[]
+                photo_aoa = Float64[]
+                for (_, indices) in strut_groups
+                    te_b = extra_body[indices[1]]
+                    le_b = _closest_on_polyline_to_line(
+                        te_b, body_x, le_body)
+                    chord = te_b - le_b
+                    _, best_idx = findmin(
+                        lp -> norm(lp - le_b), le_body)
+                    y_airf = if best_idx == 1
+                        normalize(le_body[2] - le_body[1])
+                    elseif best_idx == n_le
+                        normalize(
+                            le_body[n_le] - le_body[n_le-1])
+                    else
+                        normalize(
+                            le_body[best_idx+1] -
+                            le_body[best_idx-1])
+                    end
+                    z_loc = normalize(cross(body_x, y_airf))
+                    push!(photo_aoa, -rad2deg(atan(
+                        dot(chord, z_loc),
+                        dot(chord, body_x))))
+                    push!(photo_span,
+                        (te_b[2] + le_b[2]) / 2)
+                end
+                perm = sortperm(photo_span)
+                lines!(ax_aoa,
+                    photo_span[perm],
+                    photo_aoa[perm];
+                    color=:red, linewidth=2,
+                    label="photogrammetry")
+                scatter!(ax_aoa,
+                    photo_span, photo_aoa;
+                    color=:red, markersize=8)
+            end
+        end
     end
 
     # Auto-zoom with margin
@@ -216,6 +378,21 @@ function V3Kite.plot_body_frame_local(sys_structs;
         margin_y = 0.15 * (y_max - y_min) + 0.3
         limits!(ax, x_min - margin_x, x_max + margin_x,
                     y_min - margin_y, y_max + margin_y)
+    end
+
+    # Plot sim AoA curves
+    if show_aoa && !isnothing(ax_aoa)
+        for (span_ys, aoas, clr, lbl) in sim_aoa_data
+            perm = sortperm(span_ys)
+            lines!(ax_aoa,
+                span_ys[perm], aoas[perm];
+                color=clr, linewidth=2, label=lbl)
+            scatter!(ax_aoa, span_ys, aoas;
+                color=clr, markersize=8)
+        end
+        if dir == :front
+            linkxaxes!(ax, ax_aoa)
+        end
     end
 
     # Legend
