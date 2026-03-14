@@ -51,6 +51,10 @@ LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
 DISTANCE_BASED_STEERING = false
 BODY_DAMPING = [0.0, 0.0, 20.0]
+# Photogrammetry chord-bridle AoA offset model:
+#   offset = -atand((L_dp(u) - L_ref) / c)
+CHORD_C = 2.266      # chord length at strut (m)
+CHORD_L_REF = 2.34  # reference depower tape length (m)
 POINT_37_38_DAMPING = [0.0, 100.0, 0.0]
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
     "Torque2026", "figures")
@@ -64,9 +68,15 @@ else
         "flight_data", "ekf_awe_2019-10-08.h5")
 end
 SECTION = "$(SECTION)_$(YEAR)"
-if SECTION == "straight_right_2025"
+if SECTION == "straight_2025"
+    start_utc = "15:36:27.0"
+    end_utc = "15:36:33.1"
+elseif SECTION == "right_2025"
+    start_utc = "15:36:32.0"
+    end_utc = "15:36:38.0"
+elseif SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
-    end_utc = "15:36:37.0"
+    end_utc = "15:36:38.0"
 elseif SECTION == "straight_left_2025"
     start_utc = "15:36:47.0"
     end_utc = "15:36:57.0"
@@ -201,10 +211,15 @@ function run_physics_replay(h5_path;
             wind_speed_vertical =
                 raw.ekf_wind_speed_vertical,
             angle_of_attack = deg2rad(
-                raw.ekf_wing_angle_of_attack),
+                raw.ekf_wing_angle_of_attack_bridle -
+                atand((depower_percentage_to_length(
+                    raw.kcu_actual_depower) - CHORD_L_REF)
+                    / CHORD_C)),
             v_app = raw.ekf_kite_apparent_windspeed,
             drag_coeff = raw.ekf_wing_drag_coefficient,
             lift_coeff = raw.ekf_wing_lift_coefficient,
+            bridle_aoa = deg2rad(
+                raw.ekf_wing_angle_of_attack_bridle),
         )
     end
 
@@ -230,7 +245,8 @@ function run_physics_replay(h5_path;
         start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
             reduce_tip=true, reduce_te=true,
-            reduce_depower=false, reduce_steering=true),
+            reduce_depower=false, reduce_steering=true, steering_reduction=0.2,
+            tip_reduction=0.2),
         fix_sphere_idxs=[])
     if SETTLE
         sam, settle_log = settle_wing(settle_config;
@@ -324,15 +340,16 @@ function run_physics_replay(h5_path;
         data_state.v_reelout[1] = row.tether_vel
         data_state.var_01 = row.drag_coeff
         data_state.var_02 = row.lift_coeff
-        # wind_elev = atan(
-        #     row.wind_speed_vertical, row.wind_speed)
-        # wind_vec = rotate_around_z(
-        #     rotate_around_x(
-        #         [0.0, -1.0, 0.0], wind_elev),
-        #     -row.upwind_dir)
-        # v_wind_total = hypot(
-        #     row.wind_speed, row.wind_speed_vertical)
-        # data_state.v_wind_gnd .= v_wind_total .* wind_vec
+        data_state.var_04 = row.bridle_aoa
+        wind_elev = atan(
+            row.wind_speed_vertical, row.wind_speed)
+        wind_vec = rotate_around_z(
+            rotate_around_x(
+                [0.0, -1.0, 0.0], wind_elev),
+            -row.upwind_dir)
+        v_wind_total = hypot(
+            row.wind_speed, row.wind_speed_vertical)
+        data_state.v_wind_gnd .= v_wind_total .* wind_vec
         log!(data_logger, data_state)
 
         push!(data_tape.time, row.time)
@@ -510,12 +527,14 @@ if !SETTLE_ONLY
         tapes=[sim_tape, data_tape],
         labels=["sim", "data"],
         show_te_force=false,
+        show_aoa=true,
     )
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory([syslog, datalog];
         gradient=:steering,
         tapes=[sim_tape, data_tape],
-        labels=["sim", "data"])
+        labels=["sim", "data"],
+        show_aoa=true)
     save("trajectory_2d_$(SECTION).pdf", traj_2d)
     mkpath(FIGURES_DIR)
     save(joinpath(FIGURES_DIR,
@@ -558,9 +577,6 @@ if !SETTLE_ONLY
         @info "Saved 2D body frame" target_frame
     end
     GLMakie.activate!()
-
-    scene = replay([syslog, datalog],
-        [sam.sys_struct, data_sam.sys_struct])
 
     trajectory
 end

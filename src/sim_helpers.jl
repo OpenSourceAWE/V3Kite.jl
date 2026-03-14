@@ -125,17 +125,62 @@ function mean_te_segment_force(sam)
 end
 
 """
+    quarter_chord_mid(le_3, te_3, le_4, te_4)
+
+Quarter-chord reference point averaged over both strut sides.
+Returns midpoint of (0.75·LE + 0.25·TE) for each side.
+"""
+function quarter_chord_mid(le_3, te_3, le_4, te_4)
+    qc_3 = 0.75 .* le_3 .+ 0.25 .* te_3
+    qc_4 = 0.75 .* le_4 .+ 0.25 .* te_4
+    return (qc_3 .+ qc_4) ./ 2
+end
+
+"""
+    quarter_chord_mid(sys)
+
+Quarter-chord ref from sys_struct points 10-13.
+"""
+function quarter_chord_mid(sys)
+    return quarter_chord_mid(
+        sys.points[10].pos_w,
+        sys.points[11].pos_w,
+        sys.points[12].pos_w,
+        sys.points[13].pos_w)
+end
+
+"""
+    compute_bridle_aoa(sys) -> Float64
+
+Compute the angle of attack in the bridle reference frame.
+The bridle z-axis points from KCU (point 1) to the
+quarter-chord midpoint, x-axis is perpendicular in the
+body y–bridle z plane.
+"""
+function compute_bridle_aoa(sys)
+    mid_w = quarter_chord_mid(sys)
+    z_br = normalize(mid_w - sys.points[1].pos_w)
+    R_b_w = calc_R_b_w(sys)
+    y_br = R_b_w[:, 2]
+    x_br = normalize(cross(y_br, z_br))
+    wing = sys.wings[1]
+    v_app_w = R_b_w * wing.va_b
+    return atan(dot(v_app_w, z_br), dot(v_app_w, x_br))
+end
+
+"""
     log_state!(logger, sys_state, sam, t)
 
 Update sys_state from the model, set time, compute drag/lift
 coefficients into `var_01`/`var_02`, mean TE segment force
-into `var_03`, and log.
+into `var_03`, bridle AoA into `var_04`, and log.
 """
 function log_state!(logger, sys_state, sam, t)
     update_sys_state!(sys_state, sam)
     sys_state.var_01 = compute_drag_coeff(sam)
     sys_state.var_02 = compute_lift_coeff(sam)
     sys_state.var_03 = mean_te_segment_force(sam)
+    sys_state.var_04 = compute_bridle_aoa(sam.sys_struct)
     sys_state.time = t
     log!(logger, sys_state)
     return nothing

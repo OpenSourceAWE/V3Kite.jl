@@ -81,9 +81,9 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     end
 
     csv_le_3 = _closest_on_polyline(
-        strut3[te_idx], le_pts)
+        strut3[le_idx], le_pts)
     csv_le_4 = _closest_on_polyline(
-        strut4[te_idx], le_pts)
+        strut4[le_idx], le_pts)
     csv_le_center = (csv_le_3 + csv_le_4) / 2
     csv_te_center =
         (strut3[te_idx] + strut4[te_idx]) / 2
@@ -122,6 +122,20 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     push!(all_pts, zeros(3))
     transformed = [Tuple(R * p + T) for p in all_pts]
 
+    # Snap each strut's LE-end to the LE polyline
+    # strut[end] is closest to LE, strut[1] is TE
+    strut_le_snapped = Dict{String, Int}()
+    for gname in unique(df.group)
+        startswith(gname, "strut") || continue
+        strut_pts = [[r.x, r.y, r.z]
+            for r in eachrow(df) if r.group == gname]
+        isempty(strut_pts) && continue
+        snapped = _closest_on_polyline(
+            strut_pts[end], le_pts)
+        push!(transformed, Tuple(R * snapped + T))
+        strut_le_snapped[gname] = length(transformed)
+    end
+
     # Build group indices (1-based)
     groups = Vector{Tuple{String, Vector{Int}}}()
     current_group = ""
@@ -140,6 +154,14 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     end
     if !isempty(current_indices)
         push!(groups, (current_group, current_indices))
+    end
+
+    # Append snapped LE index to each strut group
+    for (i, (gname, _)) in enumerate(groups)
+        if haskey(strut_le_snapped, gname)
+            push!(groups[i][2],
+                strut_le_snapped[gname])
+        end
     end
 
     return transformed, groups
