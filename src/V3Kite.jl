@@ -64,6 +64,7 @@ export get_depower, set_depower!
 export V3GeomAdjustConfig, apply_geom_adjustments!
 export adjust_tether_length!, adjust_elevation!
 export distribute_wing_mass!
+export generate_drag_adjusted_polars
 export segment_stretch_stats
 
 # Coordinate utilities exports
@@ -75,7 +76,8 @@ export calc_R_b_w
 export parse_time_to_seconds, unix_to_utc_seconds
 export utc_to_video_frame
 export load_flight_data, find_indices_by_utc, limit_by_utc
-export add_distance_column, get_row_at_distance
+export add_distance_column, get_row_at_distance,
+    find_closest_trajectory_index
 export interpolate_flight_data
 export update_sys_struct_from_data!
 
@@ -83,6 +85,8 @@ export update_sys_struct_from_data!
 export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
+export compute_drag_coeff, compute_lift_coeff
+export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance

@@ -26,11 +26,43 @@ Alignment: CSV strut3/strut4 LE centers align with sim points 10, 12.
 function load_extra_points(csv_path::String, sys_struct; body_offset=[0.3, 0.0, 0.2])
     df = CSV.read(csv_path, DataFrame)
 
-    # CSV strut centers: strut3[1]/strut4[1] are at TE, [end] are at LE
+    # CSV strut centers: find matching LE/TE pairs by y-coordinate
     strut3 = [[r.x, r.y, r.z] for r in eachrow(df) if r.group == "strut3"]
     strut4 = [[r.x, r.y, r.z] for r in eachrow(df) if r.group == "strut4"]
-    csv_le_center = (strut3[end] + strut4[end]) / 2
-    csv_te_center = (strut3[1] + strut4[1]) / 2
+
+    # LE pair: highest matching index (iterate downward)
+    le_idx = nothing
+    for i in min(length(strut3), length(strut4)):-1:1
+        if abs(strut3[i][2] - strut4[i][2]) < 0.3
+            le_idx = i
+            break
+        end
+    end
+    isnothing(le_idx) &&
+        error("No matching LE pair in strut3/strut4")
+    if le_idx != length(strut3) || le_idx != length(strut4)
+        @warn("LE match at index $le_idx, not at array end " *
+              "(strut3=$(length(strut3)), strut4=$(length(strut4)))")
+    end
+    strut3_le = strut3[le_idx]
+    strut4_le = strut4[le_idx]
+
+    # TE pair: lowest matching index (iterate upward)
+    te_idx = nothing
+    for i in 1:min(length(strut3), length(strut4))
+        if abs(strut3[i][2] - strut4[i][2]) < 0.3
+            te_idx = i
+            break
+        end
+    end
+    isnothing(te_idx) &&
+        error("No matching TE pair in strut3/strut4")
+    if te_idx != 1
+        @warn("TE match at index $te_idx, not at index 1")
+    end
+
+    csv_le_center = (strut3_le + strut4_le) / 2
+    csv_te_center = (strut3[te_idx] + strut4[te_idx]) / 2
 
     # Sim reference: points 10, 12 (center LE)
     sim_p10 = collect(sys_struct.points[10].pos_w)
@@ -38,7 +70,7 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.3, 0.0, 
     sim_le_center = (sim_p10 + sim_p12) / 2
 
     # Direction vectors
-    csv_span = normalize(strut4[end] - strut3[end])
+    csv_span = normalize(strut4_le - strut3_le)
 
     # CSV basis: y=spanwise, z from wing center geometry, x from cross
     csv_y = csv_span
