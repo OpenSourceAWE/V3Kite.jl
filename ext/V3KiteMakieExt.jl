@@ -15,7 +15,61 @@ using LaTeXStrings
 import V3Kite: SymbolicAWEModels
 using VortexStepMethod: calculate_projected_area
 
-const PLOT_COLORS = [:blue, :green, :orange, :purple, :cyan, :magenta]
+const PLOT_COLORS = [:blue, :green, :orange,
+    :purple, :cyan, :magenta]
+
+"""
+Draw photogrammetry group lines and scatter points.
+LE lines are opaque+thick, strut inner points are
+transparent.
+"""
+function _draw_extra_groups!(ax, coords, groups;
+        point_size=8)
+    te_idxs = Set{Int}()
+    for (gname, indices) in groups
+        is_le = gname == "LE"
+        is_strut = startswith(gname, "strut")
+        clr = is_le ? :red : (:red, 0.6)
+        lw = is_le ? 5 : 3
+        for i in 1:(length(indices)-1)
+            c1 = coords[indices[i]]
+            c2 = coords[indices[i+1]]
+            lines!(ax, [c1[1], c2[1]],
+                [c1[2], c2[2]];
+                color=clr, linewidth=lw)
+        end
+        if is_strut
+            push!(te_idxs, indices[1])
+        end
+    end
+
+    # Strut inner indices (transparent)
+    strut_inner = Set{Int}()
+    for (gname, indices) in groups
+        if startswith(gname, "strut")
+            for idx in indices[2:end]
+                push!(strut_inner, idx)
+            end
+        end
+    end
+    # Opaque points (LE, TE, other)
+    opaque = [i for i in eachindex(coords)
+              if i ∉ strut_inner]
+    scatter!(ax,
+        [coords[i][1] for i in opaque],
+        [coords[i][2] for i in opaque];
+        markersize=point_size,
+        color=:red, marker=:circle)
+    # Transparent strut inner points
+    if !isempty(strut_inner)
+        inner = collect(strut_inner)
+        scatter!(ax,
+            [coords[i][1] for i in inner],
+            [coords[i][2] for i in inner];
+            markersize=point_size,
+            color=(:red, 0.4), marker=:circle)
+    end
+end
 
 """
     plot_body_frame_local(sys_structs; extra_points, extra_groups, dir, labels)
@@ -36,7 +90,7 @@ Extra points connected per-strut and LE.
 - `legend`: Show legend (default: true)
 - `title`: Show title (default: true)
 - `show_point_idxs`: Show point index labels (default: true)
-- `show_aoa`: Show geometric AoA panel below (default: true)
+- `show_aoa`: Show geometric AoA panel below (default: false)
 """
 function V3Kite.plot_body_frame_local(sys_structs;
                                extra_points=nothing,
@@ -50,7 +104,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                legend=true,
                                title=true,
                                show_point_idxs=false,
-                               show_aoa=true)
+                               show_aoa=false)
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -241,50 +295,9 @@ function V3Kite.plot_body_frame_local(sys_structs;
             extra_coords = [(p[2], p[3]) for p in extra_body]
         end
 
-        # Draw lines and points per group
-        te_idxs = Set{Int}()
-        for (gname, indices) in extra_groups
-            is_le = gname == "LE"
-            is_strut = startswith(gname, "strut")
-            clr = is_le ? :red : (:red, 0.6)
-            lw = is_le ? 5 : 3
-            for i in 1:(length(indices)-1)
-                c1 = extra_coords[indices[i]]
-                c2 = extra_coords[indices[i+1]]
-                lines!(ax, [c1[1], c2[1]], [c1[2], c2[2]];
-                       color=clr, linewidth=lw)
-            end
-            if is_strut
-                push!(te_idxs, indices[1])
-            end
-        end
-
-        # Collect strut non-TE indices (transparent)
-        strut_inner = Set{Int}()
-        for (gname, indices) in extra_groups
-            if startswith(gname, "strut")
-                for idx in indices[2:end]
-                    push!(strut_inner, idx)
-                end
-            end
-        end
-        # Opaque points (LE, TE, other)
-        opaque = [i for i in eachindex(extra_coords)
-                  if i ∉ strut_inner]
-        scatter!(ax,
-            [extra_coords[i][1] for i in opaque],
-            [extra_coords[i][2] for i in opaque];
-            markersize=extra_point_size,
-            color=:red, marker=:circle)
-        # Transparent strut inner points
-        if !isempty(strut_inner)
-            inner = collect(strut_inner)
-            scatter!(ax,
-                [extra_coords[i][1] for i in inner],
-                [extra_coords[i][2] for i in inner];
-                markersize=extra_point_size,
-                color=(:red, 0.4), marker=:circle)
-        end
+        _draw_extra_groups!(ax, extra_coords,
+            extra_groups;
+            point_size=extra_point_size)
 
         # Photogrammetry geometric AoA
         if show_aoa && !isnothing(ax_aoa)
@@ -383,6 +396,195 @@ function V3Kite.plot_body_frame_local(sys_structs;
         Legend(fig[1, 2], legend_elements, legend_labels)
     end
 
+    return fig
+end
+
+"""
+    plot_geom_aoa_dist(sys_structs; extra_points,
+        extra_groups, labels, figsize)
+
+Plot geometric AoA distribution along the span.
+Computes local AoA at each LE/TE pair from sim
+sys_structs and optionally from photogrammetry data.
+
+# Arguments
+- `sys_structs`: System structure or vector of them
+- `extra_points`: Optional photogrammetry points
+- `extra_groups`: Optional photogrammetry groups
+- `labels`: Optional vector of labels
+- `figsize`: Figure size (default: (800, 300))
+"""
+function V3Kite.plot_geom_aoa_dist(sys_structs;
+        extra_points=nothing,
+        extra_groups=nothing,
+        labels=nothing,
+        figsize=(800, 300))
+    structs = sys_structs isa Vector ?
+        sys_structs : [sys_structs]
+    n_structs = length(structs)
+    if isnothing(labels)
+        labels = n_structs == 1 ? ["sim"] :
+            ["sim_$i" for i in 1:n_structs]
+    end
+
+    fig = Figure(size=figsize)
+    ax = Axis(fig[1, 1];
+        xlabel="y [m]", ylabel="Geo. AoA [deg]")
+
+    # Sim AoA per sys_struct
+    for (s_idx, sys_struct) in enumerate(structs)
+        points = sys_struct.points
+        color = PLOT_COLORS[
+            mod1(s_idx, length(PLOT_COLORS))]
+
+        # Update pos_b for REFINE wing points
+        for wing in sys_struct.wings
+            if wing.wing_type == SymbolicAWEModels.REFINE
+                R_w_b = V3Kite.calc_R_b_w(sys_struct)'
+                for point in points
+                    if point.wing_idx == wing.idx
+                        point.pos_b .= R_w_b * (
+                            point.pos_w - wing.pos_w)
+                    end
+                end
+            end
+        end
+
+        wing_pts = sort(
+            [p for p in points
+             if p.type == SymbolicAWEModels.WING],
+            by=p -> p.idx)
+        le_pos = [wing_pts[i].pos_b
+                  for i in 1:2:length(wing_pts)]
+        n_le = length(le_pos)
+        body_x = [1.0, 0.0, 0.0]
+        span_ys = Float64[]
+        aoas = Float64[]
+        for k in 1:n_le
+            le = wing_pts[2k - 1]
+            te = wing_pts[2k]
+            chord_b = te.pos_b - le.pos_b
+            y_airf = if k == 1
+                normalize(le_pos[2] - le_pos[1])
+            elseif k == n_le
+                normalize(
+                    le_pos[n_le] - le_pos[n_le-1])
+            else
+                normalize(
+                    le_pos[k+1] - le_pos[k-1])
+            end
+            z_loc = normalize(cross(body_x, y_airf))
+            push!(aoas, rad2deg(atan(
+                dot(chord_b, z_loc),
+                dot(chord_b, body_x))))
+            push!(span_ys,
+                (le.pos_b[2] + te.pos_b[2]) / 2)
+        end
+        perm = sortperm(span_ys)
+        lines!(ax, span_ys[perm], aoas[perm];
+            color, linewidth=2, label=labels[s_idx])
+        scatter!(ax, span_ys, aoas;
+            color, markersize=8)
+    end
+
+    # Photogrammetry AoA
+    if !isnothing(extra_points) &&
+            !isnothing(extra_groups)
+        wing = structs[1].wings[1]
+        R_w_b = V3Kite.calc_R_b_w(structs[1])'
+        extra_body = [R_w_b * (collect(p) - wing.pos_w)
+                      for p in extra_points]
+        le_idxs = Int[]
+        strut_groups = Tuple{String,Vector{Int}}[]
+        for (gname, indices) in extra_groups
+            if gname == "LE"
+                le_idxs = indices
+            elseif startswith(gname, "strut")
+                push!(strut_groups,
+                    (gname, indices))
+            end
+        end
+        if !isempty(le_idxs)
+            le_body = [extra_body[i]
+                       for i in le_idxs]
+            n_le = length(le_body)
+            body_x = [1.0, 0.0, 0.0]
+            photo_span = Float64[]
+            photo_aoa = Float64[]
+            for (_, indices) in strut_groups
+                te_b = extra_body[indices[1]]
+                le_b = extra_body[indices[end]]
+                chord = te_b - le_b
+                _, best_idx = findmin(
+                    lp -> norm(lp - le_b), le_body)
+                y_airf = if best_idx == 1
+                    normalize(
+                        le_body[2] - le_body[1])
+                elseif best_idx == n_le
+                    normalize(
+                        le_body[n_le] -
+                        le_body[n_le-1])
+                else
+                    normalize(
+                        le_body[best_idx+1] -
+                        le_body[best_idx-1])
+                end
+                z_loc = normalize(
+                    cross(body_x, y_airf))
+                push!(photo_aoa, -rad2deg(atan(
+                    dot(chord, z_loc),
+                    dot(chord, body_x))))
+                push!(photo_span,
+                    (te_b[2] + le_b[2]) / 2)
+            end
+            perm = sortperm(photo_span)
+            lines!(ax, photo_span[perm],
+                photo_aoa[perm];
+                color=:red, linewidth=2,
+                label="photogrammetry")
+            scatter!(ax, photo_span, photo_aoa;
+                color=:red, markersize=8)
+        end
+    end
+
+    axislegend(ax; position=:rt)
+    return fig
+end
+
+"""
+    plot_photogrammetry(points, groups; dir, kwargs...)
+
+Plot photogrammetry points in 2D without a sys_struct.
+Projects 3D points based on `dir` and draws group lines
+and scatter points.
+
+# Arguments
+- `points`: Vector of (x, y, z) tuples
+- `groups`: Vector of (group_name, indices) from
+  `load_extra_points`
+- `dir::Symbol`: Viewing direction (:side, :front, :top)
+- `point_size`: Marker size (default: 8)
+- `figsize`: Figure size (default: (800, 600))
+"""
+function V3Kite.plot_photogrammetry(points, groups;
+        dir::Symbol=:front,
+        point_size=8,
+        figsize=(800, 600))
+    xlabel, ylabel = if dir == :top
+        ("x [m]", "y [m]")
+    elseif dir == :side
+        ("x [m]", "z [m]")
+    else
+        ("y [m]", "z [m]")
+    end
+    fig = Figure(size=figsize)
+    ax = Axis(fig[1, 1]; xlabel, ylabel,
+        aspect=DataAspect())
+    coords = [dir == :top ? (p[1], p[2]) :
+              dir == :side ? (p[1], p[3]) :
+              (p[2], p[3]) for p in points]
+    _draw_extra_groups!(ax, coords, groups;
+        point_size)
     return fig
 end
 
@@ -806,7 +1008,12 @@ with optional time-series subplots below.
   C_D and C_L share a single panel when both are enabled.
 - `show_lift_drag_ratio=true`: C_L/C_D ratio panel
 - `show_te_force=false`: mean TE segment force panel from `var_03`
+- `show_heading=false`: heading angle panel
 - `show_aoa=false`: AoA panel (wing and bridle, sim and data)
+- `show_yaw=false`: yaw angle panel from `var_05`
+- `show_pitch=true`: pitch angle panel from `var_06`
+- `show_roll=false`: roll angle panel from `var_07`
+  Yaw/pitch/roll share a single panel when any are enabled.
 - `t_start=nothing`: start time in seconds from log start
 - `t_end=nothing`: end time in seconds from log start
 """
@@ -824,7 +1031,11 @@ function V3Kite.plot_2d_trajectory(
         show_lift_coeff=false,
         show_lift_drag_ratio=false,
         show_te_force=false,
+        show_heading=false,
         show_aoa=true,
+        show_yaw=false,
+        show_pitch=true,
+        show_roll=false,
         t_start=nothing,
         t_end=nothing)
 
@@ -983,36 +1194,42 @@ function V3Kite.plot_2d_trajectory(
         push!(time_axes, ax_va)
     end
 
-    if show_drag_coeff || show_lift_coeff
+    if show_drag_coeff
         next_row += 1
-        ax_cdl = Axis(fig[next_row, 1];
-            ylabel=L"C_D, \; C_L \; [-]",
+        ax_cd = Axis(fig[next_row, 1];
+            ylabel=L"C_D \; [-]",
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
-            t = collect(sl.time)[rng]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            if show_drag_coeff
-                lines!(ax_cdl, t,
-                    collect(sl.var_01)[rng];
-                    linewidth=lw, linestyle=ls,
-                    color=:red,
-                    label=i == 1 ? L"C_D" : nothing)
-            end
-            if show_lift_coeff
-                lines!(ax_cdl, t,
-                    collect(sl.var_02)[rng];
-                    linewidth=lw, linestyle=ls,
-                    color=:blue,
-                    label=i == 1 ? L"C_L" : nothing)
-            end
+            lines!(ax_cd, collect(sl.time)[rng],
+                collect(sl.var_01)[rng];
+                linewidth=lw, linestyle=ls)
         end
-        axislegend(ax_cdl; position=:rt,
-            labelsize=10, patchsize=(10, 5))
-        hlines!(ax_cdl, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_cdl)
+        hlines!(ax_cd, [0]; linewidth=0.5,
+            color=:gray70)
+        push!(time_axes, ax_cd)
+    end
+
+    if show_lift_coeff
+        next_row += 1
+        ax_cl = Axis(fig[next_row, 1];
+            ylabel=L"C_L \; [-]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_cl, collect(sl.time)[rng],
+                collect(sl.var_02)[rng];
+                linewidth=lw, linestyle=ls)
+        end
+        hlines!(ax_cl, [0]; linewidth=0.5,
+            color=:gray70)
+        push!(time_axes, ax_cl)
     end
 
     if show_lift_drag_ratio
@@ -1056,6 +1273,67 @@ function V3Kite.plot_2d_trajectory(
         push!(time_axes, ax_te)
     end
 
+    # --- Heading panel ---
+    if show_heading
+        next_row += 1
+        ax_hd = Axis(fig[next_row, 1];
+            ylabel=L"\psi \; [°]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_hd,
+                collect(sl.time)[rng],
+                rad2deg.(collect(sl.heading)[rng]);
+                linewidth=lw, linestyle=ls)
+        end
+        hlines!(ax_hd, [0]; linewidth=0.5, color=:gray70)
+        push!(time_axes, ax_hd)
+    end
+
+    # --- Euler angles panel (yaw / pitch / roll) ---
+    if show_yaw || show_pitch || show_roll
+        next_row += 1
+        ax_euler = Axis(fig[next_row, 1];
+            ylabel=L"angle \; [°]",
+            xticklabelsvisible=false)
+        angle_vars = Tuple{Bool, Symbol, String, Symbol}[
+            (show_yaw, :var_05, "yaw", :blue),
+            (show_pitch, :var_06, "pitch", :orange),
+            (show_roll, :var_07, "roll", :green),
+        ]
+        leg_elems = []
+        leg_labels = String[]
+        for (enabled, var, name, clr) in angle_vars
+            enabled || continue
+            for (i, lg) in enumerate(logs)
+                sl = lg.syslog
+                rng = log_ranges[i]
+                vals = rad2deg.(
+                    collect(getproperty(sl, var))[rng])
+                lw = i == 1 ? 2.0 : 1.5
+                ls = i == 1 ? :solid : :dash
+                lines!(ax_euler,
+                    collect(sl.time)[rng], vals;
+                    linewidth=lw, linestyle=ls,
+                    color=clr)
+            end
+            push!(leg_elems,
+                [LineElement(color=clr, linewidth=2)])
+            push!(leg_labels, name)
+        end
+        hlines!(ax_euler, [0];
+            linewidth=0.5, color=:gray70)
+        if !isempty(leg_labels)
+            Legend(fig[next_row, 2], leg_elems,
+                leg_labels;
+                labelsize=10, patchsize=(10, 5))
+        end
+        push!(time_axes, ax_euler)
+    end
+
     # --- AoA panel (wing + bridle, sim and data) ---
     if show_aoa && length(logs) >= 2
         sl_sim = logs[1].syslog
@@ -1073,13 +1351,13 @@ function V3Kite.plot_2d_trajectory(
             linewidth=2.0, color=c_wing)
         lines!(ax_aoa, t_aoa,
             rad2deg.(collect(sl_data.AoA)[rng_aoa]);
-            linewidth=1.5, linestyle=:dot, color=c_wing)
+            linewidth=1.5, linestyle=:dash, color=c_wing)
         lines!(ax_aoa, t_aoa,
             rad2deg.(collect(sl_sim.var_04)[rng_aoa]);
             linewidth=2.0, color=c_bridle)
         lines!(ax_aoa, t_aoa,
             rad2deg.(collect(sl_data.var_04)[rng_aoa]);
-            linewidth=1.5, linestyle=:dot, color=c_bridle)
+            linewidth=1.5, linestyle=:dash, color=c_bridle)
         hlines!(ax_aoa, [0]; linewidth=0.5, color=:gray70)
         # Legend: color = quantity, solid = sim, dot = data
         leg_entries = [

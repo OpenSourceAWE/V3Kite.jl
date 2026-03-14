@@ -85,7 +85,8 @@ export update_sys_struct_from_data!
 export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
-export compute_drag_coeff, compute_lift_coeff, compute_bridle_aoa
+export compute_drag_coeff, compute_lift_coeff
+export compute_bridle_aoa, compute_bridle_euler
 export quarter_chord_mid
 export mean_te_segment_force
 export save_and_load_log
@@ -104,7 +105,8 @@ export V3SettleConfig, settle_wing
 export load_extra_points
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
-export plot_body_frame_local
+export plot_body_frame_local, plot_geom_aoa_dist
+export plot_photogrammetry
 export plot_yaw_rate_vs_steering
 export plot_replay, plot_sphere_trajectory, plot_2d_trajectory
 
@@ -117,6 +119,26 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_body_frame_local end
+
+"""
+    plot_geom_aoa_dist(sys_structs; kwargs...)
+
+Plot geometric AoA distribution along the span. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_geom_aoa_dist end
+
+"""
+    plot_photogrammetry(points, groups; dir, kwargs...)
+
+Plot photogrammetry points in 2D. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_photogrammetry end
 
 """
     plot_yaw_rate_vs_steering(syslogs, tapes; kwargs...)

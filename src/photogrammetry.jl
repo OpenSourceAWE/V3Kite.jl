@@ -3,7 +3,8 @@
 
 """
 Photogrammetry data loading and comparison utilities.
-Functions for loading camera-measured structural points and comparing with simulation.
+Functions for loading camera-measured structural points and
+comparing with simulation.
 """
 
 """Find closest interpolated point on a polyline."""
@@ -27,30 +28,41 @@ end
 
 
 """
-    load_extra_points(csv_path::String, sys_struct; body_offset=[0.3, 0.0, 0.2])
+    load_extra_points(csv_path::String,
+        sys_struct=nothing; body_offset=[0.0, 0.0, 0.0])
 
-Load extra points from CSV and transform from camera frame to simulation frame.
-Returns (transformed_points, groups) where groups is Vector of (group_name, indices).
+Load extra points from CSV and optionally transform from
+camera frame to simulation frame.
+
+When `sys_struct` is `nothing`, returns raw camera-frame
+points (as Tuples) with no R,T alignment.
 
 CSV has columns: group, idx_in_group, x, y, z.
-Alignment: CSV strut3/strut4 LE centers align with sim points 10, 12.
+Alignment: CSV strut3/strut4 LE centers align with sim
+points 10, 12.
 
 # Arguments
 - `csv_path`: Path to CSV file with photogrammetry points
-- `sys_struct`: System structure for coordinate transformation
-- `body_offset`: Offset in body frame [x, y, z] (default: [0.3, 0.0, 0.2])
+- `sys_struct`: System structure for coordinate
+  transformation (default: `nothing`)
+- `body_offset`: Offset in body frame [x, y, z]
 
 # Returns
-- `(transformed_points, groups)`: Tuple of transformed point tuples and group definitions
+- `(transformed_points, groups)`: Tuple of point tuples
+  and group definitions
 """
-function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 0.0])
+function load_extra_points(csv_path::String,
+        sys_struct=nothing;
+        body_offset=[0.0, 0.0, 0.0])
     df = CSV.read(csv_path, DataFrame)
 
-    # CSV strut centers: find matching LE/TE pairs by y-coordinate
-    strut3 = [[r.x, r.y, r.z] for r in eachrow(df) if r.group == "strut3"]
-    strut4 = [[r.x, r.y, r.z] for r in eachrow(df) if r.group == "strut4"]
-    le_pts = [[r.x, r.y, r.z] for r in eachrow(df)
-              if r.group == "LE"]
+    # CSV strut centers: find matching LE/TE pairs
+    strut3 = [[r.x, r.y, r.z]
+        for r in eachrow(df) if r.group == "strut3"]
+    strut4 = [[r.x, r.y, r.z]
+        for r in eachrow(df) if r.group == "strut4"]
+    le_pts = [[r.x, r.y, r.z]
+        for r in eachrow(df) if r.group == "LE"]
 
     # LE pair: highest matching index (iterate downward)
     le_idx = nothing
@@ -62,9 +74,11 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     end
     isnothing(le_idx) &&
         error("No matching LE pair in strut3/strut4")
-    if le_idx != length(strut3) || le_idx != length(strut4)
-        @warn("LE match at index $le_idx, not at array end " *
-              "(strut3=$(length(strut3)), strut4=$(length(strut4)))")
+    if le_idx != length(strut3) ||
+            le_idx != length(strut4)
+        @warn("LE match at index $le_idx, not at " *
+              "array end (strut3=$(length(strut3))," *
+              " strut4=$(length(strut4)))")
     end
     # TE pair: lowest matching index (iterate upward)
     te_idx = nothing
@@ -77,7 +91,8 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     isnothing(te_idx) &&
         error("No matching TE pair in strut3/strut4")
     if te_idx != 1
-        @warn("TE match at index $te_idx, not at index 1")
+        @warn("TE match at index $te_idx, not at " *
+              "index 1")
     end
 
     csv_le_3 = _closest_on_polyline(
@@ -88,42 +103,51 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
     csv_te_center =
         (strut3[te_idx] + strut4[te_idx]) / 2
 
-    # Sim reference: points 10, 12 (center LE)
-    sim_p10 = collect(sys_struct.points[10].pos_w)
-    sim_p12 = collect(sys_struct.points[12].pos_w)
-    sim_le_center = (sim_p10 + sim_p12) / 2
+    # Compute R, T only when sys_struct is provided
+    R = nothing
+    T = nothing
+    if !isnothing(sys_struct)
+        # Sim reference: points 10, 12 (center LE)
+        sim_p10 = collect(
+            sys_struct.points[10].pos_w)
+        sim_p12 = collect(
+            sys_struct.points[12].pos_w)
+        sim_le_center = (sim_p10 + sim_p12) / 2
 
-    # Direction vectors
-    csv_span = normalize(
-        strut4[te_idx] - strut3[te_idx])
+        # Direction vectors
+        csv_span = normalize(
+            strut4[te_idx] - strut3[te_idx])
 
-    # CSV basis: y=spanwise, z from wing center geometry, x from cross
-    csv_y = csv_span
-    csv_wing_center = (csv_le_center + csv_te_center) / 2
-    csv_z = normalize(csv_wing_center - csv_y * 0.84/2)
-    csv_x = cross(csv_y, csv_z)
+        # CSV basis
+        csv_y = csv_span
+        csv_wing_center =
+            (csv_le_center + csv_te_center) / 2
+        csv_z = normalize(
+            csv_wing_center - csv_y * 0.84 / 2)
+        csv_x = cross(csv_y, csv_z)
 
-    # Sim basis: directly from wing rotation matrix
-    R_b_w = calc_R_b_w(sys_struct)
-    sim_x = R_b_w[:, 1]
-    sim_y = R_b_w[:, 2]
-    sim_z = R_b_w[:, 3]
+        # Sim basis
+        R_b_w = calc_R_b_w(sys_struct)
+        sim_x = R_b_w[:, 1]
+        sim_y = R_b_w[:, 2]
+        sim_z = R_b_w[:, 3]
 
-    # Rotation: R * csv_basis = sim_basis
-    csv_basis = hcat(csv_x, csv_y, csv_z)
-    sim_basis = hcat(sim_x, sim_y, sim_z)
-    R = sim_basis * csv_basis'
+        # Rotation: R * csv_basis = sim_basis
+        csv_basis = hcat(csv_x, csv_y, csv_z)
+        sim_basis = hcat(sim_x, sim_y, sim_z)
+        R = sim_basis * csv_basis'
 
-    # Translation: align LE centers
-    T = sim_le_center - R * csv_le_center + R_b_w * body_offset
+        # Translation: align LE centers
+        T = sim_le_center - R * csv_le_center +
+            R_b_w * body_offset
+    end
 
-    # Transform all points (including camera origin marker at zeros)
-    all_pts = [[row.x, row.y, row.z] for row in eachrow(df)]
+    # All points including camera origin
+    all_pts = [[row.x, row.y, row.z]
+        for row in eachrow(df)]
     push!(all_pts, zeros(3))
-    transformed = [Tuple(R * p + T) for p in all_pts]
 
     # Snap each strut's LE-end to the LE polyline
-    # strut[end] is closest to LE, strut[1] is TE
     strut_le_snapped = Dict{String, Int}()
     for gname in unique(df.group)
         startswith(gname, "strut") || continue
@@ -132,8 +156,15 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
         isempty(strut_pts) && continue
         snapped = _closest_on_polyline(
             strut_pts[end], le_pts)
-        push!(transformed, Tuple(R * snapped + T))
-        strut_le_snapped[gname] = length(transformed)
+        push!(all_pts, snapped)
+        strut_le_snapped[gname] = length(all_pts)
+    end
+
+    # Transform (or return raw)
+    transformed = if !isnothing(R)
+        [Tuple(R * p + T) for p in all_pts]
+    else
+        [Tuple(p) for p in all_pts]
     end
 
     # Build group indices (1-based)
@@ -144,7 +175,8 @@ function load_extra_points(csv_path::String, sys_struct; body_offset=[0.0, 0.0, 
         if row.group != current_group
             if !isempty(current_indices)
                 push!(groups,
-                    (current_group, copy(current_indices)))
+                    (current_group,
+                     copy(current_indices)))
             end
             current_group = row.group
             current_indices = [i]
