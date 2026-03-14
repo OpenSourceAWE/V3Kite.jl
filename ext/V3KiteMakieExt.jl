@@ -17,33 +17,6 @@ using VortexStepMethod: calculate_projected_area
 
 const PLOT_COLORS = [:blue, :green, :orange, :purple, :cyan, :magenta]
 
-"""Find closest point on polyline to a line through
-`origin` along `dir`."""
-function _closest_on_polyline_to_line(
-        origin, dir, polyline)
-    d_hat = normalize(dir)
-    best_dist = Inf
-    best_pt = polyline[1]
-    for i in 1:(length(polyline)-1)
-        a, b = polyline[i], polyline[i+1]
-        v = b - a
-        u = a - origin
-        cu = cross(u, d_hat)
-        cv = cross(v, d_hat)
-        denom = dot(cv, cv)
-        s = denom > 1e-12 ?
-            clamp(-dot(cu, cv) / denom, 0.0, 1.0) :
-            0.0
-        proj = a + s * v
-        d = norm(cross(proj - origin, d_hat))
-        if d < best_dist
-            best_dist = d
-            best_pt = proj
-        end
-    end
-    return best_pt
-end
-
 """
     plot_body_frame_local(sys_structs; extra_points, extra_groups, dir, labels)
 
@@ -76,7 +49,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                point_idxs=nothing,
                                legend=true,
                                title=true,
-                               show_point_idxs=true,
+                               show_point_idxs=false,
                                show_aoa=true)
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
@@ -274,7 +247,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             is_le = gname == "LE"
             is_strut = startswith(gname, "strut")
             clr = is_le ? :red : (:red, 0.6)
-            lw = is_le ? 3 : 2
+            lw = is_le ? 5 : 3
             for i in 1:(length(indices)-1)
                 c1 = extra_coords[indices[i]]
                 c2 = extra_coords[indices[i+1]]
@@ -335,8 +308,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 photo_aoa = Float64[]
                 for (_, indices) in strut_groups
                     te_b = extra_body[indices[1]]
-                    le_b = _closest_on_polyline_to_line(
-                        te_b, body_x, le_body)
+                    le_b = extra_body[indices[end]]
                     chord = te_b - le_b
                     _, best_idx = findmin(
                         lp -> norm(lp - le_b), le_body)
@@ -443,6 +415,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         xlabel=L"|u_s \cdot v_a| \; [m/s]",
         ylabel=L"|\dot{\psi}| \; [rad/s]")
 
+    has_data = false
     for (i, (lg, tape)) in enumerate(zip(logs, tps))
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
 
@@ -463,6 +436,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         x = abs.(us[mask] .* sl.v_app[2:end][mask])
         y = abs.(yaw_rate[mask])
         isempty(x) && continue
+        has_data = true
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
         scatter!(ax, x, y; markersize=4, color=color,
             label=labels[i])
@@ -475,7 +449,9 @@ function V3Kite.plot_yaw_rate_vs_steering(
             label="$(labels[i]) gk=$(round(gk; digits=2))")
     end
 
-    axislegend(ax; position=:lt)
+    if has_data
+        axislegend(ax; position=:lt)
+    end
     return fig
 end
 
@@ -830,6 +806,9 @@ with optional time-series subplots below.
   C_D and C_L share a single panel when both are enabled.
 - `show_lift_drag_ratio=true`: C_L/C_D ratio panel
 - `show_te_force=false`: mean TE segment force panel from `var_03`
+- `show_aoa=false`: AoA panel (wing and bridle, sim and data)
+- `t_start=nothing`: start time in seconds from log start
+- `t_end=nothing`: end time in seconds from log start
 """
 function V3Kite.plot_2d_trajectory(
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
@@ -840,11 +819,14 @@ function V3Kite.plot_2d_trajectory(
         size=(800, 600),
         show_steering=nothing,
         show_winch_force=true,
-        show_v_app=true,
+        show_v_app=false,
         show_drag_coeff=false,
         show_lift_coeff=false,
-        show_lift_drag_ratio=true,
-        show_te_force=true)
+        show_lift_drag_ratio=false,
+        show_te_force=false,
+        show_aoa=true,
+        t_start=nothing,
+        t_end=nothing)
 
     if gradient == :steering && isnothing(tapes)
         error("tapes required for gradient=:steering")
@@ -855,6 +837,21 @@ function V3Kite.plot_2d_trajectory(
         error("tapes required for show_steering=true")
     end
 
+    # Compute per-log index ranges for time filtering
+    _time_range(t) = begin
+        t0 = t[1]
+        i1 = isnothing(t_start) ? 1 :
+            searchsortedfirst(t, t0 + t_start)
+        i2 = isnothing(t_end) ? length(t) :
+            searchsortedlast(t, t0 + t_end)
+        i1:i2
+    end
+    log_ranges = [_time_range(collect(lg.syslog.time))
+                  for lg in logs]
+    tape_ranges = isnothing(tapes) ? nothing :
+        [_time_range(collect(Float64, tp.time))
+         for tp in tapes]
+
     fig = Figure(; size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
@@ -864,13 +861,16 @@ function V3Kite.plot_2d_trajectory(
     all_vals = Float64[]
     for (i, lg) in enumerate(logs)
         sl = lg.syslog
+        rng = log_ranges[i]
         if gradient == :vel
-            for k in eachindex(sl.vel_kite)
+            for k in rng
                 push!(all_vals,
                     norm(sl.vel_kite[k]))
             end
         elseif gradient == :steering
-            append!(all_vals, tapes[i].steering .* 100)
+            trng = tape_ranges[i]
+            append!(all_vals,
+                tapes[i].steering[trng] .* 100)
         else
             error("Unknown gradient: $gradient")
         end
@@ -879,15 +879,15 @@ function V3Kite.plot_2d_trajectory(
 
     for (i, lg) in enumerate(logs)
         sl = lg.syslog
-        y_pos = [sl.Y[k][1]
-                 for k in eachindex(sl.Y)]
-        z_pos = [sl.Z[k][1]
-                 for k in eachindex(sl.Z)]
+        rng = log_ranges[i]
+        y_pos = [sl.Y[k][1] for k in rng]
+        z_pos = [sl.Z[k][1] for k in rng]
         vals = if gradient == :vel
-            [norm(sl.vel_kite[k])
-             for k in eachindex(sl.vel_kite)]
+            [norm(sl.vel_kite[k]) for k in rng]
         else
-            collect(Float64, tapes[i].steering .* 100)
+            collect(Float64,
+                tapes[i].steering[tape_ranges[i]]
+                .* 100)
         end
 
         label = isnothing(labels) ?
@@ -932,11 +932,13 @@ function V3Kite.plot_2d_trajectory(
             ylabel=L"steering \; [\%]",
             xticklabelsvisible=false)
         for (i, tp) in enumerate(tapes)
+            trng = tape_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             lines!(ax_st,
-                collect(Float64, tp.time),
-                collect(Float64, tp.steering .* 100);
+                collect(Float64, tp.time)[trng],
+                collect(Float64,
+                    tp.steering .* 100)[trng];
                 linewidth=lw, linestyle=ls)
         end
         push!(time_axes, ax_st)
@@ -945,17 +947,20 @@ function V3Kite.plot_2d_trajectory(
     if show_winch_force
         next_row += 1
         ax_wf = Axis(fig[next_row, 1];
-            ylabel=L"F_t \; [N]",
+            ylabel=L"F_t \; [kN]",
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
-            wf = [sl.winch_force[k][1]
-                  for k in eachindex(sl.winch_force)]
+            rng = log_ranges[i]
+            wf = [sl.winch_force[k][1] / 1000
+                  for k in rng]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_wf, collect(sl.time), wf;
+            lines!(ax_wf,
+                collect(sl.time)[rng], wf;
                 linewidth=lw, linestyle=ls)
         end
+        hlines!(ax_wf, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_wf)
     end
 
@@ -966,12 +971,15 @@ function V3Kite.plot_2d_trajectory(
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
+            rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_va, collect(sl.time),
-                collect(sl.v_app);
+            lines!(ax_va,
+                collect(sl.time)[rng],
+                collect(sl.v_app)[rng];
                 linewidth=lw, linestyle=ls)
         end
+        hlines!(ax_va, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_va)
     end
 
@@ -982,18 +990,20 @@ function V3Kite.plot_2d_trajectory(
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
+            rng = log_ranges[i]
+            t = collect(sl.time)[rng]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             if show_drag_coeff
-                lines!(ax_cdl, collect(sl.time),
-                    collect(sl.var_01);
+                lines!(ax_cdl, t,
+                    collect(sl.var_01)[rng];
                     linewidth=lw, linestyle=ls,
                     color=:red,
                     label=i == 1 ? L"C_D" : nothing)
             end
             if show_lift_coeff
-                lines!(ax_cdl, collect(sl.time),
-                    collect(sl.var_02);
+                lines!(ax_cdl, t,
+                    collect(sl.var_02)[rng];
                     linewidth=lw, linestyle=ls,
                     color=:blue,
                     label=i == 1 ? L"C_L" : nothing)
@@ -1001,6 +1011,7 @@ function V3Kite.plot_2d_trajectory(
         end
         axislegend(ax_cdl; position=:rt,
             labelsize=10, patchsize=(10, 5))
+        hlines!(ax_cdl, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_cdl)
     end
 
@@ -1011,15 +1022,18 @@ function V3Kite.plot_2d_trajectory(
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
-            cd = collect(sl.var_01)
-            cl = collect(sl.var_02)
+            rng = log_ranges[i]
+            cd = collect(sl.var_01)[rng]
+            cl = collect(sl.var_02)[rng]
             ratio = [abs(d) > 1e-6 ? l / d : NaN
                      for (l, d) in zip(cl, cd)]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_ld, collect(sl.time), ratio;
+            lines!(ax_ld,
+                collect(sl.time)[rng], ratio;
                 linewidth=lw, linestyle=ls)
         end
+        hlines!(ax_ld, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_ld)
     end
 
@@ -1030,13 +1044,52 @@ function V3Kite.plot_2d_trajectory(
             xticklabelsvisible=false)
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
+            rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_te, collect(sl.time),
-                collect(sl.var_03);
+            lines!(ax_te,
+                collect(sl.time)[rng],
+                collect(sl.var_03)[rng];
                 linewidth=lw, linestyle=ls)
         end
+        hlines!(ax_te, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_te)
+    end
+
+    # --- AoA panel (wing + bridle, sim and data) ---
+    if show_aoa && length(logs) >= 2
+        sl_sim = logs[1].syslog
+        sl_data = logs[2].syslog
+        rng_aoa = log_ranges[1]
+        t_aoa = collect(sl_sim.time)[rng_aoa]
+        next_row += 1
+        ax_aoa = Axis(fig[next_row, 1];
+            ylabel=L"\alpha \; [°]",
+            xticklabelsvisible=false)
+        c_wing = Makie.wong_colors()[1]
+        c_bridle = Makie.wong_colors()[2]
+        lines!(ax_aoa, t_aoa,
+            rad2deg.(collect(sl_sim.AoA)[rng_aoa]);
+            linewidth=2.0, color=c_wing)
+        lines!(ax_aoa, t_aoa,
+            rad2deg.(collect(sl_data.AoA)[rng_aoa]);
+            linewidth=1.5, linestyle=:dot, color=c_wing)
+        lines!(ax_aoa, t_aoa,
+            rad2deg.(collect(sl_sim.var_04)[rng_aoa]);
+            linewidth=2.0, color=c_bridle)
+        lines!(ax_aoa, t_aoa,
+            rad2deg.(collect(sl_data.var_04)[rng_aoa]);
+            linewidth=1.5, linestyle=:dot, color=c_bridle)
+        hlines!(ax_aoa, [0]; linewidth=0.5, color=:gray70)
+        # Legend: color = quantity, solid = sim, dot = data
+        leg_entries = [
+            [LineElement(color=c_wing, linewidth=2)],
+            [LineElement(color=c_bridle, linewidth=2)],
+        ]
+        Legend(fig[next_row, 2], leg_entries,
+            ["wing AoA", "bridle AoA"];
+            labelsize=10, patchsize=(10, 5))
+        push!(time_axes, ax_aoa)
     end
 
     # Final axis gets x label and visible tick labels

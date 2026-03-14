@@ -85,7 +85,8 @@ export update_sys_struct_from_data!
 export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
-export compute_drag_coeff, compute_lift_coeff
+export compute_drag_coeff, compute_lift_coeff, compute_bridle_aoa
+export quarter_chord_mid
 export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid

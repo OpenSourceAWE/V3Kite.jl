@@ -330,6 +330,12 @@ function update_sys_struct_from_data!(sys, row;
     wing = wings[1]
     transform = transforms[1]
 
+    sys.set.v_wind = hypot(
+        row.wind_speed, row.wind_speed_vertical)
+    sys.set.upwind_dir = rad2deg(row.upwind_dir)
+    sys.wind_elevation = atan(
+        row.wind_speed_vertical, row.wind_speed)
+
     # calc target heading from data
     quat = euler_to_quaternion(
         row.roll, row.pitch, row.yaw)
