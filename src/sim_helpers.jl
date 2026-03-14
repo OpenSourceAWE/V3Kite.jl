@@ -77,12 +77,65 @@ function sim_step!(sam; kwargs...)
 end
 
 """
+    compute_drag_coeff(sam) -> Float64
+
+Compute the drag coefficient from the first wing's aero force
+projected onto the apparent wind direction, normalized by
+`q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
+"""
+function compute_drag_coeff(sam)
+    wing = sam.sys_struct.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return 0.0
+    drag_force = dot(wing.aero_force_b, va_b / v_app)
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_inf = 0.5 * 1.225 * v_app^2
+    return drag_force / (q_inf * A_proj)
+end
+
+"""
+    compute_lift_coeff(sam) -> Float64
+
+Compute the lift coefficient from the first wing's aero force
+component perpendicular to the apparent wind direction,
+normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
+"""
+function compute_lift_coeff(sam)
+    wing = sam.sys_struct.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return 0.0
+    va_hat = va_b / v_app
+    lift_vec = wing.aero_force_b - dot(wing.aero_force_b, va_hat) * va_hat
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_inf = 0.5 * 1.225 * v_app^2
+    return norm(lift_vec) / (q_inf * A_proj)
+end
+
+"""
+    mean_te_segment_force(sam) -> Float64
+
+Mean force of trailing-edge-connected segments (indices
+3, 5, 7, …, 21).
+"""
+function mean_te_segment_force(sam)
+    return mean(sam.sys_struct.segments[i].force
+                for i in 3:2:21)
+end
+
+"""
     log_state!(logger, sys_state, sam, t)
 
-Update sys_state from the model, set time, and log.
+Update sys_state from the model, set time, compute drag/lift
+coefficients into `var_01`/`var_02`, mean TE segment force
+into `var_03`, and log.
 """
 function log_state!(logger, sys_state, sam, t)
     update_sys_state!(sys_state, sam)
+    sys_state.var_01 = compute_drag_coeff(sam)
+    sys_state.var_02 = compute_lift_coeff(sam)
+    sys_state.var_03 = mean_te_segment_force(sam)
     sys_state.time = t
     log!(logger, sys_state)
     return nothing

@@ -285,6 +285,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         mask = abs.(us) .> min_steering
         x = abs.(us[mask] .* sl.v_app[2:end][mask])
         y = abs.(yaw_rate[mask])
+        isempty(x) && continue
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
         scatter!(ax, x, y; markersize=4, color=color,
             label=labels[i])
@@ -521,7 +522,7 @@ function V3Kite.plot_replay(
     end
 
     # x-label on bottom axis only
-    axes[end].xlabel = L"d \; [m]"
+    axes[end].xlabel = L"t \; [s]"
     axes[end].xlabelsize = label_fontsize
     axes[end].xticklabelsvisible = true
 
@@ -631,13 +632,27 @@ end
 
 """
     plot_2d_trajectory(logs; gradient=:vel, tapes=nothing,
-        labels, colormap, size)
+        labels, colormap, size,
+        show_steering, show_winch_force, show_v_app,
+        show_drag_coeff)
 
-Plot kite y vs z position colored by a gradient quantity.
+Plot kite y vs z position colored by a gradient quantity,
+with optional time-series subplots below.
 
-- `gradient=:vel`: color by velocity magnitude (default)
-- `gradient=:steering`: color by steering input (requires
-  `tapes` — a vector of named tuples with a `steering` field)
+# Arguments
+- `gradient=:vel`: color by `:vel` or `:steering`
+- `tapes`: vector of named tuples with `time`, `steering`
+- `labels`: legend labels per log
+- `colormap=:viridis`: colormap for trajectory
+- `size=(800, 600)`: figure size
+- `show_steering`: steering panel (default: `!isnothing(tapes)`)
+- `show_winch_force=true`: winch force panel
+- `show_v_app=true`: apparent wind speed panel
+- `show_drag_coeff=false`: drag coefficient (C_D) from `var_01`
+- `show_lift_coeff=false`: lift coefficient (C_L) from `var_02`
+  C_D and C_L share a single panel when both are enabled.
+- `show_lift_drag_ratio=true`: C_L/C_D ratio panel
+- `show_te_force=false`: mean TE segment force panel from `var_03`
 """
 function V3Kite.plot_2d_trajectory(
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
@@ -645,13 +660,24 @@ function V3Kite.plot_2d_trajectory(
         tapes=nothing,
         labels=nothing,
         colormap=:viridis,
-        size=(800, 600))
+        size=(800, 600),
+        show_steering=nothing,
+        show_winch_force=true,
+        show_v_app=true,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=true,
+        show_te_force=true)
 
     if gradient == :steering && isnothing(tapes)
         error("tapes required for gradient=:steering")
     end
+    show_steering = something(show_steering,
+        !isnothing(tapes))
+    if show_steering && isnothing(tapes)
+        error("tapes required for show_steering=true")
+    end
 
-    has_tapes = !isnothing(tapes)
     fig = Figure(; size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
@@ -701,11 +727,12 @@ function V3Kite.plot_2d_trajectory(
         if i > 1
             lines!(ax, y_pos[1:n], z_pos[1:n];
                 color=:white, linewidth=lw,
-                linestyle=Makie.Linestyle([0, 2, 5, 7]))
-            # Invisible entry for legend with visible style
+                linestyle=Makie.Linestyle(
+                    [0, 2, 5, 7]))
             lines!(ax, Float64[], Float64[];
                 color=:black, linewidth=lw,
-                linestyle=Makie.Linestyle([0, 2, 5, 7]),
+                linestyle=Makie.Linestyle(
+                    [0, 2, 5, 7]),
                 label)
         end
     end
@@ -718,40 +745,131 @@ function V3Kite.plot_2d_trajectory(
     Colorbar(fig[1, 2]; colormap,
         colorrange=(vmin, vmax), label=cb_label)
 
-    # Steering comparison subplot
-    if has_tapes
-        ax2 = Axis(fig[2, 1];
+    # --- Time-series panels ---
+    next_row = 1
+    time_axes = Axis[]
+
+    if show_steering
+        next_row += 1
+        ax_st = Axis(fig[next_row, 1];
             ylabel=L"steering \; [\%]",
             xticklabelsvisible=false)
         for (i, tp) in enumerate(tapes)
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax2,
+            lines!(ax_st,
                 collect(Float64, tp.time),
                 collect(Float64, tp.steering .* 100);
                 linewidth=lw, linestyle=ls)
         end
-        rowsize!(fig.layout, 2, Relative(0.2))
+        push!(time_axes, ax_st)
     end
 
-    # Winch force subplot
-    next_row = has_tapes ? 3 : 2
-    ax_wf = Axis(fig[next_row, 1];
-        xlabel=L"distance \; [m]",
-        ylabel=L"F_t \; [N]")
-    for (i, lg) in enumerate(logs)
-        sl = lg.syslog
-        wf = [sl.winch_force[k][1]
-              for k in eachindex(sl.winch_force)]
-        lw = i == 1 ? 2.0 : 1.5
-        ls = i == 1 ? :solid : :dash
-        lines!(ax_wf, collect(sl.time), wf;
-            linewidth=lw, linestyle=ls)
+    if show_winch_force
+        next_row += 1
+        ax_wf = Axis(fig[next_row, 1];
+            ylabel=L"F_t \; [N]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            wf = [sl.winch_force[k][1]
+                  for k in eachindex(sl.winch_force)]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_wf, collect(sl.time), wf;
+                linewidth=lw, linestyle=ls)
+        end
+        push!(time_axes, ax_wf)
     end
-    if has_tapes
-        linkxaxes!(ax2, ax_wf)
+
+    if show_v_app
+        next_row += 1
+        ax_va = Axis(fig[next_row, 1];
+            ylabel=L"v_{app} \; [m/s]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_va, collect(sl.time),
+                collect(sl.v_app);
+                linewidth=lw, linestyle=ls)
+        end
+        push!(time_axes, ax_va)
     end
-    rowsize!(fig.layout, next_row, Relative(0.2))
+
+    if show_drag_coeff || show_lift_coeff
+        next_row += 1
+        ax_cdl = Axis(fig[next_row, 1];
+            ylabel=L"C_D, \; C_L \; [-]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            if show_drag_coeff
+                lines!(ax_cdl, collect(sl.time),
+                    collect(sl.var_01);
+                    linewidth=lw, linestyle=ls,
+                    color=:red,
+                    label=i == 1 ? L"C_D" : nothing)
+            end
+            if show_lift_coeff
+                lines!(ax_cdl, collect(sl.time),
+                    collect(sl.var_02);
+                    linewidth=lw, linestyle=ls,
+                    color=:blue,
+                    label=i == 1 ? L"C_L" : nothing)
+            end
+        end
+        axislegend(ax_cdl; position=:rt,
+            labelsize=10, patchsize=(10, 5))
+        push!(time_axes, ax_cdl)
+    end
+
+    if show_lift_drag_ratio
+        next_row += 1
+        ax_ld = Axis(fig[next_row, 1];
+            ylabel=L"C_L / C_D \; [-]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            cd = collect(sl.var_01)
+            cl = collect(sl.var_02)
+            ratio = [abs(d) > 1e-6 ? l / d : NaN
+                     for (l, d) in zip(cl, cd)]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_ld, collect(sl.time), ratio;
+                linewidth=lw, linestyle=ls)
+        end
+        push!(time_axes, ax_ld)
+    end
+
+    if show_te_force
+        next_row += 1
+        ax_te = Axis(fig[next_row, 1];
+            ylabel=L"\bar{F}_{TE} \; [N]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_te, collect(sl.time),
+                collect(sl.var_03);
+                linewidth=lw, linestyle=ls)
+        end
+        push!(time_axes, ax_te)
+    end
+
+    # Final axis gets x label and visible tick labels
+    if !isempty(time_axes)
+        last_ax = time_axes[end]
+        last_ax.xlabel = L"t \; [s]"
+        last_ax.xticklabelsvisible = true
+        linkxaxes!(time_axes...)
+        rowsize!(fig.layout, 1, Relative(0.5))
+    end
 
     if length(logs) > 1 || !isnothing(labels)
         Legend(fig[next_row + 1, 1], ax;

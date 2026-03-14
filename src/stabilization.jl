@@ -119,8 +119,6 @@ function settle_wing(config::V3SettleConfig;
     end
     dest_struc = joinpath(
         data_path, "struc_geometry_$(suffix).yaml")
-    dest_aero = joinpath(
-        data_path, "aero_geometry_$(suffix).yaml")
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -133,12 +131,12 @@ function settle_wing(config::V3SettleConfig;
             syslog = _run_power_zone_settling!(config;
                 data_path, show_progress,
                 source_struc, source_aero,
-                dest_struc, dest_aero, init_row)
+                dest_struc, init_row)
         else
             syslog = _run_zero_g_settling!(config;
                 data_path, show_progress,
                 source_struc, source_aero,
-                dest_struc, dest_aero, init_row)
+                dest_struc, init_row)
         end
     end
 
@@ -157,7 +155,7 @@ function settle_wing(config::V3SettleConfig;
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
     vsm_set.wings[1].n_panels = config.n_panels
-    vsm_set.wings[1].geometry_file = dest_aero
+    vsm_set.wings[1].geometry_file = source_aero
 
     sys = load_sys_struct_from_yaml(dest_struc;
         system_name=V3_MODEL_NAME, set,
@@ -218,7 +216,7 @@ end
 function _run_zero_g_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc, dest_aero,
+        dest_struc,
         init_row=nothing)
     sam, sys, gc = _setup_settling_model(config;
         g_earth=0.0, data_path, source_struc, source_aero)
@@ -274,10 +272,10 @@ function _run_zero_g_settling!(config::V3SettleConfig;
     @info "Updating YAML with settled positions..."
     SymbolicAWEModels.update_yaml_from_sys_struct!(
         sys, source_struc, dest_struc,
-        source_aero, dest_aero)
+        source_aero, source_aero)
 
     syslog = save_and_load_log(logger, "settle_refine_wing")
-    @info "Settling complete" dest_struc dest_aero
+    @info "Settling complete" dest_struc
     return syslog
 end
 
@@ -285,7 +283,7 @@ end
 function _run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc, dest_aero,
+        dest_struc,
         init_row)
     sam, sys, gc = _setup_settling_model(config;
         g_earth=9.81, data_path, source_struc, source_aero)
@@ -356,9 +354,9 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     @info "Updating YAML with settled positions..."
     SymbolicAWEModels.update_yaml_from_sys_struct!(
         sys, source_struc, dest_struc,
-        source_aero, dest_aero)
+        source_aero, source_aero)
 
     syslog = save_and_load_log(logger, "settle_refine_wing")
-    @info "Settling complete" dest_struc dest_aero
+    @info "Settling complete" dest_struc
     return syslog
 end

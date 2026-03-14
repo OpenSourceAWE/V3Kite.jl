@@ -14,8 +14,9 @@ Usage:
 
 using V3Kite
 using VortexStepMethod
-using SymbolicAWEModels: reposition!, rotate_around_z,
-    rotate_around_y, calc_steady_torque, FBDF
+using SymbolicAWEModels: reposition!, rotate_around_x,
+    rotate_around_z, rotate_around_y,
+    calc_steady_torque, FBDF
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
@@ -32,6 +33,8 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
+generate_drag_adjusted_polars(1.0)
+
 SECTION = "straight_right"
 YEAR = 2025
 PLOT_FRAME = true
@@ -46,7 +49,11 @@ HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
+DISTANCE_BASED_STEERING = false
 BODY_DAMPING = [0.0, 0.0, 20.0]
+POINT_37_38_DAMPING = [0.0, 100.0, 0.0]
+FIGURES_DIR = joinpath(@__DIR__, "..", "..",
+    "Torque2026", "figures")
 
 # Maneuver selection
 if YEAR == 2025
@@ -59,16 +66,13 @@ end
 SECTION = "$(SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
-    end_utc = "15:36:49.0"
+    end_utc = "15:36:37.0"
 elseif SECTION == "straight_left_2025"
-    start_utc = "15:36:49.0"
-    end_utc = "15:36:59.0"
+    start_utc = "15:36:47.0"
+    end_utc = "15:36:57.0"
 elseif SECTION == "power_depower_2025"
-    start_utc = "15:42:11.0"
+    start_utc = "15:42:10.0"
     end_utc = "15:42:21.0"
-elseif SECTION == "straight_right_2025"
-    start_utc = "15:37:39.0"
-    end_utc = "15:37:49.0"
 elseif SECTION == "straight_right_2019"
     start_utc = "11:10:03.0"
     end_utc = "11:10:13.0"
@@ -104,32 +108,15 @@ end
 # Replay helper functions
 # =============================================================================
 
-# Distance tracker state
-const sim_prev_pos = Ref{Vector{Float64}}(zeros(3))
-const sim_cumulative_dist = Ref{Float64}(0.0)
-
-function reset_distance_tracker!()
-    sim_prev_pos[] = zeros(3)
-    sim_cumulative_dist[] = 0.0
-end
-
-function update_sim_distance!(wing_pos)
-    if sim_prev_pos[] == zeros(3)
-        sim_prev_pos[] = copy(wing_pos)
-        return 0.0
-    end
-    dist = norm(wing_pos - sim_prev_pos[])
-    sim_cumulative_dist[] += dist
-    sim_prev_pos[] = copy(wing_pos)
-    return sim_cumulative_dist[]
-end
-
 function update_vel_from_csv!(sys, row,
         gc::V3GeomAdjustConfig;
         heading_correction=0.0)
     if !CONST_WIND
-        sys.set.v_wind = row.wind_speed
-        sys.set.upwind_dir = row.wind_dir + -90
+        sys.set.v_wind = hypot(
+            row.wind_speed, row.wind_speed_vertical)
+        sys.set.upwind_dir = rad2deg(row.upwind_dir)
+        sys.wind_elevation = atan(
+            row.wind_speed_vertical, row.wind_speed)
     end
 
     # CSV steering (positive = right turn)
@@ -161,10 +148,18 @@ function run_physics_replay(h5_path;
         start_utc=start_utc, end_utc=end_utc,
         n_substeps=20)
 
-    data = load_flight_data(h5_path)
+    full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
-        data, start_utc, end_utc)
+        full_data, start_utc, end_utc)
     limited_data = add_distance_column(limited_data)
+
+    # Extended data for distance-based steering lookup
+    # (from start_utc to end of recording, so we can
+    # look ahead beyond end_utc)
+    dist_lookup_data, _ = limit_by_utc(
+        full_data, start_utc)
+    dist_lookup_data = add_distance_column(
+        dist_lookup_data)
 
     @info "Interpolating flight data" n_substeps
     data = interpolate_flight_data(
@@ -202,10 +197,14 @@ function run_physics_replay(h5_path;
             distance = raw.distance,
             cumulative_distance = raw.cumulative_distance,
             wind_speed = raw.ekf_wind_speed_horizontal,
-            wind_dir = raw.ekf_wind_direction,
+            upwind_dir = wrap_to_pi(-raw.ekf_wind_direction - π/2),
+            wind_speed_vertical =
+                raw.ekf_wind_speed_vertical,
             angle_of_attack = deg2rad(
                 raw.ekf_wing_angle_of_attack),
             v_app = raw.ekf_kite_apparent_windspeed,
+            drag_coeff = raw.ekf_wing_drag_coefficient,
+            lift_coeff = raw.ekf_wing_lift_coefficient,
         )
     end
 
@@ -231,7 +230,7 @@ function run_physics_replay(h5_path;
         start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
             reduce_tip=true, reduce_te=true,
-            reduce_depower=false),
+            reduce_depower=false, reduce_steering=true),
         fix_sphere_idxs=[])
     if SETTLE
         sam, settle_log = settle_wing(settle_config;
@@ -299,16 +298,15 @@ function run_physics_replay(h5_path;
     sys = sam.sys_struct
     SymbolicAWEModels.set_body_frame_damping(
         sys, BODY_DAMPING, 1:38)
-    distribute_wing_mass!(sys, 11.0; dist=0.6)
+    SymbolicAWEModels.set_body_frame_damping(
+        sys, POINT_37_38_DAMPING, 37:38)
+    distribute_wing_mass!(sys, 11.0; dist=0.5)
 
     dt = data.time[2] - data.time[1]
-    reset_distance_tracker!()
     heading_pid = create_heading_pid(;
         K=HEADING_KP, Ti=HEADING_TI, dt)
     lateral_pid = create_heading_pid(;
         K=LATERAL_KP, dt)
-
-    max_dist = data.cumulative_distance[end]
 
     # Log full CSV reference independently of sim
     for step in 1:n_steps-1
@@ -321,20 +319,29 @@ function run_physics_replay(h5_path;
         data_state.winch_force[1] = row.tether_force
         data_state.AoA = row.angle_of_attack
         data_state.v_app = row.v_app
-        data_state.time = row.cumulative_distance
+        data_state.time = row.time
         data_state.l_tether[1] = row.tether_len
         data_state.v_reelout[1] = row.tether_vel
-        upwind_dir = deg2rad(row.wind_dir - 90)
-        wind_vec = rotate_around_z(
-            [0.0, -1.0, 0.0], -upwind_dir)
-        data_state.v_wind_gnd .= row.wind_speed .* wind_vec
+        data_state.var_01 = row.drag_coeff
+        data_state.var_02 = row.lift_coeff
+        # wind_elev = atan(
+        #     row.wind_speed_vertical, row.wind_speed)
+        # wind_vec = rotate_around_z(
+        #     rotate_around_x(
+        #         [0.0, -1.0, 0.0], wind_elev),
+        #     -row.upwind_dir)
+        # v_wind_total = hypot(
+        #     row.wind_speed, row.wind_speed_vertical)
+        # data_state.v_wind_gnd .= v_wind_total .* wind_vec
         log!(data_logger, data_state)
 
-        push!(data_tape.time,
-            row.cumulative_distance)
+        push!(data_tape.time, row.time)
         push!(data_tape.steering, row.steering)
         push!(data_tape.depower, row.depower)
     end
+
+    sim_cum_dist = 0.0
+    prev_sim_pos = copy(sam.sys_struct.wings[1].pos_w)
 
     try
         for step in 1:n_steps-1
@@ -345,19 +352,19 @@ function run_physics_replay(h5_path;
                     sam.sys_struct, row)
                 SymbolicAWEModels.reinit!(
                     sam, sam.prob, FBDF())
+                prev_sim_pos = copy(
+                    sam.sys_struct.wings[1].pos_w)
             end
 
-            # Update sim distance before input lookup
-            update_sim_distance!(
-                sam.sys_struct.wings[1].pos_w)
-            if sim_cumulative_dist[] >= max_dist
-                break
+            phys_row = row
+            if DISTANCE_BASED_STEERING
+                dist_raw = get_row_at_distance(
+                    dist_lookup_data, sim_cum_dist)
+                dist_row = make_row(dist_raw)
+                phys_row = merge(phys_row,
+                    (steering=dist_row.steering,
+                     depower=dist_row.depower))
             end
-
-            # Distance-based input lookup for physics
-            phys_row = make_row(
-                get_row_at_distance(
-                    data, sim_cumulative_dist[]))
 
             data_heading = calc_csv_heading(
                 phys_row.roll, phys_row.pitch,
@@ -400,6 +407,11 @@ function run_physics_replay(h5_path;
 
             next_step!(sam; dt)
 
+            cur_sim_pos = sam.sys_struct.wings[1].pos_w
+            sim_cum_dist += norm(
+                cur_sim_pos - prev_sim_pos)
+            prev_sim_pos = copy(cur_sim_pos)
+
             if step % n_substeps == 0
                 sys = sam.sys_struct
                 for i in (4, 5)
@@ -426,21 +438,25 @@ function run_physics_replay(h5_path;
                 end
             end
 
-            log_state!(logger, sys_state, sam,
-                sim_cumulative_dist[])
+            log_state!(logger, sys_state, sam, row.time)
 
-            push!(sim_tape.time,
-                sim_cumulative_dist[])
+            push!(sim_tape.time, row.time)
             push!(sim_tape.steering, eff_steer)
             push!(sim_tape.depower, eff_dep)
 
             if should_report(step, n_steps)
-                elapsed = time() - replay_start
-                dist = round(
-                    sim_cumulative_dist[], digits=1)
+                sim_t = round(row.time, digits=2)
+                wall_t = round(
+                    time() - replay_start, digits=1)
+                rt = round(row.time / wall_t, digits=2)
+                d = round(norm(sim_pos - data_pos),
+                    digits=2)
                 @info "Step $step/$n_steps" *
-                    " (d=$(dist)m," *
-                    " frame=$(row.video_frame))"
+                    " (t=$(sim_t)s," *
+                    " wall=$(wall_t)s," *
+                    " $(rt)x realtime," *
+                    " frame=$(row.video_frame)," *
+                    " dist=$(d)m)"
             end
         end
     catch err
@@ -492,13 +508,18 @@ if !SETTLE_ONLY
     trajectory = plot_2d_trajectory([syslog, datalog];
         gradient=:steering,
         tapes=[sim_tape, data_tape],
-        labels=["sim", "data"])
+        labels=["sim", "data"],
+        show_te_force=false,
+    )
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory([syslog, datalog];
         gradient=:steering,
         tapes=[sim_tape, data_tape],
         labels=["sim", "data"])
-    save("trajectory_2d.pdf", traj_2d)
+    save("trajectory_2d_$(SECTION).pdf", traj_2d)
+    mkpath(FIGURES_DIR)
+    save(joinpath(FIGURES_DIR,
+        "trajectory_2d_$(SECTION).pdf"), traj_2d)
     GLMakie.activate!()
 
     yaw_fig = plot_yaw_rate_vs_steering(
@@ -507,8 +528,8 @@ if !SETTLE_ONLY
         min_steering=0.05,
         labels=["sim", "data"], dt)
 
-    # Body frame plots for matched photogrammetry frames
-    CairoMakie.activate!()
+    # 3D plots for matched photogrammetry frames
+    photo_plot = Dict{Int, Any}()
     for (csv, target_frame) in frame_csvs
         idx = findfirst(
             x -> x[1] == target_frame,
@@ -519,21 +540,13 @@ if !SETTLE_ONLY
             sam.sys_struct, syslog.syslog[syslog_idx])
         pts, groups = load_extra_points(
             csv, sam.sys_struct)
-        for dir in (:front, :side, :top)
-            scene = plot_body_frame_local(
-                sam.sys_struct;
-                extra_points=pts,
-                extra_groups=groups, dir,
-                legend=false, title=false,
-                figsize=(400, 400),
-                show_point_idxs=false)
-            save("body_frame_$(dir)" *
-                "_frame$(target_frame)" *
-                "_$(base_name).pdf", scene)
-        end
-        @info "Saved body frame plots" target_frame
+        photo_plot[target_frame] = plot(
+            sam.sys_struct;
+            extra_points=pts,
+            extra_groups=groups)
+        wait(display(photo_plot[target_frame]))
+        @info "Created 3D plot" target_frame
     end
-    GLMakie.activate!()
 
     scene = replay([syslog, datalog],
         [sam.sys_struct, data_sam.sys_struct])

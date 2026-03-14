@@ -218,9 +218,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         end
 
         # Log state
-        update_sys_state!(sys_state, sam)
-        sys_state.time = t
-        log!(logger, sys_state)
+        log_state!(logger, sys_state, sam, t)
 
         # Progress updates
         if show_progress && (step % max(1, div(n_steps, 10)) == 0 || step == n_steps)

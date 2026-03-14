@@ -149,15 +149,15 @@ segments:
 
     #TODO: stiffness ratio between LE+struts & wires is crucial for stability
     # Wing structural elements - trailing edge wires (hardcoded stiffness)
-    - [20, 3, 5, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
-    - [21, 5, 7, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
-    - [22, 7, 9, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
-    - [23, 9, 11, POWER_LINE, 1.3505, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
-    - [24, 11, 13, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100] #1.3211*0.95 = 1.254045
-    - [25, 13, 15, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100] #1.3505*0.95 = 1.283
-    - [26, 15, 17, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100] #1.3506*0.95 = 1.28307
-    - [27, 17, 19, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100] #1.3511*0.95 = 1.283545
-    - [28, 19, 21, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100] #0.9039*0.95 = 0.858705
+    - [20, 3, 5, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100]
+    - [21, 5, 7, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100]
+    - [22, 7, 9, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100]
+    - [23, 9, 11, POWER_LINE, 1.3505, 1.0, 5e5, 5e5, 0.100]
+    - [24, 11, 13, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100]
+    - [25, 13, 15, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100]
+    - [26, 15, 17, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100]
+    - [27, 17, 19, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100]
+    - [28, 19, 21, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100]
 
     # Wing structural elements - diagonal springs (hardcoded stiffness)
     - [29, 2, 5, POWER_LINE, 1.3604, 1.0, 5e5, 5e5, 0.100]
@@ -279,9 +279,6 @@ segments:
     - [93, 41, 42, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
     - [94, 42, 43, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
     - [95, 43, 44, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-
-    # - [96, 2, 6, POWER_LINE, 0.0, 1.0, 1e6, 10.0, 1.0]
-    # - [97, 16, 20, POWER_LINE, 0.0, 1.0, 1e6, 10.0, 1.0]
 
 ###########################
 ## Pulleys ################

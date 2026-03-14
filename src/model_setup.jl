@@ -140,6 +140,28 @@ function adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw;
 end
 
 """
+    generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
+
+Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
+write the adjusted polars to `dst_dir`.
+"""
+function generate_drag_adjusted_polars(drag_factor;
+        data_path=v3_data_path(),
+        src_dir="2D_polars_CFD_NF_combined",
+        dst_dir="2D_polars_drag_adjusted")
+    src = joinpath(data_path, src_dir)
+    dst = joinpath(data_path, dst_dir)
+    mkpath(dst)
+    for f in readdir(src)
+        endswith(f, ".csv") || continue
+        df = CSV.read(joinpath(src, f), DataFrame)
+        df.Cd .*= drag_factor
+        CSV.write(joinpath(dst, f), df)
+    end
+    return nothing
+end
+
+"""
     adjust_elevation!(sam::SymbolicAWEModel, elevation_deg)
 
 Update the transform elevation to the specified value in degrees.

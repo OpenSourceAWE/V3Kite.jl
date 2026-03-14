@@ -107,9 +107,11 @@ Find row indices corresponding to a UTC time range.
 - `(start_idx, end_idx)` tuple of row indices
 """
 function find_indices_by_utc(data,
-        start_utc::String, end_utc::String)
+        start_utc::String,
+        end_utc::Union{String, Nothing}=nothing)
     start_sec = parse_time_to_seconds(start_utc)
-    end_sec = parse_time_to_seconds(end_utc)
+    end_sec = isnothing(end_utc) ? Inf :
+        parse_time_to_seconds(end_utc)
 
     start_idx = nothing
     end_idx = nothing
@@ -150,10 +152,12 @@ and adds a video_frame column.
 - `(data, start_idx)`: Sliced NamedTuple and starting index
 """
 function limit_by_utc(data,
-        start_utc::String, end_utc::String)
+        start_utc::String,
+        end_utc::Union{String, Nothing}=nothing)
     start_idx, end_idx = find_indices_by_utc(
         data, start_utc, end_utc)
-    @info "UTC range $start_utc to $end_utc" *
+    end_str = isnothing(end_utc) ? "end" : end_utc
+    @info "UTC range $start_utc to $end_str" *
         " -> rows $start_idx to $end_idx"
 
     # Slice each vector
@@ -205,6 +209,31 @@ function add_distance_column(data)
 
     return merge(data, (distance=distances,
         cumulative_distance=cumulative_distances))
+end
+
+"""
+    find_closest_trajectory_index(data, query_pos;
+        start_idx=1)
+
+Find the data index whose (x, y, z) position is closest to
+`query_pos`. Searches forward from `start_idx` to avoid
+matching already-passed trajectory segments.
+"""
+function find_closest_trajectory_index(data, query_pos;
+        start_idx=1)
+    best_idx = start_idx
+    best_dist2 = Inf
+    for i in start_idx:length(data.time)
+        dx = data.ekf_kite_position_x[i] - query_pos[1]
+        dy = data.ekf_kite_position_y[i] - query_pos[2]
+        dz = data.ekf_kite_position_z[i] - query_pos[3]
+        d2 = dx^2 + dy^2 + dz^2
+        if d2 < best_dist2
+            best_dist2 = d2
+            best_idx = i
+        end
+    end
+    return best_idx
 end
 
 """
