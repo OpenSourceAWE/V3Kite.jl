@@ -100,8 +100,6 @@ function load_extra_points(csv_path::String,
     csv_le_4 = _closest_on_polyline(
         strut4[le_idx], le_pts)
     csv_le_center = (csv_le_3 + csv_le_4) / 2
-    csv_te_center =
-        (strut3[te_idx] + strut4[te_idx]) / 2
 
     # Compute R, T only when sys_struct is provided
     R = nothing
@@ -115,15 +113,9 @@ function load_extra_points(csv_path::String,
         sim_le_center = (sim_p10 + sim_p12) / 2
 
         # Direction vectors
-        csv_span = normalize(
-            strut4[te_idx] - strut3[te_idx])
-
-        # CSV basis
+        csv_span = [1.0, 0.0, 0.0]
         csv_y = csv_span
-        csv_wing_center =
-            (csv_le_center + csv_te_center) / 2
-        csv_z = normalize(
-            csv_wing_center - csv_y * 0.84 / 2)
+        csv_z = [0.0, 0.0, 1.0]
         csv_x = cross(csv_y, csv_z)
 
         # Sim basis
