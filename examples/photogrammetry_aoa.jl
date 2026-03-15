@@ -23,8 +23,7 @@ flight_data, _ = limit_by_utc(full_data, "15:30:00")
 
 # Two calibration frames with known measurements
 TARGET_FRAMES = [7182, 17611]
-STEERING_FRAMES = [7182, 7362]
-ALL_FRAMES = union(TARGET_FRAMES, STEERING_FRAMES)
+ALL_FRAMES = TARGET_FRAMES
 
 csvs = filter(
     f -> occursin("frame", f) && endswith(f, ".csv"),
@@ -32,11 +31,7 @@ csvs = filter(
 
 measured_dp = Float64[]
 measured_offset = Float64[]
-steering_dp = Float64[]
-steering_offset = Float64[]
-steering_vals = Float64[]
-steering_chords = Float64[]
-plot_data = nothing
+frame_results = Dict{Int, Any}()
 
 function process_frame_csv(csv, flight_data)
     pts, groups = load_extra_points(csv)
@@ -127,16 +122,7 @@ for csv in csvs
     if frame_num in TARGET_FRAMES
         push!(measured_dp, result.depower)
         push!(measured_offset, result.offset)
-    end
-    if frame_num in STEERING_FRAMES
-        push!(steering_dp, result.depower)
-        push!(steering_offset, result.offset)
-        push!(steering_vals, result.steering)
-        push!(steering_chords, result.chord_len)
-    end
-
-    if frame_num == 7182
-        global plot_data = result
+        frame_results[frame_num] = result
     end
 end
 
@@ -203,44 +189,47 @@ function add_bridle_overlay!(ax, kcu_2d, qc_2d,
         fontsize=14, color=:purple)
 end
 
-# --- Single side-view plot with bridle geometry ---
-to_body(p) = plot_data.R_body' *
-    (p - plot_data.le_center)
-to_side(b) = (b[1], b[3])
-
-# Transform all points to body frame
-body_pts = [Tuple(plot_data.R_body' *
-    (collect(p) - plot_data.le_center))
-    for p in plot_data.pts]
-
-# Compute 2D coords for bridle overlay
-kcu_2d = to_side(to_body(plot_data.cam_pos))
-qc_2d = to_side(to_body(collect(plot_data.qc)))
-te_2d = to_side(to_body(plot_data.te_mid))
-
-fig = plot_photogrammetry(body_pts,
-    plot_data.groups; dir=:side)
-ax = content(fig[1, 1])
-add_bridle_overlay!(ax, kcu_2d, qc_2d, te_2d,
-    plot_data.offset)
-autolimits!(ax)
-display(fig)
-
-# Save PDF with CairoMakie
+# --- Side-view plots with bridle geometry per frame ---
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
     "Torque2026", "figures")
-CairoMakie.activate!()
-fig_pdf = plot_photogrammetry(body_pts,
-    plot_data.groups; dir=:side)
-ax_pdf = content(fig_pdf[1, 1])
-add_bridle_overlay!(ax_pdf, kcu_2d, qc_2d, te_2d,
-    plot_data.offset)
-autolimits!(ax_pdf)
 mkpath(FIGURES_DIR)
-save(joinpath(FIGURES_DIR,
-    "bridle_incidence_side.pdf"), fig_pdf)
-save("bridle_incidence_side.pdf", fig_pdf)
-GLMakie.activate!()
+
+for (frame_num, fd) in frame_results
+    local body_pts, kcu_2d, qc_2d, te_2d
+    local fig, ax, fig_pdf, ax_pdf
+    to_body(p) = fd.R_body' * (p - fd.le_center)
+    to_side(b) = (b[1], b[3])
+
+    body_pts = [Tuple(fd.R_body' *
+        (collect(p) - fd.le_center))
+        for p in fd.pts]
+
+    kcu_2d = to_side(to_body(fd.cam_pos))
+    qc_2d = to_side(to_body(collect(fd.qc)))
+    te_2d = to_side(to_body(fd.te_mid))
+
+    fig = plot_photogrammetry(body_pts,
+        fd.groups; dir=:side)
+    ax = content(fig[1, 1])
+    add_bridle_overlay!(ax, kcu_2d, qc_2d, te_2d,
+        fd.offset)
+    autolimits!(ax)
+    display(fig)
+
+    CairoMakie.activate!()
+    fig_pdf = plot_photogrammetry(body_pts,
+        fd.groups; dir=:side)
+    ax_pdf = content(fig_pdf[1, 1])
+    add_bridle_overlay!(ax_pdf, kcu_2d, qc_2d,
+        te_2d, fd.offset)
+    autolimits!(ax_pdf)
+    fname = "bridle_incidence_side" *
+        "_frame_$(frame_num).pdf"
+    @info "Saving $fname"
+    save(fname, fig_pdf)
+    save(joinpath(FIGURES_DIR, fname), fig_pdf)
+    GLMakie.activate!()
+end
 
 # Linear depower-to-offset model: offset = a * u + b
 # Two points → direct solve
@@ -253,25 +242,4 @@ println("\nLinear model: offset = a * u + b")
 println("  a = $(round(a; digits=4)) deg/%")
 println("  b = $(round(b; digits=2)) deg")
 
-# Steering effect: offset difference between two frames
-Δoffset = steering_offset[2] - steering_offset[1]
-Δsteering = abs(steering_vals[2] - steering_vals[1])
-dp_steer_deg = -Δoffset / Δsteering
-
-println("\nSteering effect:")
-println("  Δoffset = $(round(Δoffset; digits=2)) deg")
-println("  Δsteering = $(round(Δsteering; digits=1)) %")
-println("  dp_steer_offset = " *
-    "$(round(dp_steer_deg; digits=4)) deg/%")
-
-# Convert to %/% via triangle geometry
-chord = (steering_chords[1] + steering_chords[2]) / 2
-z_height = chord * sin(deg2rad(Δoffset))
-z_per_pct = z_height / Δsteering
-dp_steer_pct = z_per_pct / (V3_DEPOWER_GAIN / 100)
-
-println("  chord = $(round(chord; digits=3)) m")
-println("  z_per_pct = $(round(z_per_pct; digits=5)) m/%")
-println("  dp_steer_pct = " *
-    "$(round(dp_steer_pct; digits=4)) %/%")
 

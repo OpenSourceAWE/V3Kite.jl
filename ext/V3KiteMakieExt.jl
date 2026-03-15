@@ -626,8 +626,9 @@ function V3Kite.plot_yaw_rate_vs_steering(
 
     fig = Figure(size=figsize)
     ax = Axis(fig[1, 1];
-        xlabel=L"|u_s \cdot v_a| \; [m/s]",
-        ylabel=L"|\dot{\psi}| \; [rad/s]")
+        xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
+        ylabel=L"|\dot{\psi}| \; [rad/s]",
+        xlabelsize=18, ylabelsize=18)
 
     has_data = false
     for (i, (lg, tape)) in enumerate(zip(logs, tps))
@@ -709,7 +710,7 @@ function V3Kite.plot_replay(
         push!(all_times, sl.time)
     end
     push!(panels, (data=all_data, labels=all_labels,
-        times=all_times, ylabel=L"F_t \; [N]"))
+        times=all_times, ylabel=L"F_{\text{t}} \; [N]"))
 
     # --- Apparent wind speed panel ---
     all_data, all_labels, all_times = [], [], []
@@ -720,7 +721,7 @@ function V3Kite.plot_replay(
         push!(all_times, sl.time)
     end
     push!(panels, (data=all_data, labels=all_labels,
-        times=all_times, ylabel=L"v_a \; [m/s]"))
+        times=all_times, ylabel=L"v_{\text{a}} \; [m/s]"))
 
     # --- Wind speed panel ---
     all_data, all_labels, all_times = [], [], []
@@ -733,7 +734,7 @@ function V3Kite.plot_replay(
         push!(all_times, sl.time)
     end
     push!(panels, (data=all_data, labels=all_labels,
-        times=all_times, ylabel=L"v_w \; [m/s]"))
+        times=all_times, ylabel=L"v_{\text{w}} \; [m/s]"))
 
     # --- Wind direction panel ---
     all_data, all_labels, all_times = [], [], []
@@ -749,7 +750,7 @@ function V3Kite.plot_replay(
     end
     push!(panels, (data=all_data, labels=all_labels,
         times=all_times,
-        ylabel=L"\theta_w \; [°]"))
+        ylabel=L"\theta_{\text{w}} \; [°]"))
 
     # --- Kite velocity panel ---
     all_data, all_labels, all_times = [], [], []
@@ -762,7 +763,7 @@ function V3Kite.plot_replay(
         push!(all_times, sl.time)
     end
     push!(panels, (data=all_data, labels=all_labels,
-        times=all_times, ylabel=L"v_k \; [m/s]"))
+        times=all_times, ylabel=L"v_{\text{k}} \; [m/s]"))
 
     # --- Force coefficient panel ---
     all_data, all_labels, all_times = [], [], []
@@ -778,7 +779,7 @@ function V3Kite.plot_replay(
         push!(all_times, sl.time)
     end
     push!(panels, (data=all_data, labels=all_labels,
-        times=all_times, ylabel=L"C_F \; [-]"))
+        times=all_times, ylabel=L"C_{\text{F}} \; [-]"))
 
     # --- gk panel (only when tape_lengths provided) ---
     if !isnothing(tape_lengths)
@@ -821,11 +822,11 @@ function V3Kite.plot_replay(
 
             push!(all_data, gk)
             push!(all_labels,
-                L"g_k" * actual_suffixes[i])
+                L"g_{\text{k}}" * actual_suffixes[i])
             push!(all_times, sl.time[2:end])
         end
         push!(panels, (data=all_data, labels=all_labels,
-            times=all_times, ylabel=L"g_k \; [-]"))
+            times=all_times, ylabel=L"g_{\text{k}} \; [-]"))
     end
 
     # --- Steering panel (only when tape_lengths) ---
@@ -835,19 +836,19 @@ function V3Kite.plot_replay(
             tl = tape_lengths[i]
             push!(all_data, collect(tl.steering .* 100))
             push!(all_labels,
-                L"u_s" * actual_suffixes[i])
+                L"u_{\text{s}}" * actual_suffixes[i])
             push!(all_times, collect(tl.time))
         end
         push!(panels, (data=all_data, labels=all_labels,
             times=all_times,
-            ylabel=L"u_s \; [\%]"))
+            ylabel=L"u_{\text{s}} \; [\%]"))
     end
 
     # --- Render panels ---
     n_panels = length(panels)
     fig = Figure(; size)
     axes = Axis[]
-    label_fontsize = 16
+    label_fontsize = 18
     ticklabelsize = 12
 
     for (i, panel) in enumerate(panels)
@@ -882,7 +883,7 @@ function V3Kite.plot_replay(
 
         if length(panel.data) > 1
             axislegend(ax; position=:rt,
-                labelsize=10, patchsize=(10, 5))
+                labelsize=14, patchsize=(14, 7))
         end
 
         push!(axes, ax)
@@ -1015,11 +1016,12 @@ with optional time-series subplots below.
 - `show_steering`: steering panel (default: `!isnothing(tapes)`)
 - `show_winch_force=true`: winch force panel
 - `show_v_app=true`: apparent wind speed panel
+- `show_tether_len=false`: tether length panel
 - `show_drag_coeff=false`: drag coefficient (C_D) from `var_01`
 - `show_lift_coeff=false`: lift coefficient (C_L) from `var_02`
   C_D and C_L share a single panel when both are enabled.
 - `show_lift_drag_ratio=true`: C_L/C_D ratio panel
-  (C_D = wing + tether + bridle + KCU)
+  (wing drag coefficient only)
 - `show_te_force=false`: mean TE segment force panel from `var_03`
 - `show_heading=false`: heading angle panel
 - `show_bridle_pitch=false`: bridle pitch angle panel from `var_08`
@@ -1040,16 +1042,17 @@ function V3Kite.plot_2d_trajectory(
         colormap=:viridis,
         size=(800, 600),
         show_steering=nothing,
-        show_winch_force=false,
-        show_v_app=false,
+        show_winch_force=true,
+        show_v_app=true,
+        show_tether_len=false,
         show_drag_coeff=false,
         show_lift_coeff=false,
         show_lift_drag_ratio=false,
         show_te_force=false,
         show_heading=false,
-        show_bridle_pitch=true,
+        show_bridle_pitch=false,
         show_aoa=true,
-        show_wing_vel=true,
+        show_wing_vel=false,
         show_depower=false,
         show_yaw=false,
         show_pitch=false,
@@ -1072,11 +1075,12 @@ function V3Kite.plot_2d_trajectory(
     has_aoa = show_aoa && length(logs) >= 2
     n_panels = show_steering + show_depower +
         show_winch_force + show_v_app +
+        show_tether_len +
         show_drag_coeff + show_lift_coeff +
         show_lift_drag_ratio + show_te_force +
         show_heading + show_wing_vel + has_euler +
         show_bridle_pitch + has_aoa
-    panel_height = 75
+    panel_height = 60
     fig_size = (size[1],
         size[2] + n_panels * panel_height)
 
@@ -1098,6 +1102,7 @@ function V3Kite.plot_2d_trajectory(
     fig = Figure(; size=fig_size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
+        xlabelsize=18, ylabelsize=18,
         aspect=DataAspect())
 
     # Collect all gradient values for consistent range
@@ -1113,7 +1118,7 @@ function V3Kite.plot_2d_trajectory(
         elseif gradient == :steering
             trng = tape_ranges[i]
             append!(all_vals,
-                tapes[i].steering[trng] .* 100)
+                tapes[i].steering[trng])
         else
             error("Unknown gradient: $gradient")
         end
@@ -1129,8 +1134,7 @@ function V3Kite.plot_2d_trajectory(
             [norm(sl.vel_kite[k]) for k in rng]
         else
             collect(Float64,
-                tapes[i].steering[tape_ranges[i]]
-                .* 100)
+                tapes[i].steering[tape_ranges[i]])
         end
 
         label = isnothing(labels) ?
@@ -1158,12 +1162,13 @@ function V3Kite.plot_2d_trajectory(
     end
 
     cb_label = if gradient == :vel
-        L"v_k \; [m/s]"
+        L"v_{\text{k}} \; [m/s]"
     else
-        L"steering \; [\%]"
+        L"u_{\text{s}} \; [-]"
     end
     Colorbar(fig[1, 2]; colormap,
-        colorrange=(vmin, vmax), label=cb_label)
+        colorrange=(vmin, vmax), label=cb_label,
+        labelsize=18)
     colsize!(fig.layout, 2, Fixed(40))
 
     # --- Time-series panels ---
@@ -1174,6 +1179,7 @@ function V3Kite.plot_2d_trajectory(
 
     function _twin_panel!(fig, row, ylabel)
         ax = Axis(fig[row, 1]; ylabel,
+            ylabelsize=18,
             xticklabelsvisible=false)
         push!(time_axes, ax)
         if use_twin
@@ -1191,7 +1197,7 @@ function V3Kite.plot_2d_trajectory(
     if show_steering
         next_row += 1
         ax_st = _twin_panel!(fig, next_row,
-            L"steering \; [\%]")
+            L"u_{\text{s}} \; [-]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
@@ -1201,7 +1207,7 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
-                    tp.steering .* 100)[trng];
+                    tp.steering)[trng];
                 linewidth=lw, linestyle=ls)
         end
     end
@@ -1212,7 +1218,7 @@ function V3Kite.plot_2d_trajectory(
         end
         next_row += 1
         ax_dp = _twin_panel!(fig, next_row,
-            L"depower \; [\%]")
+            L"u_{\text{d}} \; [\%]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
@@ -1230,7 +1236,7 @@ function V3Kite.plot_2d_trajectory(
     if show_winch_force
         next_row += 1
         ax_wf = _twin_panel!(fig, next_row,
-            L"F_t \; [kN]")
+            L"F_{\text{t}} \; [kN]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1251,7 +1257,7 @@ function V3Kite.plot_2d_trajectory(
     if show_v_app
         next_row += 1
         ax_va = _twin_panel!(fig, next_row,
-            L"v_{app} \; [m/s]")
+            L"v_{\text{app}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1268,45 +1274,39 @@ function V3Kite.plot_2d_trajectory(
             color=:gray70)
     end
 
+    if show_tether_len
+        next_row += 1
+        ax_tl = _twin_panel!(fig, next_row,
+            L"l_{\text{t}} \; [m]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lt = [sl.l_tether[k][1] for k in rng]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_tl
+            lines!(target,
+                collect(sl.time)[rng], lt;
+                linewidth=lw, linestyle=ls)
+        end
+    end
+
     if show_drag_coeff
         next_row += 1
         ax_cd = _twin_panel!(fig, next_row,
-            L"C_D \; [-]")
-        cd_vars = [
-            (:var_01, "wing", :blue),
-            (:var_09, "tether", :orange),
-            (:var_10, "bridle", :green),
-            (:var_11, "kcu", :red),
-        ]
-        leg_cd = Tuple{Vector, String}[]
-        for (var, name, clr) in cd_vars
-            plotted = false
-            for (i, lg) in enumerate(logs)
-                sl = lg.syslog
-                rng = log_ranges[i]
-                vals = collect(
-                    getproperty(sl, var))[rng]
-                all(iszero, vals) && continue
-                lw = i == 1 ? 2.0 : 1.5
-                ls = i == 1 ? :solid : :dash
-                target = (use_twin && i == 2) ?
-                    top_axes[end] : ax_cd
-                lines!(target,
-                    collect(sl.time)[rng], vals;
-                    linewidth=lw, linestyle=ls,
-                    color=clr)
-                plotted = true
-            end
-            if plotted
-                push!(leg_cd, (
-                    [LineElement(color=clr,
-                        linewidth=2)], name))
-            end
-        end
-        if !isempty(leg_cd)
-            Legend(fig[next_row, 2],
-                first.(leg_cd), last.(leg_cd);
-                labelsize=10, patchsize=(10, 5))
+            L"C_{\text{D}} \; [-]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_cd
+            lines!(target,
+                collect(sl.time)[rng],
+                collect(sl.var_01)[rng];
+                linewidth=lw, linestyle=ls)
         end
         hlines!(ax_cd, [0]; linewidth=0.5,
             color=:gray70)
@@ -1315,7 +1315,7 @@ function V3Kite.plot_2d_trajectory(
     if show_lift_coeff
         next_row += 1
         ax_cl = _twin_panel!(fig, next_row,
-            L"C_L \; [-]")
+            L"C_{\text{L}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1335,15 +1335,11 @@ function V3Kite.plot_2d_trajectory(
     if show_lift_drag_ratio
         next_row += 1
         ax_ld = _twin_panel!(fig, next_row,
-            L"C_L / C_D \; [-]")
+            L"C_L / C_{\text{D}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
-            cd_wing = collect(sl.var_01)[rng]
-            cd_teth = collect(sl.var_09)[rng]
-            cd_brdl = collect(sl.var_10)[rng]
-            cd_kcu  = collect(sl.var_11)[rng]
-            cd = cd_wing .+ cd_teth .+ cd_brdl .+ cd_kcu
+            cd = collect(sl.var_01)[rng]
             cl = collect(sl.var_02)[rng]
             ratio = [abs(d) > 1e-6 ? l / d : NaN
                      for (l, d) in zip(cl, cd)]
@@ -1362,7 +1358,7 @@ function V3Kite.plot_2d_trajectory(
     if show_te_force
         next_row += 1
         ax_te = _twin_panel!(fig, next_row,
-            L"\bar{F}_{TE} \; [N]")
+            L"\bar{F}_{\text{TE}} \; [N]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1404,7 +1400,7 @@ function V3Kite.plot_2d_trajectory(
     if show_wing_vel
         next_row += 1
         ax_wv = _twin_panel!(fig, next_row,
-            L"v_k \; [m/s]")
+            L"v_{\text{k}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1434,7 +1430,7 @@ function V3Kite.plot_2d_trajectory(
         active = filter(x -> x[1], angle_vars)
         single_angle = length(active) == 1
         ylabel_euler = single_angle ?
-            active[1][5] : L"angle \; [°]"
+            active[1][5] : L"\text{angle} \; [°]"
         next_row += 1
         ax_euler = _twin_panel!(fig, next_row,
             ylabel_euler)
@@ -1480,7 +1476,7 @@ function V3Kite.plot_2d_trajectory(
             if !isempty(leg_labels)
                 Legend(fig[next_row, 2], leg_elems,
                     leg_labels;
-                    labelsize=10, patchsize=(10, 5))
+                    labelsize=14, patchsize=(14, 7))
             end
         end
         hlines!(ax_euler, [0];
@@ -1491,7 +1487,7 @@ function V3Kite.plot_2d_trajectory(
     if show_bridle_pitch
         next_row += 1
         ax_bp = _twin_panel!(fig, next_row,
-            L"\beta_{br} \; [°]")
+            L"\beta_{\text{br}} \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1546,8 +1542,8 @@ function V3Kite.plot_2d_trajectory(
             [LineElement(color=c_bridle, linewidth=2)],
         ]
         Legend(fig[next_row, 2], leg_entries,
-            ["wing AoA", "bridle AoA"];
-            labelsize=10, patchsize=(10, 5))
+            [L"\text{wing}", L"\text{bridle}"];
+            labelsize=14, patchsize=(14, 7))
     end
 
     # Final axis gets x label and visible tick labels
@@ -1555,11 +1551,13 @@ function V3Kite.plot_2d_trajectory(
         linkxaxes!(time_axes...)
         time_axes[end].xticklabelsvisible = true
         time_axes[end].xlabel = use_twin ?
-            L"t_{sim} \; [s]" : L"t \; [s]"
+            L"t_{\text{sim}} \; [s]" : L"t \; [s]"
+        time_axes[end].xlabelsize = 18
         if use_twin && !isempty(top_axes)
             linkxaxes!(top_axes...)
             top_axes[1].xticklabelsvisible = true
-            top_axes[1].xlabel = L"t_{data} \; [s]"
+            top_axes[1].xlabel = L"t_{\text{data}} \; [s]"
+            top_axes[1].xlabelsize = 18
         end
         rowsize!(fig.layout, 1, Fixed(size[2] * 0.5))
     end
