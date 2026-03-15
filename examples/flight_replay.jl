@@ -49,7 +49,7 @@ HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
-DISTANCE_BASED_STEERING = false
+DISTANCE_BASED_STEERING = true
 BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6839
@@ -210,7 +210,7 @@ function run_physics_replay(h5_path;
             wind_speed_vertical =
                 raw.ekf_wind_speed_vertical,
             angle_of_attack = deg2rad(
-                raw.ekf_wing_angle_of_attack_bridle -
+                raw.ekf_wing_angle_of_attack_bridle +
                 (AOA_OFFSET_A * raw.kcu_actual_depower +
                  AOA_OFFSET_B)),
             v_app = raw.ekf_kite_apparent_windspeed,
@@ -567,7 +567,8 @@ if !SETTLE_ONLY
             bf = plot_body_frame_local(
                 sam.sys_struct;
                 extra_points=pts,
-                extra_groups=groups, dir)
+                extra_groups=groups, dir,
+                title=false, legend=false)
             fname = "body_frame_$(dir)" *
                 "_$(SECTION)" *
                 "_frame_$(target_frame)" *
@@ -580,7 +581,8 @@ if !SETTLE_ONLY
         aoa_fig = plot_geom_aoa_dist(
             sam.sys_struct;
             extra_points=pts,
-            extra_groups=groups)
+            extra_groups=groups,
+            title=false, legend=false)
         aoa_fname = "geom_aoa_dist" *
             "_$(SECTION)" *
             "_frame_$(target_frame)" *
@@ -595,6 +597,7 @@ if !SETTLE_ONLY
     GLMakie.activate!()
 
     # Average gk for |steering| > 5%
+    mean_gk = Dict{String,Float64}()
     for (label, lg, tape) in [("sim", syslog, sim_tape),
                                ("data", datalog, data_tape)]
         sl = lg.syslog
@@ -608,9 +611,13 @@ if !SETTLE_ONLY
         va = sl.v_app[2:end]
         mask = abs.(us) .> 0.05
         gk_vals = hdot[mask] ./ (va[mask] .* us[mask])
+        mean_gk[label] = mean(gk_vals)
         @info "Mean gk ($label)" gk=round(
-            mean(gk_vals); digits=3)
+            mean_gk[label]; digits=3)
     end
+    pct = (mean_gk["sim"] - mean_gk["data"]) /
+        mean_gk["data"] * 100
+    @info "gk difference" pct=round(pct; digits=1)
 
     trajectory
 end

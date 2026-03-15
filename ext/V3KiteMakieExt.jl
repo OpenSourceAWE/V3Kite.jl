@@ -116,7 +116,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
     # Set up axis labels
     if dir == :top
-        xlabel, ylabel = "x [m]", "y [m]"
+        xlabel, ylabel = "y [m]", "x [m]"
     elseif dir == :side
         xlabel, ylabel = "x [m]", "z [m]"
     else  # :front
@@ -139,7 +139,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
     function get_2d(pos_b)
         if dir == :top
-            return (pos_b[1], pos_b[2])
+            return (pos_b[2], pos_b[1])
         elseif dir == :side
             return (pos_b[1], pos_b[3])
         else
@@ -215,7 +215,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
         # Extract 2D coords based on viewing direction
         if dir == :top
-            coords = [(p.pos_b[1], p.pos_b[2]) for p in plot_points]
+            coords = [(p.pos_b[2], p.pos_b[1]) for p in plot_points]
         elseif dir == :side
             coords = [(p.pos_b[1], p.pos_b[3]) for p in plot_points]
         else  # :front
@@ -288,7 +288,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         extra_body = [R_w_b * (collect(p) - wing.pos_w) for p in extra_points]
 
         if dir == :top
-            extra_coords = [(p[1], p[2]) for p in extra_body]
+            extra_coords = [(p[2], p[1]) for p in extra_body]
         elseif dir == :side
             extra_coords = [(p[1], p[3]) for p in extra_body]
         else
@@ -361,8 +361,13 @@ function V3Kite.plot_body_frame_local(sys_structs;
         y_min, y_max = extrema(all_y_vals)
         margin_x = 0.15 * (x_max - x_min) + 0.3
         margin_y = 0.15 * (y_max - y_min) + 0.3
-        limits!(ax, x_min - margin_x, x_max + margin_x,
-                    y_min - margin_y, y_max + margin_y)
+        if dir == :top
+            limits!(ax, x_min - margin_x, x_max + margin_x,
+                        y_max + margin_y, y_min - margin_y)
+        else
+            limits!(ax, x_min - margin_x, x_max + margin_x,
+                        y_min - margin_y, y_max + margin_y)
+        end
     end
 
     # Plot sim AoA curves
@@ -418,7 +423,9 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
         extra_points=nothing,
         extra_groups=nothing,
         labels=nothing,
-        figsize=(800, 300))
+        figsize=(800, 300),
+        title=true,
+        legend=true)
     structs = sys_structs isa Vector ?
         sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -428,8 +435,10 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
     end
 
     fig = Figure(size=figsize)
+    ax_title = title ? "Geometric AoA Distribution" : ""
     ax = Axis(fig[1, 1];
-        xlabel="y [m]", ylabel="Geo. AoA [deg]")
+        xlabel="y [m]", ylabel="Geo. AoA [deg]",
+        title=ax_title)
 
     # Sim AoA per sys_struct
     for (s_idx, sys_struct) in enumerate(structs)
@@ -547,7 +556,9 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
         end
     end
 
-    axislegend(ax; position=:rt)
+    if legend
+        axislegend(ax; position=:rt)
+    end
     return fig
 end
 
@@ -1010,6 +1021,7 @@ with optional time-series subplots below.
 - `show_te_force=false`: mean TE segment force panel from `var_03`
 - `show_heading=false`: heading angle panel
 - `show_aoa=false`: AoA panel (wing and bridle, sim and data)
+- `show_wing_vel=false`: kite ground speed panel
 - `show_yaw=false`: yaw angle panel from `var_05`
 - `show_pitch=true`: pitch angle panel from `var_06`
 - `show_roll=false`: roll angle panel from `var_07`
@@ -1025,7 +1037,7 @@ function V3Kite.plot_2d_trajectory(
         colormap=:viridis,
         size=(800, 600),
         show_steering=nothing,
-        show_winch_force=true,
+        show_winch_force=false,
         show_v_app=false,
         show_drag_coeff=false,
         show_lift_coeff=false,
@@ -1033,6 +1045,7 @@ function V3Kite.plot_2d_trajectory(
         show_te_force=false,
         show_heading=false,
         show_aoa=true,
+        show_wing_vel=true,
         show_yaw=false,
         show_pitch=true,
         show_roll=false,
@@ -1291,6 +1304,26 @@ function V3Kite.plot_2d_trajectory(
         end
         hlines!(ax_hd, [0]; linewidth=0.5, color=:gray70)
         push!(time_axes, ax_hd)
+    end
+
+    # --- Wing velocity panel ---
+    if show_wing_vel
+        next_row += 1
+        ax_wv = Axis(fig[next_row, 1];
+            ylabel=L"v_k \; [m/s]",
+            xticklabelsvisible=false)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            vk = [norm(sl.vel_kite[k]) for k in rng]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            lines!(ax_wv,
+                collect(sl.time)[rng], vk;
+                linewidth=lw, linestyle=ls)
+        end
+        hlines!(ax_wv, [0]; linewidth=0.5, color=:gray70)
+        push!(time_axes, ax_wv)
     end
 
     # --- Euler angles panel (yaw / pitch / roll) ---
