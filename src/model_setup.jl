@@ -23,6 +23,8 @@ Base.@kwdef mutable struct V3GeomAdjustConfig
 
     reduce_depower::Bool = false
     depower_reduction::Float64 = 0.2
+    depower_offset::Float64 = 0.0       # added to depower (0..1)
+    steering_dp_offset::Float64 = 0.0   # Δdp per abs(steering), normalized
 
     reduce_steering::Bool = false
     steering_reduction::Float64 = 0.2

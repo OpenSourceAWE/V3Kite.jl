@@ -199,7 +199,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         set_steering!(sys,
             steering_ramp * config.us / 100.0, gc)
         set_depower!(sys,
-            power_ramp * config.up / 100.0, gc)
+            power_ramp * config.up / 100.0, 0.0, gc)
 
         # Log tape percentages
         push!(tape_times, t)

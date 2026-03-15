@@ -229,7 +229,7 @@ function _run_zero_g_settling!(config::V3SettleConfig;
     # Set control from init_row if provided
     if !isnothing(init_row)
         set_steering!(sys, init_row.steering, gc)
-        set_depower!(sys, init_row.depower, gc)
+        set_depower!(sys, init_row.depower, 0.0, gc)
     end
 
     logger, sys_state = create_logger(sam, config.num_steps)
@@ -293,7 +293,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
-        set_depower!(sys, config.start_depower / 100.0, gc)
+        set_depower!(sys, config.start_depower / 100.0, 0.0, gc)
     end
 
     SymbolicAWEModels.reinit!(
@@ -324,7 +324,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
             frac = (step - 1) / max(config.num_steps - 1, 1)
             dp = config.start_depower +
                 frac * (dp_end - config.start_depower)
-            set_depower!(sys, dp / 100.0, gc)
+            set_depower!(sys, dp / 100.0, 0.0, gc)
         end
 
         SymbolicAWEModels.reposition!(

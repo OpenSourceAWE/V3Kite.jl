@@ -113,6 +113,124 @@ function compute_lift_coeff(sam)
     return norm(lift_vec) / (q_inf * A_proj)
 end
 
+const _RHO_SL = 1.225
+const _CF_SKIN = 0.01  # EKF-AWE hardcoded skin friction
+
+"""
+    _segment_ekf_drag(sys, seg; cd, cf) -> Float64
+
+EKF-AWE drag force magnitude for one segment. Uses the
+EKF formula `cd_t = cd * sin(θ)³ + π * cf * cos(θ)³`
+with ground-level wind (consistent with `compute_drag_coeff`
+using `ρ = 1.225`).
+"""
+function _segment_ekf_drag(sys, seg; cd, cf=_CF_SKIN)
+    p1, p2 = seg.point_idxs
+    vel_mid = 0.5 .* (sys.points[p1].vel_w .+
+                       sys.points[p2].vel_w)
+    va = sys.wind_vec_gnd .- vel_mid
+    va_norm = norm(va)
+    va_norm < 1e-6 && return 0.0
+    e_seg = sys.points[p2].pos_w .- sys.points[p1].pos_w
+    e_len = norm(e_seg)
+    e_len < 1e-6 && return 0.0
+    e_hat = e_seg ./ e_len
+    cos_th = clamp(abs(dot(va, e_hat)) / va_norm, 0.0, 1.0)
+    sin_th = sqrt(1.0 - cos_th^2)
+    cd_t = cd * sin_th^3 + π * cf * cos_th^3
+    area = seg.len * seg.diameter
+    return 0.5 * _RHO_SL * va_norm^2 * area * cd_t
+end
+
+"""
+    _classify_segments(sys) -> (tether_idxs, bridle_idxs)
+
+Classify segments into tether vs bridle. Wing structural
+segments (both endpoints WING) are excluded from both.
+"""
+function _classify_segments(sys)
+    tether_set = Set{Int}()
+    for tether in sys.tethers
+        union!(tether_set, tether.segment_idxs)
+    end
+    tether_idxs = Int[]
+    bridle_idxs = Int[]
+    for seg in sys.segments
+        p1_type = sys.points[seg.point_idxs[1]].type
+        p2_type = sys.points[seg.point_idxs[2]].type
+        p1_type == WING && p2_type == WING && continue
+        if seg.idx in tether_set
+            push!(tether_idxs, seg.idx)
+        else
+            push!(bridle_idxs, seg.idx)
+        end
+    end
+    return tether_idxs, bridle_idxs
+end
+
+"""
+    compute_tether_drag_coeff(sam) -> Float64
+
+Tether drag coefficient using EKF-AWE formula, normalized
+by the same `q_inf * A_proj` reference as `compute_drag_coeff`.
+"""
+function compute_tether_drag_coeff(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    v_app = norm(wing.va_b)
+    v_app < 1e-6 && return 0.0
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    cd = sam.set.cd_tether
+    tether_idxs, _ = _classify_segments(sys)
+    D = sum(
+        _segment_ekf_drag(sys, sys.segments[i]; cd)
+        for i in tether_idxs; init=0.0)
+    return D / q_ref
+end
+
+"""
+    compute_bridle_drag_coeff(sam) -> Float64
+
+Bridle drag coefficient using EKF-AWE formula, normalized
+by the same `q_inf * A_proj` reference as `compute_drag_coeff`.
+"""
+function compute_bridle_drag_coeff(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    v_app = norm(wing.va_b)
+    v_app < 1e-6 && return 0.0
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    cd = sam.set.cd_tether
+    _, bridle_idxs = _classify_segments(sys)
+    D = sum(
+        _segment_ekf_drag(sys, sys.segments[i]; cd)
+        for i in bridle_idxs; init=0.0)
+    return D / q_ref
+end
+
+"""
+    compute_kcu_drag_coeff(sam) -> Float64
+
+KCU drag coefficient. Nondimensionalizes the sim's own
+KCU drag (point 1 with area and drag_coeff from YAML)
+by `q_inf * A_proj` using kite apparent wind speed.
+"""
+function compute_kcu_drag_coeff(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    v_app_kite = norm(wing.va_b)
+    v_app_kite < 1e-6 && return 0.0
+    kcu = sys.points[1]
+    va_kcu = sys.wind_vec_gnd .- kcu.vel_w
+    D_kcu = 0.5 * _RHO_SL * norm(va_kcu)^2 *
+            kcu.area * kcu.drag_coeff
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_ref = 0.5 * _RHO_SL * v_app_kite^2 * A_proj
+    return D_kcu / q_ref
+end
+
 """
     mean_te_segment_force(sam) -> Float64
 
@@ -169,6 +287,32 @@ function compute_bridle_aoa(sys)
 end
 
 """
+    compute_wing_incidence(sys) -> Float64
+
+AoA of the apparent wind relative to the mid-chord
+direction. Uses the average chord (LE→TE of struts 3 & 4)
+as x-axis with the body spanwise y-axis to form the
+reference frame.
+"""
+function compute_wing_incidence(sys)
+    le_3 = sys.points[10].pos_w
+    te_3 = sys.points[11].pos_w
+    le_4 = sys.points[12].pos_w
+    te_4 = sys.points[13].pos_w
+    R_b_w = calc_R_b_w(sys)
+    y_body = R_b_w[:, 2]
+    chord_w = normalize(
+        normalize(te_3 - le_3) +
+        normalize(te_4 - le_4))
+    z_chord = normalize(cross(chord_w, y_body))
+    wing = sys.wings[1]
+    v_app_w = R_b_w * wing.va_b
+    return atan(
+        dot(v_app_w, z_chord),
+        dot(v_app_w, chord_w))
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle
@@ -195,12 +339,49 @@ function compute_bridle_euler(sys)
 end
 
 """
+    compute_bridle_pitch_angle(sys) -> Float64
+    compute_bridle_pitch_angle(sys, R_b_w) -> Float64
+
+Angle between tether direction (ground → KCU) and bridle
+direction (KCU → quarter-chord midpoint), projected into
+the body xz plane. Positive when the bridle pitches forward
+(toward body +x) relative to the tether.
+
+The two-argument form allows passing an explicit `R_b_w`
+(e.g. built from EKF Euler angles) instead of deriving it
+from the sys_struct geometry.
+"""
+function compute_bridle_pitch_angle(sys)
+    return compute_bridle_pitch_angle(sys, calc_R_b_w(sys))
+end
+
+function compute_bridle_pitch_angle(sys, R_b_w)
+    kcu_w = sys.points[1].pos_w
+    qc_w = quarter_chord_mid(sys)
+    v_tether_w = normalize(kcu_w)
+    v_bridle_w = normalize(qc_w - kcu_w)
+    R_w_b = R_b_w'
+    vt_b = R_w_b * v_tether_w
+    vb_b = R_w_b * v_bridle_w
+    return atan(
+        vt_b[1] * vb_b[3] - vt_b[3] * vb_b[1],
+        vt_b[1] * vb_b[1] + vt_b[3] * vb_b[3])
+end
+
+"""
     log_state!(logger, sys_state, sam, t)
 
-Update sys_state from the model, set time, compute drag/lift
-coefficients into `var_01`/`var_02`, mean TE segment force
-into `var_03`, bridle AoA into `var_04`, and bridle NED Euler
-angles (yaw, pitch, roll) into `var_05`-`var_07`. Then log.
+Update sys_state from the model, set time, and log.
+
+Computed variables:
+- `var_01`/`var_02`: wing drag/lift coefficients
+- `var_03`: mean TE segment force
+- `var_04`: bridle AoA
+- `var_05`-`var_07`: bridle NED Euler (yaw, pitch, roll)
+- `var_08`: bridle pitch angle
+- `var_09`-`var_11`: tether/bridle/KCU drag coefficients
+  (EKF-AWE formula for apples-to-apples comparison)
+- `var_12`: geometric wing incidence (photogrammetry-style)
 """
 function log_state!(logger, sys_state, sam, t)
     update_sys_state!(sys_state, sam)
@@ -212,6 +393,13 @@ function log_state!(logger, sys_state, sam, t)
     sys_state.var_05 = yaw
     sys_state.var_06 = pitch
     sys_state.var_07 = roll
+    sys_state.var_08 = compute_bridle_pitch_angle(
+        sam.sys_struct)
+    sys_state.var_09 = compute_tether_drag_coeff(sam)
+    sys_state.var_10 = compute_bridle_drag_coeff(sam)
+    sys_state.var_11 = compute_kcu_drag_coeff(sam)
+    sys_state.var_12 = compute_wing_incidence(
+        sam.sys_struct)
     sys_state.time = t
     log!(logger, sys_state)
     return nothing

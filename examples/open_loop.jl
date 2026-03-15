@@ -108,7 +108,7 @@ for step in 1:n_steps
     set_steering!(sys, rf_us * US, gc)
 
     # Instant depower
-    set_depower!(sys, UP, gc)
+    set_depower!(sys, UP, 0.0, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
