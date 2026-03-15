@@ -37,13 +37,10 @@ generate_drag_adjusted_polars(1.0)
 
 SECTION = "straight_right"
 YEAR = 2025
-PLOT_FRAME = true
 SETTLE_ONLY = false
 SETTLE = true
-CONST_WIND = false
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -5.0
-WING_SYMMETRIC_FORCE = [0.0, 0.0, 0.0]
 STEERING_MULTIPLIER = 1.0
 HEADING_KP = 0.0
 HEADING_TI = 0.0
@@ -55,8 +52,6 @@ STEERING_REDUCTION = 0.2
 REDUCE_TIP = true
 TIP_REDUCTION = 0.2
 BODY_DAMPING = [0.0, 0.0, 20.0]
-STEERING_DP_OFFSET = -0.2344*1.5  # %/%, from photogrammetry fit
-STEERING_AOA_OFFSET = 0.2986  # deg/%, from photogrammetry fit (c)
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6839
 AOA_OFFSET_B = 29.69
@@ -99,7 +94,7 @@ else
 end
 
 # Auto-pick frame CSVs for 2025 flights
-if PLOT_FRAME && YEAR == 2025
+if YEAR == 2025
     _start_f = utc_to_video_frame(
         parse_time_to_seconds(start_utc))
     _end_f = utc_to_video_frame(
@@ -126,13 +121,11 @@ end
 function update_vel_from_csv!(sys, row,
         gc::V3GeomAdjustConfig;
         heading_correction=0.0)
-    if !CONST_WIND
-        sys.set.v_wind = hypot(
-            row.wind_speed, row.wind_speed_vertical)
-        sys.set.upwind_dir = rad2deg(row.upwind_dir)
-        sys.wind_elevation = atan(
-            row.wind_speed_vertical, row.wind_speed)
-    end
+    sys.set.v_wind = hypot(
+        row.wind_speed, row.wind_speed_vertical)
+    sys.set.upwind_dir = rad2deg(row.upwind_dir)
+    sys.wind_elevation = atan(
+        row.wind_speed_vertical, row.wind_speed)
 
     # CSV steering (positive = right turn)
     steering = clamp(row.steering, -1.0, 1.0)
@@ -220,9 +213,7 @@ function run_physics_replay(h5_path;
             angle_of_attack = deg2rad(
                 raw.ekf_wing_angle_of_attack_bridle +
                 (AOA_OFFSET_A * raw.kcu_actual_depower +
-                 AOA_OFFSET_B) +
-                STEERING_AOA_OFFSET *
-                    abs(raw.kcu_actual_steering)),
+                 AOA_OFFSET_B)),
             v_app = raw.ekf_kite_apparent_windspeed,
             drag_coeff = raw.ekf_wing_drag_coefficient,
             lift_coeff = raw.ekf_wing_lift_coefficient,
@@ -263,8 +254,7 @@ function run_physics_replay(h5_path;
             reduce_steering=REDUCE_STEERING,
             steering_reduction=STEERING_REDUCTION,
             tip_reduction=TIP_REDUCTION,
-            depower_offset=DEPOWER_OFFSET_2025 / 100.0,
-            steering_dp_offset=STEERING_DP_OFFSET),
+            depower_offset=DEPOWER_OFFSET_2025 / 100.0),
         fix_sphere_idxs=[])
     if SETTLE
         sam, settle_log = settle_wing(settle_config;
@@ -273,6 +263,7 @@ function run_physics_replay(h5_path;
         data_path = v3_data_path()
         set_data_path(data_path)
         set = Settings("system.yaml")
+        set.g_earth = 9.81
         set.v_wind = row1.v_app
         set.l_tether = tether_len
         set.profile_law = 0
@@ -331,6 +322,8 @@ function run_physics_replay(h5_path;
 
     @info "Replaying CSV data..."
     replay_start = time()
+    last_report_time = replay_start
+    last_report_sim = 0.0
     sys = sam.sys_struct
     SymbolicAWEModels.set_body_frame_damping(
         sys, BODY_DAMPING, 1:38)
@@ -457,15 +450,6 @@ function run_physics_replay(h5_path;
                         lateral_correction +
                         STEERING_OFFSET/100)
 
-            R = sam.sys_struct.wings[1].R_b_to_w
-            f_w = R * WING_SYMMETRIC_FORCE
-            for i in 2:11
-                sam.sys_struct.points[i].disturb .= f_w
-            end
-            for i in 12:21
-                sam.sys_struct.points[i].disturb .= -f_w
-            end
-
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())
 
@@ -527,9 +511,14 @@ function run_physics_replay(h5_path;
                 sim_t = round(sim_time, digits=2)
                 wall_t = round(
                     time() - replay_start, digits=1)
-                rt = wall_t > 0 ?
-                    round(sim_time / wall_t,
+                now_t = time()
+                dt_wall = now_t - last_report_time
+                dt_sim = sim_time - last_report_sim
+                rt = dt_wall > 0 ?
+                    round(dt_sim / dt_wall,
                         digits=2) : 0.0
+                last_report_time = now_t
+                last_report_sim = sim_time
                 d = round(norm(sim_pos - data_pos),
                     digits=2)
                 dist_pct = DISTANCE_BASED_STEERING ?
@@ -538,13 +527,13 @@ function run_physics_replay(h5_path;
                         digits=1) : 0.0
                 msg = "Step $step" *
                     " (t=$(sim_t)s," *
-                    " frame=$(row.video_frame)," *
                     " wall=$(wall_t)s," *
                     " $(rt)x realtime"
                 if DISTANCE_BASED_STEERING
                     msg *= ", dist=$(dist_pct)%"
                 end
-                msg *= ", pos_err=$(d)m)"
+                msg *= ", pos_err=$(d)m" *
+                    ", frame=$(row.video_frame))"
                 @info msg
             end
         end
@@ -595,7 +584,7 @@ function create_plots()
         suffixes=["sim", "data"])
 
     trajectory = plot_2d_trajectory([syslog, datalog];
-        gradient=:steering,
+        gradient=:vel,
         tapes=[sim_tape, data_tape],
         labels=["sim", "data"],
         show_te_force=false,
@@ -604,15 +593,23 @@ function create_plots()
     )
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory([syslog, datalog];
-        gradient=:steering,
+        gradient=:vel,
         tapes=[sim_tape, data_tape],
         labels=["sim", "data"],
         show_aoa=true,
         twin_time_axes=DISTANCE_BASED_STEERING)
-    save("trajectory_2d_$(SECTION).pdf", traj_2d)
+    sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
+    tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
+    dist_suffix = DISTANCE_BASED_STEERING ? "_dist" : ""
+    traj_fname = "trajectory_2d_$(SECTION)" *
+        "_dpoff_$(DEPOWER_OFFSET_2025)" *
+        "_sr_$(sr)_tr_$(tr).pdf"
+    @info "Saving $traj_fname"
+    save(traj_fname, traj_2d)
     mkpath(FIGURES_DIR)
-    save(joinpath(FIGURES_DIR,
-        "trajectory_2d_$(SECTION).pdf"), traj_2d)
+    fig_traj = replace(traj_fname,
+        ".pdf" => "$(dist_suffix).pdf")
+    save(joinpath(FIGURES_DIR, fig_traj), traj_2d)
     GLMakie.activate!()
 
     yaw_fig = plot_yaw_rate_vs_steering(
@@ -649,8 +646,11 @@ function create_plots()
                 "_frame_$(target_frame)" *
                 "_dpoff_$(DEPOWER_OFFSET_2025)" *
                 "_sr_$(sr)_tr_$(tr).pdf"
+            @info "Saving $fname"
             save(fname, bf)
-            save(joinpath(FIGURES_DIR, fname), bf)
+            fig_fname = replace(fname,
+                ".pdf" => "$(dist_suffix).pdf")
+            save(joinpath(FIGURES_DIR, fig_fname), bf)
             frame_figs[dir] = bf
         end
         # Geometric AoA distribution
@@ -664,8 +664,11 @@ function create_plots()
             "_frame_$(target_frame)" *
             "_dpoff_$(DEPOWER_OFFSET_2025)" *
             "_sr_$(sr)_tr_$(tr).pdf"
+        @info "Saving $aoa_fname"
         save(aoa_fname, aoa_fig)
-        save(joinpath(FIGURES_DIR, aoa_fname), aoa_fig)
+        fig_aoa = replace(aoa_fname,
+            ".pdf" => "$(dist_suffix).pdf")
+        save(joinpath(FIGURES_DIR, fig_aoa), aoa_fig)
         frame_figs[:geom_aoa] = aoa_fig
 
         body[target_frame] = frame_figs

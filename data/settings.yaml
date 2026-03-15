@@ -6,7 +6,7 @@ system:
   sim_time: 100.0 # simulation time             [sim only]
   sample_freq: 20 # sample frequency in Hz
   fixed_font: '' # name or filepath+filename of alternative fixed pitch font
-  g_earth: 0
+  g_earth: 9.81
 
 initial:
   l_tethers: [0] # initial tether length       [m]
