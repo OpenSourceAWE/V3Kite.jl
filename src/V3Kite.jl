@@ -86,7 +86,11 @@ export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
 export compute_drag_coeff, compute_lift_coeff
+export compute_tether_drag_coeff, compute_bridle_drag_coeff
+export compute_kcu_drag_coeff
 export compute_bridle_aoa, compute_bridle_euler
+export compute_wing_incidence
+export compute_bridle_pitch_angle
 export quarter_chord_mid
 export mean_te_segment_force
 export save_and_load_log

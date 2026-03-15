@@ -369,5 +369,5 @@ function update_sys_struct_from_data!(sys, row;
     # Set steering/depower from CSV data
     set_steering!(sys, row.steering, config;
         min_l0=0.01)
-    set_depower!(sys, row.depower, config)
+    set_depower!(sys, row.depower, 0.0, config)
 end

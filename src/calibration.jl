@@ -212,26 +212,32 @@ function get_steering(sys, ::V3GeomAdjustConfig)
 end
 
 """
-    set_depower!(sys, depower, config::V3GeomAdjustConfig)
+    set_depower!(sys, depower, steering,
+        config::V3GeomAdjustConfig)
 
-Set the depower input, accounting for depower tape reduction
-from the geometry config.
+Set the depower input, accounting for depower tape reduction,
+depower offset, and steering-based depower offset from the
+geometry config.
 
 # Arguments
 - `sys`: SystemStructure from the kite model
 - `depower`: Relative depower, must be between 0.0 .. 1.0
              (0.0 = no depower, 1.0 = full depower)
+- `steering`: Relative steering in -1.0 .. 1.0 (used for
+              steering-dependent depower offset)
 - `config`: Geometry adjustment config
 """
-function set_depower!(sys, depower,
+function set_depower!(sys, depower, steering,
         config::V3GeomAdjustConfig)
+    dp = depower + config.depower_offset +
+        config.steering_dp_offset * abs(steering)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
     L_depower = depower_percentage_to_length(
-        depower * 100.0;
+        dp * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - reduction)
     sys.segments[V3_DEPOWER_IDX].l0 = L_depower
-    return nothing
+    return dp
 end
 
 """

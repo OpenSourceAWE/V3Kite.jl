@@ -209,7 +209,7 @@ try
         up_target = UP + depower_pct_delta[] / 100.0
         depower_val = nominal_depower +
             rf_up * (up_target - nominal_depower)
-        set_depower!(sys, depower_val, gc)
+        set_depower!(sys, depower_val, 0.0, gc)
 
         # Step simulation
         step_start = time()

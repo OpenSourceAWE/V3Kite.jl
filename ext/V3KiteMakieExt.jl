@@ -516,42 +516,43 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
         if !isempty(le_idxs)
             le_body = [extra_body[i]
                        for i in le_idxs]
-            n_le = length(le_body)
+            # Collect strut stations
+            stations = [(
+                te_b=extra_body[indices[1]],
+                le_b=extra_body[indices[end]])
+                for (_, indices) in strut_groups]
+            # Sort by span position
+            span_pos = [(s.te_b[2] + s.le_b[2]) / 2
+                        for s in stations]
+            perm = sortperm(span_pos)
+            stations = stations[perm]
+            span_pos = span_pos[perm]
+            # Compute AoA per station
             body_x = [1.0, 0.0, 0.0]
-            photo_span = Float64[]
-            photo_aoa = Float64[]
-            for (_, indices) in strut_groups
-                te_b = extra_body[indices[1]]
-                le_b = extra_body[indices[end]]
-                chord = te_b - le_b
-                _, best_idx = findmin(
-                    lp -> norm(lp - le_b), le_body)
-                y_airf = if best_idx == 1
-                    normalize(
-                        le_body[2] - le_body[1])
-                elseif best_idx == n_le
-                    normalize(
-                        le_body[n_le] -
-                        le_body[n_le-1])
+            n_st = length(stations)
+            photo_aoa = map(1:n_st) do i
+                chord = stations[i].te_b -
+                        stations[i].le_b
+                y_airf = if i == 1
+                    normalize(stations[2].le_b -
+                        stations[1].le_b)
+                elseif i == n_st
+                    normalize(stations[n_st].le_b -
+                        stations[n_st-1].le_b)
                 else
                     normalize(
-                        le_body[best_idx+1] -
-                        le_body[best_idx-1])
+                        stations[i+1].le_b -
+                        stations[i-1].le_b)
                 end
                 z_loc = normalize(
                     cross(body_x, y_airf))
-                push!(photo_aoa, -rad2deg(atan(
-                    dot(chord, z_loc),
-                    dot(chord, body_x))))
-                push!(photo_span,
-                    (te_b[2] + le_b[2]) / 2)
+                -rad2deg(atan(dot(chord, z_loc),
+                    dot(chord, body_x)))
             end
-            perm = sortperm(photo_span)
-            lines!(ax, photo_span[perm],
-                photo_aoa[perm];
+            lines!(ax, span_pos, photo_aoa;
                 color=:red, linewidth=2,
                 label="photogrammetry")
-            scatter!(ax, photo_span, photo_aoa;
+            scatter!(ax, span_pos, photo_aoa;
                 color=:red, markersize=8)
         end
     end
@@ -1018,8 +1019,10 @@ with optional time-series subplots below.
 - `show_lift_coeff=false`: lift coefficient (C_L) from `var_02`
   C_D and C_L share a single panel when both are enabled.
 - `show_lift_drag_ratio=true`: C_L/C_D ratio panel
+  (C_D = wing + tether + bridle + KCU)
 - `show_te_force=false`: mean TE segment force panel from `var_03`
 - `show_heading=false`: heading angle panel
+- `show_bridle_pitch=false`: bridle pitch angle panel from `var_08`
 - `show_aoa=false`: AoA panel (wing and bridle, sim and data)
 - `show_wing_vel=false`: kite ground speed panel
 - `show_yaw=false`: yaw angle panel from `var_05`
@@ -1044,13 +1047,16 @@ function V3Kite.plot_2d_trajectory(
         show_lift_drag_ratio=false,
         show_te_force=false,
         show_heading=false,
+        show_bridle_pitch=true,
         show_aoa=true,
         show_wing_vel=true,
+        show_depower=false,
         show_yaw=false,
-        show_pitch=true,
+        show_pitch=false,
         show_roll=false,
         t_start=nothing,
-        t_end=nothing)
+        t_end=nothing,
+        twin_time_axes::Bool=false)
 
     if gradient == :steering && isnothing(tapes)
         error("tapes required for gradient=:steering")
@@ -1060,6 +1066,19 @@ function V3Kite.plot_2d_trajectory(
     if show_steering && isnothing(tapes)
         error("tapes required for show_steering=true")
     end
+
+    # Count time-series panels for dynamic figure height
+    has_euler = show_yaw || show_pitch || show_roll
+    has_aoa = show_aoa && length(logs) >= 2
+    n_panels = show_steering + show_depower +
+        show_winch_force + show_v_app +
+        show_drag_coeff + show_lift_coeff +
+        show_lift_drag_ratio + show_te_force +
+        show_heading + show_wing_vel + has_euler +
+        show_bridle_pitch + has_aoa
+    panel_height = 75
+    fig_size = (size[1],
+        size[2] + n_panels * panel_height)
 
     # Compute per-log index ranges for time filtering
     _time_range(t) = begin
@@ -1076,7 +1095,7 @@ function V3Kite.plot_2d_trajectory(
         [_time_range(collect(Float64, tp.time))
          for tp in tapes]
 
-    fig = Figure(; size)
+    fig = Figure(; size=fig_size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
         aspect=DataAspect())
@@ -1145,34 +1164,73 @@ function V3Kite.plot_2d_trajectory(
     end
     Colorbar(fig[1, 2]; colormap,
         colorrange=(vmin, vmax), label=cb_label)
+    colsize!(fig.layout, 2, Fixed(40))
 
     # --- Time-series panels ---
     next_row = 1
     time_axes = Axis[]
+    use_twin = twin_time_axes && length(logs) >= 2
+    top_axes = Axis[]
+
+    function _twin_panel!(fig, row, ylabel)
+        ax = Axis(fig[row, 1]; ylabel,
+            xticklabelsvisible=false)
+        push!(time_axes, ax)
+        if use_twin
+            ax_top = Axis(fig[row, 1];
+                xaxisposition=:top,
+                xticklabelsvisible=false,
+                yticklabelsvisible=false,
+                ylabelvisible=false)
+            linkyaxes!(ax, ax_top)
+            push!(top_axes, ax_top)
+        end
+        return ax
+    end
 
     if show_steering
         next_row += 1
-        ax_st = Axis(fig[next_row, 1];
-            ylabel=L"steering \; [\%]",
-            xticklabelsvisible=false)
+        ax_st = _twin_panel!(fig, next_row,
+            L"steering \; [\%]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_st,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_st
+            lines!(target,
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
                     tp.steering .* 100)[trng];
                 linewidth=lw, linestyle=ls)
         end
-        push!(time_axes, ax_st)
+    end
+
+    if show_depower
+        if isnothing(tapes)
+            error("tapes required for show_depower=true")
+        end
+        next_row += 1
+        ax_dp = _twin_panel!(fig, next_row,
+            L"depower \; [\%]")
+        for (i, tp) in enumerate(tapes)
+            trng = tape_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_dp
+            lines!(target,
+                collect(Float64, tp.time)[trng],
+                collect(Float64,
+                    tp.depower .* 100)[trng];
+                linewidth=lw, linestyle=ls)
+        end
     end
 
     if show_winch_force
         next_row += 1
-        ax_wf = Axis(fig[next_row, 1];
-            ylabel=L"F_t \; [kN]",
-            xticklabelsvisible=false)
+        ax_wf = _twin_panel!(fig, next_row,
+            L"F_t \; [kN]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1180,167 +1238,209 @@ function V3Kite.plot_2d_trajectory(
                   for k in rng]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_wf,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_wf
+            lines!(target,
                 collect(sl.time)[rng], wf;
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_wf, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_wf)
+        hlines!(ax_wf, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     if show_v_app
         next_row += 1
-        ax_va = Axis(fig[next_row, 1];
-            ylabel=L"v_{app} \; [m/s]",
-            xticklabelsvisible=false)
+        ax_va = _twin_panel!(fig, next_row,
+            L"v_{app} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_va,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_va
+            lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.v_app)[rng];
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_va, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_va)
+        hlines!(ax_va, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     if show_drag_coeff
         next_row += 1
-        ax_cd = Axis(fig[next_row, 1];
-            ylabel=L"C_D \; [-]",
-            xticklabelsvisible=false)
-        for (i, lg) in enumerate(logs)
-            sl = lg.syslog
-            rng = log_ranges[i]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            lines!(ax_cd, collect(sl.time)[rng],
-                collect(sl.var_01)[rng];
-                linewidth=lw, linestyle=ls)
+        ax_cd = _twin_panel!(fig, next_row,
+            L"C_D \; [-]")
+        cd_vars = [
+            (:var_01, "wing", :blue),
+            (:var_09, "tether", :orange),
+            (:var_10, "bridle", :green),
+            (:var_11, "kcu", :red),
+        ]
+        leg_cd = Tuple{Vector, String}[]
+        for (var, name, clr) in cd_vars
+            plotted = false
+            for (i, lg) in enumerate(logs)
+                sl = lg.syslog
+                rng = log_ranges[i]
+                vals = collect(
+                    getproperty(sl, var))[rng]
+                all(iszero, vals) && continue
+                lw = i == 1 ? 2.0 : 1.5
+                ls = i == 1 ? :solid : :dash
+                target = (use_twin && i == 2) ?
+                    top_axes[end] : ax_cd
+                lines!(target,
+                    collect(sl.time)[rng], vals;
+                    linewidth=lw, linestyle=ls,
+                    color=clr)
+                plotted = true
+            end
+            if plotted
+                push!(leg_cd, (
+                    [LineElement(color=clr,
+                        linewidth=2)], name))
+            end
+        end
+        if !isempty(leg_cd)
+            Legend(fig[next_row, 2],
+                first.(leg_cd), last.(leg_cd);
+                labelsize=10, patchsize=(10, 5))
         end
         hlines!(ax_cd, [0]; linewidth=0.5,
             color=:gray70)
-        push!(time_axes, ax_cd)
     end
 
     if show_lift_coeff
         next_row += 1
-        ax_cl = Axis(fig[next_row, 1];
-            ylabel=L"C_L \; [-]",
-            xticklabelsvisible=false)
+        ax_cl = _twin_panel!(fig, next_row,
+            L"C_L \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_cl, collect(sl.time)[rng],
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_cl
+            lines!(target,
+                collect(sl.time)[rng],
                 collect(sl.var_02)[rng];
                 linewidth=lw, linestyle=ls)
         end
         hlines!(ax_cl, [0]; linewidth=0.5,
             color=:gray70)
-        push!(time_axes, ax_cl)
     end
 
     if show_lift_drag_ratio
         next_row += 1
-        ax_ld = Axis(fig[next_row, 1];
-            ylabel=L"C_L / C_D \; [-]",
-            xticklabelsvisible=false)
+        ax_ld = _twin_panel!(fig, next_row,
+            L"C_L / C_D \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
-            cd = collect(sl.var_01)[rng]
+            cd_wing = collect(sl.var_01)[rng]
+            cd_teth = collect(sl.var_09)[rng]
+            cd_brdl = collect(sl.var_10)[rng]
+            cd_kcu  = collect(sl.var_11)[rng]
+            cd = cd_wing .+ cd_teth .+ cd_brdl .+ cd_kcu
             cl = collect(sl.var_02)[rng]
             ratio = [abs(d) > 1e-6 ? l / d : NaN
                      for (l, d) in zip(cl, cd)]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_ld,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_ld
+            lines!(target,
                 collect(sl.time)[rng], ratio;
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_ld, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_ld)
+        hlines!(ax_ld, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     if show_te_force
         next_row += 1
-        ax_te = Axis(fig[next_row, 1];
-            ylabel=L"\bar{F}_{TE} \; [N]",
-            xticklabelsvisible=false)
+        ax_te = _twin_panel!(fig, next_row,
+            L"\bar{F}_{TE} \; [N]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_te,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_te
+            lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_03)[rng];
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_te, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_te)
+        hlines!(ax_te, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     # --- Heading panel ---
     if show_heading
         next_row += 1
-        ax_hd = Axis(fig[next_row, 1];
-            ylabel=L"\psi \; [°]",
-            xticklabelsvisible=false)
+        ax_hd = _twin_panel!(fig, next_row,
+            L"\psi \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_hd,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_hd
+            lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.heading)[rng]);
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_hd, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_hd)
+        hlines!(ax_hd, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     # --- Wing velocity panel ---
     if show_wing_vel
         next_row += 1
-        ax_wv = Axis(fig[next_row, 1];
-            ylabel=L"v_k \; [m/s]",
-            xticklabelsvisible=false)
+        ax_wv = _twin_panel!(fig, next_row,
+            L"v_k \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
             vk = [norm(sl.vel_kite[k]) for k in rng]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
-            lines!(ax_wv,
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_wv
+            lines!(target,
                 collect(sl.time)[rng], vk;
                 linewidth=lw, linestyle=ls)
         end
-        hlines!(ax_wv, [0]; linewidth=0.5, color=:gray70)
-        push!(time_axes, ax_wv)
+        hlines!(ax_wv, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     # --- Euler angles panel (yaw / pitch / roll) ---
     if show_yaw || show_pitch || show_roll
-        next_row += 1
-        ax_euler = Axis(fig[next_row, 1];
-            ylabel=L"angle \; [°]",
-            xticklabelsvisible=false)
-        angle_vars = Tuple{Bool, Symbol, String, Symbol}[
-            (show_yaw, :var_05, "yaw", :blue),
-            (show_pitch, :var_06, "pitch", :orange),
-            (show_roll, :var_07, "roll", :green),
+        angle_vars = [
+            (show_yaw, :var_05, "yaw",
+                :blue, L"\psi \; [°]"),
+            (show_pitch, :var_06, "pitch",
+                :orange, L"\theta \; [°]"),
+            (show_roll, :var_07, "roll",
+                :green, L"\phi \; [°]"),
         ]
-        leg_elems = []
-        leg_labels = String[]
-        for (enabled, var, name, clr) in angle_vars
-            enabled || continue
+        active = filter(x -> x[1], angle_vars)
+        single_angle = length(active) == 1
+        ylabel_euler = single_angle ?
+            active[1][5] : L"angle \; [°]"
+        next_row += 1
+        ax_euler = _twin_panel!(fig, next_row,
+            ylabel_euler)
+        if single_angle
+            # Single angle: let Makie auto-cycle color
+            var = active[1][2]
             for (i, lg) in enumerate(logs)
                 sl = lg.syslog
                 rng = log_ranges[i]
@@ -1348,51 +1448,99 @@ function V3Kite.plot_2d_trajectory(
                     collect(getproperty(sl, var))[rng])
                 lw = i == 1 ? 2.0 : 1.5
                 ls = i == 1 ? :solid : :dash
-                lines!(ax_euler,
+                target = (use_twin && i == 2) ?
+                    top_axes[end] : ax_euler
+                lines!(target,
                     collect(sl.time)[rng], vals;
-                    linewidth=lw, linestyle=ls,
-                    color=clr)
+                    linewidth=lw, linestyle=ls)
             end
-            push!(leg_elems,
-                [LineElement(color=clr, linewidth=2)])
-            push!(leg_labels, name)
+        else
+            # Multiple angles: explicit colors + legend
+            leg_elems = []
+            leg_labels = String[]
+            for (_, var, name, clr, _) in active
+                for (i, lg) in enumerate(logs)
+                    sl = lg.syslog
+                    rng = log_ranges[i]
+                    vals = rad2deg.(collect(
+                        getproperty(sl, var))[rng])
+                    lw = i == 1 ? 2.0 : 1.5
+                    ls = i == 1 ? :solid : :dash
+                    target = (use_twin && i == 2) ?
+                        top_axes[end] : ax_euler
+                    lines!(target,
+                        collect(sl.time)[rng], vals;
+                        linewidth=lw, linestyle=ls,
+                        color=clr)
+                end
+                push!(leg_elems, [LineElement(
+                    color=clr, linewidth=2)])
+                push!(leg_labels, name)
+            end
+            if !isempty(leg_labels)
+                Legend(fig[next_row, 2], leg_elems,
+                    leg_labels;
+                    labelsize=10, patchsize=(10, 5))
+            end
         end
         hlines!(ax_euler, [0];
             linewidth=0.5, color=:gray70)
-        if !isempty(leg_labels)
-            Legend(fig[next_row, 2], leg_elems,
-                leg_labels;
-                labelsize=10, patchsize=(10, 5))
+    end
+
+    # --- Bridle pitch angle panel ---
+    if show_bridle_pitch
+        next_row += 1
+        ax_bp = _twin_panel!(fig, next_row,
+            L"\beta_{br} \; [°]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_bp
+            lines!(target,
+                collect(sl.time)[rng],
+                rad2deg.(collect(sl.var_08)[rng]);
+                linewidth=lw, linestyle=ls)
         end
-        push!(time_axes, ax_euler)
+        hlines!(ax_bp, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     # --- AoA panel (wing + bridle, sim and data) ---
     if show_aoa && length(logs) >= 2
         sl_sim = logs[1].syslog
         sl_data = logs[2].syslog
-        rng_aoa = log_ranges[1]
-        t_aoa = collect(sl_sim.time)[rng_aoa]
+        rng_sim = log_ranges[1]
+        rng_data = log_ranges[2]
+        t_sim_aoa = collect(sl_sim.time)[rng_sim]
+        t_data_aoa = collect(sl_data.time)[rng_data]
         next_row += 1
-        ax_aoa = Axis(fig[next_row, 1];
-            ylabel=L"\alpha \; [°]",
-            xticklabelsvisible=false)
+        ax_aoa = _twin_panel!(fig, next_row,
+            L"\alpha \; [°]")
         c_wing = Makie.wong_colors()[1]
         c_bridle = Makie.wong_colors()[2]
-        lines!(ax_aoa, t_aoa,
-            rad2deg.(collect(sl_sim.AoA)[rng_aoa]);
+        # Sim traces on bottom axis
+        lines!(ax_aoa, t_sim_aoa,
+            rad2deg.(collect(sl_sim.var_12)[rng_sim]);
             linewidth=2.0, color=c_wing)
-        lines!(ax_aoa, t_aoa,
-            rad2deg.(collect(sl_data.AoA)[rng_aoa]);
-            linewidth=1.5, linestyle=:dash, color=c_wing)
-        lines!(ax_aoa, t_aoa,
-            rad2deg.(collect(sl_sim.var_04)[rng_aoa]);
+        lines!(ax_aoa, t_sim_aoa,
+            rad2deg.(collect(sl_sim.var_04)[rng_sim]);
             linewidth=2.0, color=c_bridle)
-        lines!(ax_aoa, t_aoa,
-            rad2deg.(collect(sl_data.var_04)[rng_aoa]);
-            linewidth=1.5, linestyle=:dash, color=c_bridle)
-        hlines!(ax_aoa, [0]; linewidth=0.5, color=:gray70)
-        # Legend: color = quantity, solid = sim, dot = data
+        # Data traces on top axis (or same when !use_twin)
+        data_ax = use_twin ? top_axes[end] : ax_aoa
+        lines!(data_ax, t_data_aoa,
+            rad2deg.(collect(sl_data.AoA)[rng_data]);
+            linewidth=1.5, linestyle=:dash,
+            color=c_wing)
+        lines!(data_ax, t_data_aoa,
+            rad2deg.(collect(
+                sl_data.var_04)[rng_data]);
+            linewidth=1.5, linestyle=:dash,
+            color=c_bridle)
+        hlines!(ax_aoa, [0]; linewidth=0.5,
+            color=:gray70)
         leg_entries = [
             [LineElement(color=c_wing, linewidth=2)],
             [LineElement(color=c_bridle, linewidth=2)],
@@ -1400,20 +1548,39 @@ function V3Kite.plot_2d_trajectory(
         Legend(fig[next_row, 2], leg_entries,
             ["wing AoA", "bridle AoA"];
             labelsize=10, patchsize=(10, 5))
-        push!(time_axes, ax_aoa)
     end
 
     # Final axis gets x label and visible tick labels
     if !isempty(time_axes)
-        last_ax = time_axes[end]
-        last_ax.xlabel = L"t \; [s]"
-        last_ax.xticklabelsvisible = true
         linkxaxes!(time_axes...)
-        rowsize!(fig.layout, 1, Relative(0.5))
+        time_axes[end].xticklabelsvisible = true
+        time_axes[end].xlabel = use_twin ?
+            L"t_{sim} \; [s]" : L"t \; [s]"
+        if use_twin && !isempty(top_axes)
+            linkxaxes!(top_axes...)
+            top_axes[1].xticklabelsvisible = true
+            top_axes[1].xlabel = L"t_{data} \; [s]"
+        end
+        rowsize!(fig.layout, 1, Fixed(size[2] * 0.5))
     end
 
     if length(logs) > 1 || !isnothing(labels)
-        Legend(fig[next_row + 1, 1], ax;
+        traj_elems = []
+        traj_labels = String[]
+        for (i, _) in enumerate(logs)
+            lbl = isnothing(labels) ?
+                "trajectory $i" : labels[i]
+            lw = i == 1 ? 4.0 : 2.5
+            ls = i == 1 ? :solid :
+                Makie.Linestyle([0, 2, 5, 7])
+            clr = i == 1 ? :black : :black
+            push!(traj_elems, [LineElement(;
+                color=clr, linewidth=lw,
+                linestyle=ls)])
+            push!(traj_labels, lbl)
+        end
+        Legend(fig[next_row + 1, 1],
+            traj_elems, traj_labels;
             orientation=:horizontal)
     end
 
