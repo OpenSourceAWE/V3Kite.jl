@@ -653,26 +653,26 @@ function create_plots()
             save(joinpath(FIGURES_DIR, fig_fname), bf)
             frame_figs[dir] = bf
         end
-        # Geometric AoA distribution
-        aoa_fig = plot_geom_aoa_dist(
+        # Twist distribution
+        twist_fig = plot_twist_dist(
             sam.sys_struct;
             extra_points=pts,
             extra_groups=groups,
             title=false, legend=false)
-        aoa_fname = "geom_aoa_dist" *
+        twist_fname = "twist_dist" *
             "_$(SECTION)" *
             "_frame_$(target_frame)" *
             "_dpoff_$(DEPOWER_OFFSET_2025)" *
             "_sr_$(sr)_tr_$(tr).pdf"
-        @info "Saving $aoa_fname"
-        save(aoa_fname, aoa_fig)
-        fig_aoa = replace(aoa_fname,
+        @info "Saving $twist_fname"
+        save(twist_fname, twist_fig)
+        fig_twist = replace(twist_fname,
             ".pdf" => "$(dist_suffix).pdf")
-        save(joinpath(FIGURES_DIR, fig_aoa), aoa_fig)
-        frame_figs[:geom_aoa] = aoa_fig
+        save(joinpath(FIGURES_DIR, fig_twist), twist_fig)
+        frame_figs[:twist] = twist_fig
 
         body[target_frame] = frame_figs
-        @info "Saved 2D body frame + geom AoA" target_frame
+        @info "Saved 2D body frame + twist" target_frame
     end
     GLMakie.activate!()
 
