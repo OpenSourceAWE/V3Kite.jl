@@ -90,7 +90,7 @@ Extra points connected per-strut and LE.
 - `legend`: Show legend (default: true)
 - `title`: Show title (default: true)
 - `show_point_idxs`: Show point index labels (default: true)
-- `show_aoa`: Show geometric AoA panel below (default: false)
+- `show_twist`: Show twist panel below (default: false)
 """
 function V3Kite.plot_body_frame_local(sys_structs;
                                extra_points=nothing,
@@ -104,7 +104,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                legend=true,
                                title=true,
                                show_point_idxs=false,
-                               show_aoa=false)
+                               show_twist=false)
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -123,17 +123,17 @@ function V3Kite.plot_body_frame_local(sys_structs;
         xlabel, ylabel = "y [m]", "z [m]"
     end
 
-    aoa_figsize = show_aoa ?
+    twist_figsize = show_twist ?
         (figsize[1], figsize[2] + 150) : figsize
-    fig = Figure(size=aoa_figsize)
+    fig = Figure(size=twist_figsize)
     ax_title = title ? "Wing Points (Body Frame)" : ""
     ax = Axis(fig[1, 1]; xlabel, ylabel,
               title=ax_title, aspect=DataAspect())
-    ax_aoa = nothing
-    if show_aoa
-        ax_aoa = Axis(fig[2, 1];
+    ax_twist = nothing
+    if show_twist
+        ax_twist = Axis(fig[2, 1];
             xlabel="y [m]",
-            ylabel="Geo. AoA [deg]")
+            ylabel="Twist [deg]")
         rowsize!(fig.layout, 2, Fixed(150))
     end
 
@@ -171,8 +171,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
             end
         end
 
-        # Geometric AoA for WING point pairs
-        if show_aoa
+        # Twist for WING point pairs
+        if show_twist
             wing_pts = sort(
                 [p for p in points
                  if p.type == SymbolicAWEModels.WING],
@@ -299,8 +299,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
             extra_groups;
             point_size=extra_point_size)
 
-        # Photogrammetry geometric AoA
-        if show_aoa && !isnothing(ax_aoa)
+        # Photogrammetry twist
+        if show_twist && !isnothing(ax_twist)
             le_idxs = Int[]
             strut_groups =
                 Tuple{String,Vector{Int}}[]
@@ -343,12 +343,12 @@ function V3Kite.plot_body_frame_local(sys_structs;
                         (te_b[2] + le_b[2]) / 2)
                 end
                 perm = sortperm(photo_span)
-                lines!(ax_aoa,
+                lines!(ax_twist,
                     photo_span[perm],
                     photo_aoa[perm];
                     color=:red, linewidth=2,
                     label="photogrammetry")
-                scatter!(ax_aoa,
+                scatter!(ax_twist,
                     photo_span, photo_aoa;
                     color=:red, markersize=8)
             end
@@ -370,18 +370,18 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
     end
 
-    # Plot sim AoA curves
-    if show_aoa && !isnothing(ax_aoa)
+    # Plot sim twist curves
+    if show_twist && !isnothing(ax_twist)
         for (span_ys, aoas, clr, lbl) in sim_aoa_data
             perm = sortperm(span_ys)
-            lines!(ax_aoa,
+            lines!(ax_twist,
                 span_ys[perm], aoas[perm];
                 color=clr, linewidth=2, label=lbl)
-            scatter!(ax_aoa, span_ys, aoas;
+            scatter!(ax_twist, span_ys, aoas;
                 color=clr, markersize=8)
         end
         if dir == :front
-            linkxaxes!(ax, ax_aoa)
+            linkxaxes!(ax, ax_twist)
         end
     end
 
@@ -405,11 +405,11 @@ function V3Kite.plot_body_frame_local(sys_structs;
 end
 
 """
-    plot_geom_aoa_dist(sys_structs; extra_points,
+    plot_twist_dist(sys_structs; extra_points,
         extra_groups, labels, figsize)
 
-Plot geometric AoA distribution along the span.
-Computes local AoA at each LE/TE pair from sim
+Plot twist distribution along the span.
+Computes local twist at each LE/TE pair from sim
 sys_structs and optionally from photogrammetry data.
 
 # Arguments
@@ -418,14 +418,18 @@ sys_structs and optionally from photogrammetry data.
 - `extra_groups`: Optional photogrammetry groups
 - `labels`: Optional vector of labels
 - `figsize`: Figure size (default: (800, 300))
+- `wingtips`: Include wingtip struts (default: false)
+- `limits`: Twist axis limits in deg (default: (-7, 10))
 """
-function V3Kite.plot_geom_aoa_dist(sys_structs;
+function V3Kite.plot_twist_dist(sys_structs;
         extra_points=nothing,
         extra_groups=nothing,
         labels=nothing,
         figsize=(800, 300),
         title=true,
-        legend=true)
+        legend=true,
+        wingtips=false,
+        limits=(-7, 10))
     structs = sys_structs isa Vector ?
         sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -435,10 +439,10 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
     end
 
     fig = Figure(size=figsize)
-    ax_title = title ? "Geometric AoA Distribution" : ""
+    ax_title = title ? "Twist Distribution" : ""
     ax = Axis(fig[1, 1];
-        xlabel="y [m]", ylabel="Geo. AoA [deg]",
-        title=ax_title)
+        xlabel="y [m]", ylabel="Twist [deg]",
+        title=ax_title, limits=(nothing, limits))
 
     # Sim AoA per sys_struct
     for (s_idx, sys_struct) in enumerate(structs)
@@ -469,7 +473,9 @@ function V3Kite.plot_geom_aoa_dist(sys_structs;
         body_x = [1.0, 0.0, 0.0]
         span_ys = Float64[]
         aoas = Float64[]
-        for k in 1:n_le
+        k_range = wingtips ? (1:n_le) :
+            (2:(n_le - 1))
+        for k in k_range
             le = wing_pts[2k - 1]
             te = wing_pts[2k]
             chord_b = te.pos_b - le.pos_b

@@ -109,7 +109,7 @@ export V3SettleConfig, settle_wing
 export load_extra_points
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
-export plot_body_frame_local, plot_geom_aoa_dist
+export plot_body_frame_local, plot_twist_dist
 export plot_photogrammetry
 export plot_yaw_rate_vs_steering
 export plot_replay, plot_sphere_trajectory, plot_2d_trajectory
@@ -125,14 +125,14 @@ Load GLMakie before using: `using GLMakie`
 function plot_body_frame_local end
 
 """
-    plot_geom_aoa_dist(sys_structs; kwargs...)
+    plot_twist_dist(sys_structs; kwargs...)
 
-Plot geometric AoA distribution along the span. Requires GLMakie.
+Plot twist distribution along the span. Requires GLMakie.
 
 This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
-function plot_geom_aoa_dist end
+function plot_twist_dist end
 
 """
     plot_photogrammetry(points, groups; dir, kwargs...)
