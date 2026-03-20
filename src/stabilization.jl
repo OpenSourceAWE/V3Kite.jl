@@ -154,7 +154,6 @@ function settle_wing(config::V3SettleConfig;
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
-    vsm_set.wings[1].n_panels = config.n_panels
     vsm_set.wings[1].geometry_file = source_aero
 
     sys = load_sys_struct_from_yaml(dest_struc;
@@ -185,7 +184,6 @@ function _setup_settling_model(config::V3SettleConfig;
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
-    vsm_set.wings[1].n_panels = config.n_panels
     vsm_set.wings[1].geometry_file = source_aero
 
     sys = load_sys_struct_from_yaml(source_struc;

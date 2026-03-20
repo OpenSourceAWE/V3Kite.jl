@@ -17,6 +17,8 @@ using VortexStepMethod: calculate_projected_area
 
 const PLOT_COLORS = [:blue, :green, :orange,
     :purple, :cyan, :magenta]
+const FRAME_COLORS = [:black, :red, :blue,
+    :green, :orange, :purple, :cyan, :magenta]
 
 """
 Draw photogrammetry group lines and scatter points.
@@ -24,12 +26,13 @@ LE lines are opaque+thick, strut inner points are
 transparent.
 """
 function _draw_extra_groups!(ax, coords, groups;
-        point_size=8)
+        point_size=8, strut_alpha=0.6,
+        skip_ungrouped=false)
     te_idxs = Set{Int}()
     for (gname, indices) in groups
         is_le = gname == "LE"
         is_strut = startswith(gname, "strut")
-        clr = is_le ? :red : (:red, 0.6)
+        clr = is_le ? :orange : (:orange, strut_alpha)
         lw = is_le ? 5 : 3
         for i in 1:(length(indices)-1)
             c1 = coords[indices[i]]
@@ -52,14 +55,22 @@ function _draw_extra_groups!(ax, coords, groups;
             end
         end
     end
+    # Grouped indices (all points belonging to a group)
+    grouped = Set{Int}()
+    if skip_ungrouped
+        for (_, indices) in groups
+            union!(grouped, indices)
+        end
+    end
     # Opaque points (LE, TE, other)
     opaque = [i for i in eachindex(coords)
-              if i ∉ strut_inner]
+              if i ∉ strut_inner &&
+                 (!skip_ungrouped || i ∈ grouped)]
     scatter!(ax,
         [coords[i][1] for i in opaque],
         [coords[i][2] for i in opaque];
         markersize=point_size,
-        color=:red, marker=:circle)
+        color=:orange, marker=:circle)
     # Transparent strut inner points
     if !isempty(strut_inner)
         inner = collect(strut_inner)
@@ -67,8 +78,90 @@ function _draw_extra_groups!(ax, coords, groups;
             [coords[i][1] for i in inner],
             [coords[i][2] for i in inner];
             markersize=point_size,
-            color=(:red, 0.4), marker=:circle)
+            color=(:orange, 0.4), marker=:circle)
     end
+end
+
+"""Draw text with a white halo (CairoMakie-safe)."""
+function _halo_text!(ax, x, y; text, fontsize=12,
+        color=:black, halo_width=3, kw...)
+    text!(ax, x, y; text, fontsize,
+        color=:white, strokecolor=:white,
+        strokewidth=halo_width, kw...)
+    text!(ax, x, y; text, fontsize, color, kw...)
+end
+
+"""
+Draw incidence angle overlay: chord line, bridle
+lines, scatter points, angle arc, and labels.
+"""
+function _draw_incidence!(ax, kcu_2d, cr_2d,
+        te_2d, le_2d; color=:purple,
+        radius_scale=0.3, show_labels=true,
+        origin_label="KCU")
+    # LE→TE chord line (semi-transparent)
+    lines!(ax,
+        [le_2d[1], te_2d[1]],
+        [le_2d[2], te_2d[2]];
+        color=(color, 0.4), linewidth=2)
+    # KCU→CR and CR→TE solid lines
+    lines!(ax,
+        [kcu_2d[1], cr_2d[1]],
+        [kcu_2d[2], cr_2d[2]];
+        color=color, linewidth=2)
+    lines!(ax,
+        [cr_2d[1], te_2d[1]],
+        [cr_2d[2], te_2d[2]];
+        color=color, linewidth=2)
+    # Scatter on all 4 points
+    scatter!(ax,
+        [kcu_2d[1], cr_2d[1], te_2d[1], le_2d[1]],
+        [kcu_2d[2], cr_2d[2], te_2d[2], le_2d[2]];
+        markersize=10, color=color)
+    if show_labels
+        _halo_text!(ax, kcu_2d[1], kcu_2d[2];
+            text=origin_label, fontsize=12,
+            color=color,
+            align=(:right, :top), offset=(-6, -4))
+        _halo_text!(ax, cr_2d[1], cr_2d[2];
+            text="CR", fontsize=12, color=color,
+            align=(:left, :bottom), offset=(6, 8))
+        _halo_text!(ax, te_2d[1], te_2d[2];
+            text="TE", fontsize=12, color=color,
+            align=(:right, :bottom),
+            offset=(-8, 8))
+        _halo_text!(ax, le_2d[1], le_2d[2];
+            text="LE", fontsize=12, color=color,
+            align=(:left, :bottom), offset=(6, 8))
+    end
+    # Angle arc at CR
+    v_kcu = normalize([kcu_2d[1] - cr_2d[1],
+                       kcu_2d[2] - cr_2d[2]])
+    v_te  = normalize([te_2d[1] - cr_2d[1],
+                       te_2d[2] - cr_2d[2]])
+    th1 = atan(v_kcu[2], v_kcu[1])
+    th2 = atan(v_te[2], v_te[1])
+    dth = th2 - th1
+    dth > pi  && (dth -= 2pi)
+    dth < -pi && (dth += 2pi)
+    arm_kcu = norm([kcu_2d[1] - cr_2d[1],
+                    kcu_2d[2] - cr_2d[2]])
+    arm_te  = norm([te_2d[1] - cr_2d[1],
+                    te_2d[2] - cr_2d[2]])
+    radius = radius_scale * min(arm_kcu, arm_te)
+    ths = range(th1, th1 + dth; length=30)
+    arc_x = cr_2d[1] .+ radius .* cos.(ths)
+    arc_y = cr_2d[2] .+ radius .* sin.(ths)
+    lines!(ax, arc_x, arc_y;
+        color=color, linewidth=2)
+    th_mid = th1 + dth / 2
+    deg_str = "$(round(abs(rad2deg(dth));
+        digits=1))°"
+    _halo_text!(ax,
+        cr_2d[1] + radius * 1.5 * cos(th_mid),
+        cr_2d[2] + radius * 1.5 * sin(th_mid);
+        text=deg_str, fontsize=14, color=color,
+        halo_width=5)
 end
 
 """
@@ -86,11 +179,14 @@ Extra points connected per-strut and LE.
 - `point_idxs`: Optional vector of point indices to plot (default: WING points only)
 - `point_size`: Size of simulation points (default: 10)
 - `extra_point_size`: Size of extra points (default: 8)
-- `figsize`: Figure size tuple (default: (800, 600))
+- `figsize`: Figure size tuple (default: (560, 420))
 - `legend`: Show legend (default: true)
 - `title`: Show title (default: true)
 - `show_point_idxs`: Show point index labels (default: true)
 - `show_twist`: Show twist panel below (default: false)
+- `show_incidence`: Show incidence angle overlay on :side views (default: false)
+- `show_kcu`: Show KCU point (sys_struct point 1) with legend entry (default: false)
+- `show_camera`: Show camera point (ungrouped extra point) with legend entry (default: false)
 """
 function V3Kite.plot_body_frame_local(sys_structs;
                                extra_points=nothing,
@@ -98,29 +194,39 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                dir::Symbol=:front,
                                point_size=10,
                                extra_point_size=8,
-                               figsize=(800, 600),
+                               figsize=(560, 420),
                                labels=nothing,
                                point_idxs=nothing,
                                legend=true,
+                               legend_position=:right,
                                title=true,
                                show_point_idxs=false,
-                               show_twist=false)
+                               show_twist=false,
+                               show_incidence=false,
+                               show_kcu=false,
+                               show_camera=false)
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
 
     # Default labels
     if isnothing(labels)
-        labels = n_structs == 1 ? ["sim"] : ["sim_$i" for i in 1:n_structs]
+        labels = n_structs == 1 ?
+            ["simulation"] :
+            ["simulation $i"
+             for i in 1:n_structs]
     end
 
     # Set up axis labels
     if dir == :top
-        xlabel, ylabel = "y [m]", "x [m]"
+        xlabel = L"y \; [m]"
+        ylabel = L"x \; [m]"
     elseif dir == :side
-        xlabel, ylabel = "x [m]", "z [m]"
+        xlabel = L"x \; [m]"
+        ylabel = L"z \; [m]"
     else  # :front
-        xlabel, ylabel = "y [m]", "z [m]"
+        xlabel = L"y \; [m]"
+        ylabel = L"z \; [m]"
     end
 
     twist_figsize = show_twist ?
@@ -132,8 +238,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
     ax_twist = nothing
     if show_twist
         ax_twist = Axis(fig[2, 1];
-            xlabel="y [m]",
-            ylabel="Twist [deg]")
+            xlabel=L"y \; [m]",
+            ylabel=L"\theta \; [°]")
         rowsize!(fig.layout, 2, Fixed(150))
     end
 
@@ -281,6 +387,22 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
     end
 
+    # Plot KCU (point 1) for each sys_struct
+    if show_kcu
+        for sys_struct in structs
+            wing = sys_struct.wings[1]
+            R_w_b = V3Kite.calc_R_b_w(sys_struct)'
+            kcu_b = R_w_b *
+                (sys_struct.points[1].pos_w - wing.pos_w)
+            kx, ky = get_2d(kcu_b)
+            push!(all_x_vals, kx)
+            push!(all_y_vals, ky)
+            scatter!(ax, [kx], [ky];
+                color=:green, markersize=12,
+                marker=:circle)
+        end
+    end
+
     # Plot extra points with connections (use first struct's wing for transform)
     if !isnothing(extra_points) && !isnothing(extra_groups)
         wing = structs[1].wings[1]
@@ -295,9 +417,32 @@ function V3Kite.plot_body_frame_local(sys_structs;
             extra_coords = [(p[2], p[3]) for p in extra_body]
         end
 
+        _s_alpha = show_incidence && dir == :side ?
+            0.4 : 0.6
         _draw_extra_groups!(ax, extra_coords,
             extra_groups;
-            point_size=extra_point_size)
+            point_size=extra_point_size,
+            strut_alpha=_s_alpha,
+            skip_ungrouped=!show_camera)
+
+        # Plot camera point (first ungrouped extra point)
+        if show_camera
+            grouped = Set{Int}()
+            for (_, indices) in extra_groups
+                union!(grouped, indices)
+            end
+            for i in eachindex(extra_coords)
+                if i ∉ grouped
+                    cx, cy = extra_coords[i]
+                    push!(all_x_vals, cx)
+                    push!(all_y_vals, cy)
+                    scatter!(ax, [cx], [cy];
+                        color=:black, markersize=12,
+                        marker=:circle)
+                    break
+                end
+            end
+        end
 
         # Photogrammetry twist
         if show_twist && !isnothing(ax_twist)
@@ -355,19 +500,94 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
     end
 
-    # Auto-zoom with margin
-    if !isempty(all_x_vals)
+    # Incidence angle overlay (side view only)
+    if show_incidence && dir == :side
+        # Sim incidence from first sys_struct
+        sys1 = structs[1]
+        pts1 = sys1.points
+        wing1 = sys1.wings[1]
+        R_w_b = V3Kite.calc_R_b_w(sys1)'
+        kcu_b = R_w_b * (pts1[1].pos_w - wing1.pos_w)
+        le_3_b = pts1[10].pos_b
+        te_3_b = pts1[11].pos_b
+        le_4_b = pts1[12].pos_b
+        te_4_b = pts1[13].pos_b
+        cr_b = chord_ref_mid(
+            le_3_b, te_3_b, le_4_b, te_4_b)
+        le_center_b = (le_3_b + le_4_b) / 2
+        te_mid_b = (te_3_b + te_4_b) / 2
+        _draw_incidence!(ax,
+            get_2d(kcu_b), get_2d(cr_b),
+            get_2d(te_mid_b), get_2d(le_center_b);
+            color=:purple, radius_scale=0.3)
+
+        # Photogrammetry incidence (when extra data given)
+        if !isnothing(extra_points) &&
+                !isnothing(extra_groups)
+            eb = [R_w_b * (collect(p) - wing1.pos_w)
+                  for p in extra_points]
+            s3_idx = nothing
+            s4_idx = nothing
+            for (gname, indices) in extra_groups
+                gname == "strut3" && (s3_idx = indices)
+                gname == "strut4" && (s4_idx = indices)
+            end
+            if !isnothing(s3_idx) && !isnothing(s4_idx)
+                p_te3 = eb[s3_idx[1]]
+                p_le3 = eb[s3_idx[end]]
+                p_te4 = eb[s4_idx[1]]
+                p_le4 = eb[s4_idx[end]]
+                p_cr = chord_ref_mid(
+                    p_le3, p_te3, p_le4, p_te4)
+                p_te_mid = (p_te3 + p_te4) / 2
+                p_le_ctr = (p_le3 + p_le4) / 2
+                # KCU = first ungrouped point
+                grouped = Set{Int}()
+                for (_, idxs) in extra_groups
+                    union!(grouped, idxs)
+                end
+                p_kcu = nothing
+                for i in eachindex(eb)
+                    if i ∉ grouped
+                        p_kcu = eb[i]
+                        break
+                    end
+                end
+                if !isnothing(p_kcu)
+                    _draw_incidence!(ax,
+                        get_2d(p_kcu), get_2d(p_cr),
+                        get_2d(p_te_mid),
+                        get_2d(p_le_ctr);
+                        color=:darkorange,
+                        radius_scale=0.45,
+                        origin_label="C")
+                end
+            end
+        end
+    end
+
+    # Set axis limits
+    if dir == :front || dir == :top
+        if !isempty(all_y_vals)
+            y_min, y_max = extrema(all_y_vals)
+            margin_y = 0.15 * (y_max - y_min) + 0.3
+            if dir == :top
+                limits!(ax, -5.3, 5.3,
+                    y_max + margin_y,
+                    y_min - margin_y)
+            else
+                limits!(ax, -5.3, 5.3,
+                    y_min - margin_y,
+                    y_max + margin_y)
+            end
+        end
+    elseif !isempty(all_x_vals)
         x_min, x_max = extrema(all_x_vals)
         y_min, y_max = extrema(all_y_vals)
         margin_x = 0.15 * (x_max - x_min) + 0.3
         margin_y = 0.15 * (y_max - y_min) + 0.3
-        if dir == :top
-            limits!(ax, x_min - margin_x, x_max + margin_x,
-                        y_max + margin_y, y_min - margin_y)
-        else
-            limits!(ax, x_min - margin_x, x_max + margin_x,
-                        y_min - margin_y, y_max + margin_y)
-        end
+        limits!(ax, x_min - margin_x, x_max + margin_x,
+                    y_min - margin_y, y_max + margin_y)
     end
 
     # Plot sim twist curves
@@ -388,17 +608,43 @@ function V3Kite.plot_body_frame_local(sys_structs;
     # Legend
     if legend
         legend_elements = [
-            MarkerElement(color=PLOT_COLORS[mod1(i, length(PLOT_COLORS))],
-                          marker=:circle, markersize=10)
+            MarkerElement(
+                color=PLOT_COLORS[
+                    mod1(i, length(PLOT_COLORS))],
+                marker=:circle, markersize=10)
             for i in 1:n_structs
         ]
         legend_labels = copy(labels)
+        if show_kcu
+            push!(legend_elements,
+                  MarkerElement(color=:green,
+                      marker=:circle, markersize=10))
+            push!(legend_labels, "KCU")
+        end
         if !isnothing(extra_points)
             push!(legend_elements,
-                  MarkerElement(color=:red, marker=:circle, markersize=10))
+                  MarkerElement(color=:red,
+                      marker=:circle, markersize=10))
             push!(legend_labels, "photogrammetry")
         end
-        Legend(fig[1, 2], legend_elements, legend_labels)
+        if show_camera
+            push!(legend_elements,
+                  MarkerElement(color=:black,
+                      marker=:circle, markersize=10))
+            push!(legend_labels, "camera")
+        end
+        if legend_position == :top
+            Legend(fig[1, 1], legend_elements,
+                legend_labels;
+                orientation=:horizontal,
+                padding=(4, 4, 2, 2),
+                margin=(0, 0, 0, 0),
+                valign=:top, halign=:center,
+                tellwidth=false, tellheight=false)
+        else
+            Legend(fig[1, 2], legend_elements,
+                legend_labels)
+        end
     end
 
     return fig
@@ -417,7 +663,7 @@ sys_structs and optionally from photogrammetry data.
 - `extra_points`: Optional photogrammetry points
 - `extra_groups`: Optional photogrammetry groups
 - `labels`: Optional vector of labels
-- `figsize`: Figure size (default: (800, 300))
+- `figsize`: Figure size (default: (560, 210))
 - `wingtips`: Include wingtip struts (default: false)
 - `limits`: Twist axis limits in deg (default: (-7, 10))
 """
@@ -425,7 +671,7 @@ function V3Kite.plot_twist_dist(sys_structs;
         extra_points=nothing,
         extra_groups=nothing,
         labels=nothing,
-        figsize=(800, 300),
+        figsize=(560, 210),
         title=true,
         legend=true,
         wingtips=false,
@@ -434,15 +680,18 @@ function V3Kite.plot_twist_dist(sys_structs;
         sys_structs : [sys_structs]
     n_structs = length(structs)
     if isnothing(labels)
-        labels = n_structs == 1 ? ["sim"] :
-            ["sim_$i" for i in 1:n_structs]
+        labels = n_structs == 1 ?
+            ["simulation"] :
+            ["simulation $i"
+             for i in 1:n_structs]
     end
 
     fig = Figure(size=figsize)
     ax_title = title ? "Twist Distribution" : ""
     ax = Axis(fig[1, 1];
-        xlabel="y [m]", ylabel="Twist [deg]",
-        title=ax_title, limits=(nothing, limits))
+        xlabel=L"y \; [m]",
+        ylabel=L"\theta \; [°]",
+        title=ax_title, limits=((-5.3, 5.3), limits))
 
     # Sim AoA per sys_struct
     for (s_idx, sys_struct) in enumerate(structs)
@@ -589,11 +838,11 @@ function V3Kite.plot_photogrammetry(points, groups;
         point_size=8,
         figsize=(800, 600))
     xlabel, ylabel = if dir == :top
-        ("x [m]", "y [m]")
+        (L"x \; [m]", L"y \; [m]")
     elseif dir == :side
-        ("x [m]", "z [m]")
+        (L"x \; [m]", L"z \; [m]")
     else
-        ("y [m]", "z [m]")
+        (L"y \; [m]", L"z \; [m]")
     end
     fig = Figure(size=figsize)
     ax = Axis(fig[1, 1]; xlabel, ylabel,
@@ -1001,96 +1250,11 @@ function V3Kite.plot_sphere_trajectory(
 end
 
 # =====================================================================
-# plot_2d_trajectory — y vs z colored by gradient
+# Shared time-range helper for trajectory / panels
 # =====================================================================
 
-"""
-    plot_2d_trajectory(logs; gradient=:vel, tapes=nothing,
-        labels, colormap, size,
-        show_steering, show_winch_force, show_v_app,
-        show_drag_coeff)
-
-Plot kite y vs z position colored by a gradient quantity,
-with optional time-series subplots below.
-
-# Arguments
-- `gradient=:vel`: color by `:vel` or `:steering`
-- `tapes`: vector of named tuples with `time`, `steering`
-- `labels`: legend labels per log
-- `colormap=:viridis`: colormap for trajectory
-- `size=(800, 600)`: figure size
-- `show_steering`: steering panel (default: `!isnothing(tapes)`)
-- `show_winch_force=true`: winch force panel
-- `show_v_app=true`: apparent wind speed panel
-- `show_tether_len=false`: tether length panel
-- `show_drag_coeff=false`: drag coefficient (C_D) from `var_01`
-- `show_lift_coeff=false`: lift coefficient (C_L) from `var_02`
-  C_D and C_L share a single panel when both are enabled.
-- `show_lift_drag_ratio=true`: C_L/C_D ratio panel
-  (wing drag coefficient only)
-- `show_te_force=false`: mean TE segment force panel from `var_03`
-- `show_heading=false`: heading angle panel
-- `show_bridle_pitch=false`: bridle pitch angle panel from `var_08`
-- `show_aoa=false`: AoA panel (wing and bridle, sim and data)
-- `show_wing_vel=false`: kite ground speed panel
-- `show_yaw=false`: yaw angle panel from `var_05`
-- `show_pitch=true`: pitch angle panel from `var_06`
-- `show_roll=false`: roll angle panel from `var_07`
-  Yaw/pitch/roll share a single panel when any are enabled.
-- `t_start=nothing`: start time in seconds from log start
-- `t_end=nothing`: end time in seconds from log start
-"""
-function V3Kite.plot_2d_trajectory(
-        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
-        gradient::Symbol=:vel,
-        tapes=nothing,
-        labels=nothing,
-        colormap=:viridis,
-        size=(800, 600),
-        show_steering=nothing,
-        show_winch_force=true,
-        show_v_app=true,
-        show_tether_len=false,
-        show_drag_coeff=false,
-        show_lift_coeff=false,
-        show_lift_drag_ratio=false,
-        show_te_force=false,
-        show_heading=false,
-        show_bridle_pitch=false,
-        show_aoa=true,
-        show_wing_vel=false,
-        show_depower=false,
-        show_yaw=false,
-        show_pitch=false,
-        show_roll=false,
-        t_start=nothing,
-        t_end=nothing,
-        twin_time_axes::Bool=false)
-
-    if gradient == :steering && isnothing(tapes)
-        error("tapes required for gradient=:steering")
-    end
-    show_steering = something(show_steering,
-        !isnothing(tapes))
-    if show_steering && isnothing(tapes)
-        error("tapes required for show_steering=true")
-    end
-
-    # Count time-series panels for dynamic figure height
-    has_euler = show_yaw || show_pitch || show_roll
-    has_aoa = show_aoa && length(logs) >= 2
-    n_panels = show_steering + show_depower +
-        show_winch_force + show_v_app +
-        show_tether_len +
-        show_drag_coeff + show_lift_coeff +
-        show_lift_drag_ratio + show_te_force +
-        show_heading + show_wing_vel + has_euler +
-        show_bridle_pitch + has_aoa
-    panel_height = 60
-    fig_size = (size[1],
-        size[2] + n_panels * panel_height)
-
-    # Compute per-log index ranges for time filtering
+"""Compute per-log and per-tape index ranges for time filtering."""
+function _compute_ranges(logs, tapes, t_start, t_end)
     _time_range(t) = begin
         t0 = t[1]
         i1 = isnothing(t_start) ? 1 :
@@ -1104,11 +1268,54 @@ function V3Kite.plot_2d_trajectory(
     tape_ranges = isnothing(tapes) ? nothing :
         [_time_range(collect(Float64, tp.time))
          for tp in tapes]
+    return log_ranges, tape_ranges
+end
 
-    fig = Figure(; size=fig_size)
+# =====================================================================
+# plot_2d_trajectory — y vs z colored by gradient
+# =====================================================================
+
+"""
+    plot_2d_trajectory(logs; gradient=:vel, tapes=nothing,
+        labels, colormap, size, t_start, t_end,
+        frame_indexes)
+
+Plot kite y vs z position colored by a gradient quantity.
+
+# Arguments
+- `gradient=:vel`: color by `:vel` or `:steering`
+- `tapes`: vector of named tuples with `time`, `steering`
+- `labels`: legend labels per log
+- `colormap=:viridis`: colormap for trajectory
+- `size=(800, 600)`: figure size
+- `t_start=nothing`: start time in seconds from log start
+- `t_end=nothing`: end time in seconds from log start
+- `frame_indexes=nothing`: vector of `(frame_nr, syslog_idx)`
+  tuples; plots a colored dot on the trajectory for each
+  frame with a legend entry
+"""
+function V3Kite.plot_2d_trajectory(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        gradient::Symbol=:vel,
+        tapes=nothing,
+        labels=nothing,
+        colormap=:viridis,
+        size=(560, 420),
+        t_start=nothing,
+        t_end=nothing,
+        frame_indexes=nothing)
+
+    if gradient == :steering && isnothing(tapes)
+        error("tapes required for gradient=:steering")
+    end
+
+    log_ranges, tape_ranges = _compute_ranges(
+        logs, tapes, t_start, t_end)
+
+    fig = Figure(; size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
-        xlabelsize=18, ylabelsize=18,
+        xlabelsize=20, ylabelsize=20,
         aspect=DataAspect())
 
     # Collect all gradient values for consistent range
@@ -1131,7 +1338,9 @@ function V3Kite.plot_2d_trajectory(
     end
     vmin, vmax = extrema(all_vals)
 
-    for (i, lg) in enumerate(logs)
+    # Draw non-primary traces first so sim (i==1) is on top
+    for i in reverse(eachindex(logs))
+        lg = logs[i]
         sl = lg.syslog
         rng = log_ranges[i]
         y_pos = [sl.Y[k][1] for k in rng]
@@ -1143,27 +1352,17 @@ function V3Kite.plot_2d_trajectory(
                 tapes[i].steering[tape_ranges[i]])
         end
 
-        label = isnothing(labels) ?
-            "trajectory $i" : labels[i]
         n = min(length(y_pos), length(vals))
-        lw = i == 1 ? 4.0 : 2.5
+        lw = 4.0
         lines!(ax, y_pos[1:n], z_pos[1:n];
             color=vals[1:n], colormap,
             colorrange=(vmin, vmax),
-            linewidth=lw,
-            label=i == 1 ? label : nothing)
-        # Overlay dotted line for non-primary traces
-        # (CairoMakie ignores linestyle with vector color)
+            linewidth=lw)
         if i > 1
             lines!(ax, y_pos[1:n], z_pos[1:n];
                 color=:white, linewidth=lw,
                 linestyle=Makie.Linestyle(
                     [0, 2, 5, 7]))
-            lines!(ax, Float64[], Float64[];
-                color=:black, linewidth=lw,
-                linestyle=Makie.Linestyle(
-                    [0, 2, 5, 7]),
-                label)
         end
     end
 
@@ -1172,20 +1371,152 @@ function V3Kite.plot_2d_trajectory(
     else
         L"u_{\text{s}} \; [-]"
     end
-    Colorbar(fig[1, 2]; colormap,
+    Colorbar(fig[2, 1]; colormap,
         colorrange=(vmin, vmax), label=cb_label,
-        labelsize=18)
-    colsize!(fig.layout, 2, Fixed(40))
+        labelsize=20, vertical=false,
+        flipaxis=false)
+    rowgap!(fig.layout, 1, 8)
 
-    # --- Time-series panels ---
-    next_row = 1
+    # Combined legend: sim/data lines + frame markers
+    legend_elems = []
+    legend_labels = String[]
+    for (i, _) in enumerate(logs)
+        lbl = isnothing(labels) ?
+            "trajectory $i" : labels[i]
+        lw = i == 1 ? 4.0 : 2.5
+        ls = i == 1 ? :solid :
+            Makie.Linestyle([0, 2, 5, 7])
+        push!(legend_elems, [LineElement(;
+            color=:black, linewidth=lw,
+            linestyle=ls)])
+        push!(legend_labels, lbl)
+    end
+    if !isnothing(frame_indexes) &&
+            !isempty(frame_indexes)
+        sl1 = logs[1].syslog
+        for (j, (frame_nr, syslog_idx)) in
+                enumerate(frame_indexes)
+            clr = FRAME_COLORS[
+                mod1(j, length(FRAME_COLORS))]
+            t_frame = collect(sl1.time)[syslog_idx]
+            for lg in logs
+                sl = lg.syslog
+                t_all = collect(sl.time)
+                idx = argmin(
+                    abs.(t_all .- t_frame))
+                y = sl.Y[idx][1]
+                z = sl.Z[idx][1]
+                scatter!(ax, [y], [z];
+                    color=clr, markersize=14,
+                    marker=:circle)
+            end
+            push!(legend_elems,
+                [MarkerElement(color=clr,
+                    marker=:circle,
+                    markersize=10),
+                 LineElement(color=clr,
+                    linewidth=2,
+                    linestyle=:dash)])
+            push!(legend_labels,
+                "frame $frame_nr")
+        end
+    end
+    if !isempty(legend_labels)
+        Legend(fig[1, 1], legend_elems,
+            legend_labels; labelsize=14,
+            halign=:left, valign=:bottom,
+            tellwidth=false, tellheight=false,
+            margin=(10, 0, 0, 0))
+    end
+
+    return fig
+end
+
+# =====================================================================
+# plot_2d_panels — time-series subplots
+# =====================================================================
+
+"""
+    plot_2d_panels(logs; tapes, labels, kwargs...)
+
+Time-series panel figure (steering, winch force, v_app, etc.)
+extracted from `plot_2d_trajectory`.
+
+# Arguments
+- `tapes`: vector of named tuples with `time`, `steering`,
+  `depower`
+- `labels`: legend labels per log
+- `size`: figure `(width, height)` — auto-computed when
+  `nothing` (default width 600)
+- `panel_height=60`: height per panel in pixels
+- `show_*` flags: toggle individual panels
+- `t_start`, `t_end`: time range in seconds from log start
+- `twin_time_axes`: use separate x axes for each log
+- `frame_indexes=nothing`: vector of `(frame_nr, syslog_idx)`
+  tuples; draws vertical lines on all panels at the
+  corresponding times, using the same colors as trajectory
+  frame markers
+"""
+function V3Kite.plot_2d_panels(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        tapes=nothing,
+        labels=nothing,
+        size=nothing,
+        panel_height::Int=120,
+        show_steering=nothing,
+        show_winch_force=true,
+        show_v_app=true,
+        show_tether_len=false,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=false,
+        show_te_force=false,
+        show_heading=false,
+        show_bridle_pitch=false,
+        show_aoa=true,
+        show_wing_vel=false,
+        show_depower=false,
+        show_yaw=false,
+        show_pitch=false,
+        show_roll=false,
+        show_cop=false,
+        t_start=nothing,
+        t_end=nothing,
+        twin_time_axes::Bool=false,
+        frame_indexes=nothing)
+
+    show_steering = something(show_steering,
+        !isnothing(tapes))
+    if show_steering && isnothing(tapes)
+        error("tapes required for show_steering=true")
+    end
+
+    has_euler = show_yaw || show_pitch || show_roll
+    has_aoa = show_aoa && length(logs) >= 2
+    n_panels = show_steering + show_depower +
+        show_winch_force + show_v_app +
+        show_tether_len +
+        show_drag_coeff + show_lift_coeff +
+        show_lift_drag_ratio + show_te_force +
+        show_heading + show_wing_vel + has_euler +
+        show_bridle_pitch + has_aoa + show_cop
+
+    fig_size = isnothing(size) ?
+        (800, n_panels * panel_height) : size
+
+    log_ranges, tape_ranges = _compute_ranges(
+        logs, tapes, t_start, t_end)
+
+    fig = Figure(; size=fig_size)
+    rowgap!(fig.layout, 4)
+    cur_row = 0
     time_axes = Axis[]
     use_twin = twin_time_axes && length(logs) >= 2
     top_axes = Axis[]
 
     function _twin_panel!(fig, row, ylabel)
         ax = Axis(fig[row, 1]; ylabel,
-            ylabelsize=18,
+            ylabelsize=20,
             xticklabelsvisible=false)
         push!(time_axes, ax)
         if use_twin
@@ -1201,8 +1532,8 @@ function V3Kite.plot_2d_trajectory(
     end
 
     if show_steering
-        next_row += 1
-        ax_st = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_st = _twin_panel!(fig, cur_row,
             L"u_{\text{s}} \; [-]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
@@ -1214,16 +1545,18 @@ function V3Kite.plot_2d_trajectory(
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
                     tp.steering)[trng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
     end
 
     if show_depower
         if isnothing(tapes)
-            error("tapes required for show_depower=true")
+            error(
+                "tapes required for show_depower=true")
         end
-        next_row += 1
-        ax_dp = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_dp = _twin_panel!(fig, cur_row,
             L"u_{\text{d}} \; [\%]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
@@ -1235,13 +1568,14 @@ function V3Kite.plot_2d_trajectory(
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
                     tp.depower .* 100)[trng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
     end
 
     if show_winch_force
-        next_row += 1
-        ax_wf = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_wf = _twin_panel!(fig, cur_row,
             L"F_{\text{t}} \; [kN]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1254,15 +1588,16 @@ function V3Kite.plot_2d_trajectory(
                 top_axes[end] : ax_wf
             lines!(target,
                 collect(sl.time)[rng], wf;
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_wf, [0]; linewidth=0.5,
             color=:gray70)
     end
 
     if show_v_app
-        next_row += 1
-        ax_va = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_va = _twin_panel!(fig, cur_row,
             L"v_{\text{app}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1274,15 +1609,16 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.v_app)[rng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_va, [0]; linewidth=0.5,
             color=:gray70)
     end
 
     if show_tether_len
-        next_row += 1
-        ax_tl = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_tl = _twin_panel!(fig, cur_row,
             L"l_{\text{t}} \; [m]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1294,13 +1630,14 @@ function V3Kite.plot_2d_trajectory(
                 top_axes[end] : ax_tl
             lines!(target,
                 collect(sl.time)[rng], lt;
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
     end
 
     if show_drag_coeff
-        next_row += 1
-        ax_cd = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_cd = _twin_panel!(fig, cur_row,
             L"C_{\text{D}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1312,15 +1649,16 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_01)[rng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_cd, [0]; linewidth=0.5,
             color=:gray70)
     end
 
     if show_lift_coeff
-        next_row += 1
-        ax_cl = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_cl = _twin_panel!(fig, cur_row,
             L"C_{\text{L}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1332,15 +1670,16 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_02)[rng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_cl, [0]; linewidth=0.5,
             color=:gray70)
     end
 
     if show_lift_drag_ratio
-        next_row += 1
-        ax_ld = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_ld = _twin_panel!(fig, cur_row,
             L"C_L / C_{\text{D}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1355,15 +1694,16 @@ function V3Kite.plot_2d_trajectory(
                 top_axes[end] : ax_ld
             lines!(target,
                 collect(sl.time)[rng], ratio;
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_ld, [0]; linewidth=0.5,
             color=:gray70)
     end
 
     if show_te_force
-        next_row += 1
-        ax_te = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_te = _twin_panel!(fig, cur_row,
             L"\bar{F}_{\text{TE}} \; [N]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1375,16 +1715,16 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_03)[rng];
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_te, [0]; linewidth=0.5,
             color=:gray70)
     end
 
-    # --- Heading panel ---
     if show_heading
-        next_row += 1
-        ax_hd = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_hd = _twin_panel!(fig, cur_row,
             L"\psi \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1396,16 +1736,16 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.heading)[rng]);
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_hd, [0]; linewidth=0.5,
             color=:gray70)
     end
 
-    # --- Wing velocity panel ---
     if show_wing_vel
-        next_row += 1
-        ax_wv = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_wv = _twin_panel!(fig, cur_row,
             L"v_{\text{k}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1417,13 +1757,13 @@ function V3Kite.plot_2d_trajectory(
                 top_axes[end] : ax_wv
             lines!(target,
                 collect(sl.time)[rng], vk;
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_wv, [0]; linewidth=0.5,
             color=:gray70)
     end
 
-    # --- Euler angles panel (yaw / pitch / roll) ---
     if show_yaw || show_pitch || show_roll
         angle_vars = [
             (show_yaw, :var_05, "yaw",
@@ -1437,27 +1777,26 @@ function V3Kite.plot_2d_trajectory(
         single_angle = length(active) == 1
         ylabel_euler = single_angle ?
             active[1][5] : L"\text{angle} \; [°]"
-        next_row += 1
-        ax_euler = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_euler = _twin_panel!(fig, cur_row,
             ylabel_euler)
         if single_angle
-            # Single angle: let Makie auto-cycle color
             var = active[1][2]
             for (i, lg) in enumerate(logs)
                 sl = lg.syslog
                 rng = log_ranges[i]
-                vals = rad2deg.(
-                    collect(getproperty(sl, var))[rng])
+                vals = rad2deg.(collect(
+                    getproperty(sl, var))[rng])
                 lw = i == 1 ? 2.0 : 1.5
                 ls = i == 1 ? :solid : :dash
                 target = (use_twin && i == 2) ?
                     top_axes[end] : ax_euler
                 lines!(target,
                     collect(sl.time)[rng], vals;
-                    linewidth=lw, linestyle=ls)
+                    linewidth=lw, linestyle=ls,
+                    color=:black)
             end
         else
-            # Multiple angles: explicit colors + legend
             leg_elems = []
             leg_labels = String[]
             for (_, var, name, clr, _) in active
@@ -1471,7 +1810,8 @@ function V3Kite.plot_2d_trajectory(
                     target = (use_twin && i == 2) ?
                         top_axes[end] : ax_euler
                     lines!(target,
-                        collect(sl.time)[rng], vals;
+                        collect(sl.time)[rng],
+                        vals;
                         linewidth=lw, linestyle=ls,
                         color=clr)
                 end
@@ -1480,19 +1820,22 @@ function V3Kite.plot_2d_trajectory(
                 push!(leg_labels, name)
             end
             if !isempty(leg_labels)
-                Legend(fig[next_row, 2], leg_elems,
-                    leg_labels;
-                    labelsize=14, patchsize=(14, 7))
+                Legend(fig[cur_row, 1], leg_elems,
+                    leg_labels; labelsize=14,
+                    patchsize=(18, 9),
+                    halign=:right, valign=:top,
+                    tellwidth=false,
+                    tellheight=false,
+                    margin=(0, 0, 0, 0))
             end
         end
         hlines!(ax_euler, [0];
             linewidth=0.5, color=:gray70)
     end
 
-    # --- Bridle pitch angle panel ---
     if show_bridle_pitch
-        next_row += 1
-        ax_bp = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_bp = _twin_panel!(fig, cur_row,
             L"\beta_{\text{br}} \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1504,13 +1847,13 @@ function V3Kite.plot_2d_trajectory(
             lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.var_08)[rng]);
-                linewidth=lw, linestyle=ls)
+                linewidth=lw, linestyle=ls,
+                    color=:black)
         end
         hlines!(ax_bp, [0]; linewidth=0.5,
             color=:gray70)
     end
 
-    # --- AoA panel (wing + bridle, sim and data) ---
     if show_aoa && length(logs) >= 2
         sl_sim = logs[1].syslog
         sl_data = logs[2].syslog
@@ -1518,38 +1861,66 @@ function V3Kite.plot_2d_trajectory(
         rng_data = log_ranges[2]
         t_sim_aoa = collect(sl_sim.time)[rng_sim]
         t_data_aoa = collect(sl_data.time)[rng_data]
-        next_row += 1
-        ax_aoa = _twin_panel!(fig, next_row,
+        cur_row += 1
+        ax_aoa = _twin_panel!(fig, cur_row,
             L"\alpha \; [°]")
         c_wing = Makie.wong_colors()[1]
-        c_bridle = Makie.wong_colors()[2]
+        c_kite = Makie.wong_colors()[2]
         # Sim traces on bottom axis
         lines!(ax_aoa, t_sim_aoa,
-            rad2deg.(collect(sl_sim.var_12)[rng_sim]);
+            rad2deg.(collect(
+                sl_sim.var_12)[rng_sim]);
             linewidth=2.0, color=c_wing)
         lines!(ax_aoa, t_sim_aoa,
-            rad2deg.(collect(sl_sim.var_04)[rng_sim]);
-            linewidth=2.0, color=c_bridle)
-        # Data traces on top axis (or same when !use_twin)
+            rad2deg.(collect(
+                sl_sim.var_04)[rng_sim]);
+            linewidth=2.0, color=c_kite)
+        # Data traces on top axis (or same)
         data_ax = use_twin ? top_axes[end] : ax_aoa
         lines!(data_ax, t_data_aoa,
-            rad2deg.(collect(sl_data.AoA)[rng_data]);
+            rad2deg.(collect(
+                sl_data.var_12)[rng_data]);
             linewidth=1.5, linestyle=:dash,
             color=c_wing)
         lines!(data_ax, t_data_aoa,
             rad2deg.(collect(
                 sl_data.var_04)[rng_data]);
             linewidth=1.5, linestyle=:dash,
-            color=c_bridle)
+            color=c_kite)
         hlines!(ax_aoa, [0]; linewidth=0.5,
             color=:gray70)
         leg_entries = [
             [LineElement(color=c_wing, linewidth=2)],
-            [LineElement(color=c_bridle, linewidth=2)],
+            [LineElement(
+                color=c_kite, linewidth=2)],
         ]
-        Legend(fig[next_row, 2], leg_entries,
-            [L"\text{wing}", L"\text{bridle}"];
-            labelsize=14, patchsize=(14, 7))
+        Legend(fig[cur_row, 1], leg_entries,
+            [L"\text{wing}", L"\text{kite}"];
+            labelsize=14, patchsize=(18, 9),
+            halign=:right, valign=:top,
+            tellwidth=false, tellheight=false,
+            margin=(0, 0, 0, 0))
+    end
+
+    if show_cop
+        cur_row += 1
+        ax_cop = _twin_panel!(fig, cur_row,
+            L"x_{\text{cop}} \; [m]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_cop
+            lines!(target,
+                collect(sl.time)[rng],
+                collect(sl.var_13)[rng];
+                linewidth=lw, linestyle=ls,
+                    color=:black)
+        end
+        hlines!(ax_cop, [0]; linewidth=0.5,
+            color=:gray70)
     end
 
     # Final axis gets x label and visible tick labels
@@ -1558,35 +1929,33 @@ function V3Kite.plot_2d_trajectory(
         time_axes[end].xticklabelsvisible = true
         time_axes[end].xlabel = use_twin ?
             L"t_{\text{sim}} \; [s]" : L"t \; [s]"
-        time_axes[end].xlabelsize = 18
+        time_axes[end].xlabelsize = 20
         if use_twin && !isempty(top_axes)
             linkxaxes!(top_axes...)
             top_axes[1].xticklabelsvisible = true
-            top_axes[1].xlabel = L"t_{\text{data}} \; [s]"
-            top_axes[1].xlabelsize = 18
+            top_axes[1].xlabel =
+                L"t_{\text{data}} \; [s]"
+            top_axes[1].xlabelsize = 20
         end
-        rowsize!(fig.layout, 1, Fixed(size[2] * 0.5))
     end
 
-    if length(logs) > 1 || !isnothing(labels)
-        traj_elems = []
-        traj_labels = String[]
-        for (i, _) in enumerate(logs)
-            lbl = isnothing(labels) ?
-                "trajectory $i" : labels[i]
-            lw = i == 1 ? 4.0 : 2.5
-            ls = i == 1 ? :solid :
-                Makie.Linestyle([0, 2, 5, 7])
-            clr = i == 1 ? :black : :black
-            push!(traj_elems, [LineElement(;
-                color=clr, linewidth=lw,
-                linestyle=ls)])
-            push!(traj_labels, lbl)
+    # Frame index vertical lines on all panels
+    if !isnothing(frame_indexes) &&
+            !isempty(frame_indexes) &&
+            !isempty(time_axes)
+        sl = logs[1].syslog
+        for (j, (_, syslog_idx)) in
+                enumerate(frame_indexes)
+            clr = FRAME_COLORS[
+                mod1(j, length(FRAME_COLORS))]
+            t = collect(sl.time)[syslog_idx]
+            for tax in time_axes
+                vlines!(tax, [t]; color=clr,
+                    linewidth=1.5, linestyle=:dash)
+            end
         end
-        Legend(fig[next_row + 1, 1],
-            traj_elems, traj_labels;
-            orientation=:horizontal)
     end
+
 
     return fig
 end
