@@ -40,7 +40,7 @@ YEAR = 2025
 SETTLE_ONLY = false
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -5.0
+DEPOWER_OFFSET_2025 = -9.0
 STEERING_MULTIPLIER = 1.0
 HEADING_KP = 0.0
 HEADING_TI = 0.0
@@ -53,11 +53,12 @@ REDUCE_TIP = true
 TIP_REDUCTION = 0.2
 BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
-AOA_OFFSET_A = -0.6839
-AOA_OFFSET_B = 29.69
-POINT_37_38_DAMPING = [0.0, 100.0, 0.0]
+AOA_OFFSET_A = -0.6831
+AOA_OFFSET_B = 28.74
+POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
+SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
-    "Torque2026", "figures")
+    "T26-BART", "figures")
 
 # Maneuver selection
 if YEAR == 2025
@@ -72,7 +73,7 @@ if SECTION == "straight_2025"
     start_utc = "15:36:27.0"
     end_utc = "15:36:33.1"
 elseif SECTION == "right_2025"
-    start_utc = "15:36:32.0"
+    start_utc = "15:36:34.0"
     end_utc = "15:36:38.0"
 elseif SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
@@ -187,6 +188,11 @@ function run_physics_replay(h5_path;
         else
             dp = dp / 100.0
         end
+        quat2R =
+            SymbolicAWEModels.quaternion_to_rotation_matrix
+        R_b_w = quat2R(euler_to_quaternion(
+            raw.ekf_kite_roll, raw.ekf_kite_pitch,
+            raw.ekf_kite_yaw))
         return (
             time = raw.time,
             video_frame = round(Int, raw.video_frame),
@@ -207,13 +213,11 @@ function run_physics_replay(h5_path;
             distance = raw.distance,
             cumulative_distance = raw.cumulative_distance,
             wind_speed = raw.ekf_wind_speed_horizontal,
-            upwind_dir = wrap_to_pi(-raw.ekf_wind_direction - π/2),
+            upwind_dir = wrap_to_pi(
+                -raw.ekf_wind_direction - π/2),
             wind_speed_vertical =
                 raw.ekf_wind_speed_vertical,
-            angle_of_attack = deg2rad(
-                raw.ekf_wing_angle_of_attack_bridle +
-                (AOA_OFFSET_A * raw.kcu_actual_depower +
-                 AOA_OFFSET_B)),
+            R_b_w = R_b_w,
             v_app = raw.ekf_kite_apparent_windspeed,
             drag_coeff = raw.ekf_wing_drag_coefficient,
             lift_coeff = raw.ekf_wing_lift_coefficient,
@@ -223,8 +227,6 @@ function run_physics_replay(h5_path;
                 raw.ekf_bridles_drag_coefficient,
             kcu_drag_coeff =
                 raw.ekf_kcu_drag_coefficient,
-            bridle_aoa = deg2rad(
-                raw.ekf_wing_angle_of_attack_bridle),
         )
     end
 
@@ -247,6 +249,7 @@ function run_physics_replay(h5_path;
         dt=0.001,
         num_steps=1000,
         num_substeps=5,
+        n_panels=54,
         start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
@@ -329,7 +332,7 @@ function run_physics_replay(h5_path;
         sys, BODY_DAMPING, 1:38)
     SymbolicAWEModels.set_body_frame_damping(
         sys, POINT_37_38_DAMPING, 37:38)
-    distribute_wing_mass!(sys, 11.0; dist=0.5)
+    distribute_wing_mass!(sys, 11.0; dist=0.7)
 
     dt = data.time[2] - data.time[1]
     heading_pid = create_heading_pid(;
@@ -346,7 +349,6 @@ function run_physics_replay(h5_path;
             data_sam, data_sam.prob, FBDF())
         update_sys_state!(data_state, data_sam)
         data_state.winch_force[1] = row.tether_force
-        data_state.AoA = row.angle_of_attack
         data_state.v_app = row.v_app
         data_state.time = row.time
         data_state.l_tether[1] = row.tether_len
@@ -356,14 +358,10 @@ function run_physics_replay(h5_path;
         data_state.var_09 = row.tether_drag_coeff
         data_state.var_10 = row.bridle_drag_coeff
         data_state.var_11 = row.kcu_drag_coeff
-        data_state.var_04 = row.bridle_aoa
         data_state.var_05 = wrap_to_pi(row.yaw)
         data_state.var_06 = wrap_to_pi(row.pitch)
         data_state.var_07 = wrap_to_pi(row.roll)
-        quat2R =
-            SymbolicAWEModels.quaternion_to_rotation_matrix
-        data_R_b_w = quat2R(euler_to_quaternion(
-            row.roll, row.pitch, row.yaw))
+        data_R_b_w = row.R_b_w
         data_state.var_08 = compute_bridle_pitch_angle(
             data_sam.sys_struct, data_R_b_w)
         wind_elev = atan(
@@ -375,6 +373,15 @@ function run_physics_replay(h5_path;
         v_wind_total = hypot(
             row.wind_speed, row.wind_speed_vertical)
         data_state.v_wind_gnd .= v_wind_total .* wind_vec
+        v_app_w = [row.vx, row.vy, row.vz] -
+            v_wind_total .* wind_vec
+        v_app_b = data_R_b_w' * v_app_w
+        data_aoa = atan(v_app_b[3], v_app_b[1])
+        data_state.AoA = data_aoa
+        data_state.var_04 = data_aoa
+        data_state.var_12 = data_aoa + deg2rad(
+            AOA_OFFSET_A * row.depower * 100 +
+            AOA_OFFSET_B)
         log!(data_logger, data_state)
 
         push!(data_tape.time, row.time)
@@ -577,49 +584,75 @@ sam, syslog, data_sam, datalog, data, sim_tape, data_tape,
 geom_config = settle_config.geom
 
 function create_plots()
+    global fig, trajectory, panels, traj_2d, panels_2d
+    global yaw_fig, body, twist
     fig = plot_replay(
         [sam.sys_struct, data_sam.sys_struct],
         [syslog, datalog];
         tape_lengths=[sim_tape, data_tape],
-        suffixes=["sim", "data"])
+        suffixes=["simulation", "data"])
 
-    trajectory = plot_2d_trajectory([syslog, datalog];
-        gradient=:vel,
-        tapes=[sim_tape, data_tape],
-        labels=["sim", "data"],
-        show_te_force=false,
+    _logs = [syslog, datalog]
+    _tapes = [sim_tape, data_tape]
+    _labels = ["simulation", "data"]
+
+    # GLMakie display
+    trajectory = plot_2d_trajectory(_logs;
+        gradient=:vel, tapes=_tapes, labels=_labels,
+        frame_indexes=frame_syslog_idxs)
+    panels = plot_2d_panels(_logs;
+        tapes=_tapes, labels=_labels,
         show_aoa=true,
         twin_time_axes=DISTANCE_BASED_STEERING,
-    )
-    CairoMakie.activate!()
-    traj_2d = plot_2d_trajectory([syslog, datalog];
-        gradient=:vel,
-        tapes=[sim_tape, data_tape],
-        labels=["sim", "data"],
-        show_aoa=true,
-        twin_time_axes=DISTANCE_BASED_STEERING)
+        frame_indexes=frame_syslog_idxs)
+
+    # CairoMakie PDF saves
     sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
     tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
-    dist_suffix = DISTANCE_BASED_STEERING ? "_dist" : ""
-    traj_fname = "trajectory_2d_$(SECTION)" *
+    dist_suffix = DISTANCE_BASED_STEERING ?
+        "_dist" : ""
+    suffix = "_$(SECTION)" *
         "_dpoff_$(DEPOWER_OFFSET_2025)" *
-        "_sr_$(sr)_tr_$(tr).pdf"
-    @info "Saving $traj_fname"
-    save(traj_fname, traj_2d)
-    mkpath(FIGURES_DIR)
-    fig_traj = replace(traj_fname,
-        ".pdf" => "$(dist_suffix).pdf")
-    save(joinpath(FIGURES_DIR, fig_traj), traj_2d)
+        "_sr_$(sr)_tr_$(tr)"
+    CairoMakie.activate!()
+    traj_2d = plot_2d_trajectory(_logs;
+        gradient=:vel, tapes=_tapes, labels=_labels,
+        frame_indexes=frame_syslog_idxs)
+    panels_2d = plot_2d_panels(_logs;
+        tapes=_tapes, labels=_labels,
+        show_aoa=true,
+        twin_time_axes=DISTANCE_BASED_STEERING,
+        frame_indexes=frame_syslog_idxs)
+    if SAVE_FIGS
+        mkpath(FIGURES_DIR)
+        traj_fname = "trajectory_2d$(suffix).pdf"
+        panels_fname = "panels_2d$(suffix).pdf"
+        @info "Saving $traj_fname"
+        save(traj_fname, traj_2d)
+        fig_traj = joinpath(FIGURES_DIR, replace(
+            traj_fname,
+            ".pdf" => "$(dist_suffix).pdf"))
+        @info "Saving $fig_traj"
+        save(fig_traj, traj_2d)
+        @info "Saving $panels_fname"
+        save(panels_fname, panels_2d)
+        fig_panels = joinpath(FIGURES_DIR, replace(
+            panels_fname,
+            ".pdf" => "$(dist_suffix).pdf"))
+        @info "Saving $fig_panels"
+        save(fig_panels, panels_2d)
+    end
     GLMakie.activate!()
 
     yaw_fig = plot_yaw_rate_vs_steering(
         [syslog, datalog],
         [sim_tape, data_tape];
         min_steering=0.05,
-        labels=["sim", "data"], dt)
+        labels=["simulation", "data"], dt)
 
     # 2D body frame plots for PDF export
     body = Dict{Int, Dict{Symbol, Any}}()
+    twist = Dict{Int, Any}()
     CairoMakie.activate!()
     for (csv, target_frame) in frame_csvs
         idx = findfirst(
@@ -636,21 +669,36 @@ function create_plots()
         sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
         tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
         for dir in (:front, :side, :top)
+            show_leg = dir == :side &&
+                target_frame == 7362
+            no_adjust = !REDUCE_STEERING &&
+                !REDUCE_TIP
+            if dir == :front && no_adjust
+                show_leg = true
+            end
+            leg_pos = dir == :front ? :top : :right
+            is_side = dir == :side
             bf = plot_body_frame_local(
                 sam.sys_struct;
                 extra_points=pts,
                 extra_groups=groups, dir,
-                title=false, legend=false)
+                title=false, legend=show_leg,
+                legend_position=leg_pos,
+                show_incidence=false,
+                show_kcu=false,
+                show_camera=false)
             fname = "body_frame_$(dir)" *
                 "_$(SECTION)" *
                 "_frame_$(target_frame)" *
                 "_dpoff_$(DEPOWER_OFFSET_2025)" *
                 "_sr_$(sr)_tr_$(tr).pdf"
-            @info "Saving $fname"
-            save(fname, bf)
-            fig_fname = replace(fname,
-                ".pdf" => "$(dist_suffix).pdf")
-            save(joinpath(FIGURES_DIR, fig_fname), bf)
+            if SAVE_FIGS
+                @info "Saving $fname"
+                save(fname, bf)
+                fig_fname = replace(fname,
+                    ".pdf" => "$(dist_suffix).pdf")
+                save(joinpath(FIGURES_DIR, fig_fname), bf)
+            end
             frame_figs[dir] = bf
         end
         # Twist distribution
@@ -658,17 +706,22 @@ function create_plots()
             sam.sys_struct;
             extra_points=pts,
             extra_groups=groups,
-            title=false, legend=false)
+            title=false, legend=false,
+            limits=(-3,12))
         twist_fname = "twist_dist" *
             "_$(SECTION)" *
             "_frame_$(target_frame)" *
             "_dpoff_$(DEPOWER_OFFSET_2025)" *
             "_sr_$(sr)_tr_$(tr).pdf"
-        @info "Saving $twist_fname"
-        save(twist_fname, twist_fig)
-        fig_twist = replace(twist_fname,
-            ".pdf" => "$(dist_suffix).pdf")
-        save(joinpath(FIGURES_DIR, fig_twist), twist_fig)
+        if SAVE_FIGS
+            @info "Saving $twist_fname"
+            save(twist_fname, twist_fig)
+            fig_twist = replace(twist_fname,
+                ".pdf" => "$(dist_suffix).pdf")
+            save(joinpath(FIGURES_DIR, fig_twist),
+                twist_fig)
+        end
+        twist[target_frame] = twist_fig
         frame_figs[:twist] = twist_fig
 
         body[target_frame] = frame_figs
@@ -699,7 +752,7 @@ function create_plots()
         mean_gk["data"] * 100
     @info "gk difference" pct=round(pct; digits=1)
 
-    trajectory
+    panels
 end
 if !SETTLE_ONLY
     create_plots()

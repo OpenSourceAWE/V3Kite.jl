@@ -243,40 +243,42 @@ function mean_te_segment_force(sam)
 end
 
 """
-    quarter_chord_mid(le_3, te_3, le_4, te_4)
+    chord_ref_mid(le_3, te_3, le_4, te_4; frac=0.3)
 
-Quarter-chord reference point averaged over both strut sides.
-Returns midpoint of (0.75·LE + 0.25·TE) for each side.
+Chord reference point averaged over both strut sides.
+Returns midpoint of `((1-frac)·LE + frac·TE)` for each
+side. Default `frac=0.3` gives the 30%-chord point.
 """
-function quarter_chord_mid(le_3, te_3, le_4, te_4)
-    qc_3 = 0.75 .* le_3 .+ 0.25 .* te_3
-    qc_4 = 0.75 .* le_4 .+ 0.25 .* te_4
-    return (qc_3 .+ qc_4) ./ 2
+function chord_ref_mid(le_3, te_3, le_4, te_4;
+        frac=0.3)
+    cr_3 = (1 - frac) .* le_3 .+ frac .* te_3
+    cr_4 = (1 - frac) .* le_4 .+ frac .* te_4
+    return (cr_3 .+ cr_4) ./ 2
 end
 
 """
-    quarter_chord_mid(sys)
+    chord_ref_mid(sys; frac=0.3)
 
-Quarter-chord ref from sys_struct points 10-13.
+Chord reference point from sys_struct points 10-13.
 """
-function quarter_chord_mid(sys)
-    return quarter_chord_mid(
+function chord_ref_mid(sys; frac=0.3)
+    return chord_ref_mid(
         sys.points[10].pos_w,
         sys.points[11].pos_w,
         sys.points[12].pos_w,
-        sys.points[13].pos_w)
+        sys.points[13].pos_w; frac)
 end
 
 """
-    compute_bridle_aoa(sys) -> Float64
+    compute_kite_aoa(sys) -> Float64
 
-Compute the angle of attack in the bridle reference frame.
-The bridle z-axis points from KCU (point 1) to the
-quarter-chord midpoint, x-axis is perpendicular in the
+Compute the kite angle of attack in the bridle reference
+frame. The bridle z-axis points from KCU (point 1) to the
+30%-chord midpoint, x-axis is perpendicular in the
 body y–bridle z plane.
 """
-function compute_bridle_aoa(sys)
-    mid_w = quarter_chord_mid(sys)
+function compute_kite_aoa(sys)
+    mid_w = chord_ref_mid(sys)
     z_br = normalize(mid_w - sys.points[1].pos_w)
     R_b_w = calc_R_b_w(sys)
     y_br = R_b_w[:, 2]
@@ -325,7 +327,7 @@ The bridle z-axis points downward (wing → KCU) to match
 the NED body-frame z-down convention used by the EKF.
 """
 function compute_bridle_euler(sys)
-    mid_w = quarter_chord_mid(sys)
+    mid_w = chord_ref_mid(sys)
     z_br = normalize(sys.points[1].pos_w - mid_w)
     R_b_w = calc_R_b_w(sys)
     y_br = R_b_w[:, 2]
@@ -343,7 +345,7 @@ end
     compute_bridle_pitch_angle(sys, R_b_w) -> Float64
 
 Angle between tether direction (ground → KCU) and bridle
-direction (KCU → quarter-chord midpoint), projected into
+direction (KCU → 30%-chord midpoint), projected into
 the body xz plane. Positive when the bridle pitches forward
 (toward body +x) relative to the tether.
 
@@ -357,7 +359,7 @@ end
 
 function compute_bridle_pitch_angle(sys, R_b_w)
     kcu_w = sys.points[1].pos_w
-    qc_w = quarter_chord_mid(sys)
+    qc_w = chord_ref_mid(sys)
     v_tether_w = normalize(kcu_w)
     v_bridle_w = normalize(qc_w - kcu_w)
     R_w_b = R_b_w'
@@ -369,6 +371,30 @@ function compute_bridle_pitch_angle(sys, R_b_w)
 end
 
 """
+    compute_cop_x(sam) -> Float64
+
+Center-of-pressure x-coordinate in body frame, computed as
+the force-magnitude-weighted average of `pos_b[1]` for wing
+points 2:21.
+"""
+function compute_cop_x(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    R_w_b = calc_R_b_w(sys)'
+    total_force = 0.0
+    weighted_x = 0.0
+    for i in 2:21
+        p = sys.points[i]
+        f = norm(p.aero_force_b)
+        pos_b = R_w_b * (p.pos_w - wing.pos_w)
+        weighted_x += pos_b[1] * f
+        total_force += f
+    end
+    total_force < 1e-6 && return 0.0
+    return weighted_x / total_force
+end
+
+"""
     log_state!(logger, sys_state, sam, t)
 
 Update sys_state from the model, set time, and log.
@@ -376,19 +402,20 @@ Update sys_state from the model, set time, and log.
 Computed variables:
 - `var_01`/`var_02`: wing drag/lift coefficients
 - `var_03`: mean TE segment force
-- `var_04`: bridle AoA
+- `var_04`: kite AoA
 - `var_05`-`var_07`: bridle NED Euler (yaw, pitch, roll)
 - `var_08`: bridle pitch angle
 - `var_09`-`var_11`: tether/bridle/KCU drag coefficients
   (EKF-AWE formula for apples-to-apples comparison)
 - `var_12`: geometric wing incidence (photogrammetry-style)
+- `var_13`: center-of-pressure x-coordinate (body frame)
 """
 function log_state!(logger, sys_state, sam, t)
     update_sys_state!(sys_state, sam)
     sys_state.var_01 = compute_drag_coeff(sam)
     sys_state.var_02 = compute_lift_coeff(sam)
     sys_state.var_03 = mean_te_segment_force(sam)
-    sys_state.var_04 = compute_bridle_aoa(sam.sys_struct)
+    sys_state.var_04 = compute_kite_aoa(sam.sys_struct)
     yaw, pitch, roll = compute_bridle_euler(sam.sys_struct)
     sys_state.var_05 = yaw
     sys_state.var_06 = pitch
@@ -400,6 +427,7 @@ function log_state!(logger, sys_state, sam, t)
     sys_state.var_11 = compute_kcu_drag_coeff(sam)
     sys_state.var_12 = compute_wing_incidence(
         sam.sys_struct)
+    sys_state.var_13 = compute_cop_x(sam)
     sys_state.time = t
     log!(logger, sys_state)
     return nothing

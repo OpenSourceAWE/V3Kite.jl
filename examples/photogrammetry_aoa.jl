@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-Photogrammetry Bridle AoA
+Photogrammetry Kite AoA
 
-Computes the geometric angle between the mid-chord direction and
-the LE-bridle vector from photogrammetry data for each frame CSV.
+Computes the geometric angle between the chord reference direction
+and the tether vector from photogrammetry data for each frame CSV.
 
 Usage:
     julia --project=examples examples/photogrammetry_aoa.jl
@@ -61,9 +61,9 @@ function process_frame_csv(csv, flight_data)
     # Spanwise: strut4 LE - strut3 LE = +y
     y_body = normalize(le_4 - le_3)
 
-    # Intermediate z from camera to quarter chord
-    qc = quarter_chord_mid(le_3, te_3, le_4, te_4)
-    z_temp = normalize(qc - cam_pos)
+    # Intermediate z from camera to chord ref point
+    cr = chord_ref_mid(le_3, te_3, le_4, te_4)
+    z_temp = normalize(cr - cam_pos)
 
     # Orthogonalize
     x_body = normalize(cross(y_body, z_temp))
@@ -103,8 +103,8 @@ function process_frame_csv(csv, flight_data)
     le_center = (le_3 + le_4) / 2
     chord_len = (norm(te_3 - le_3) +
         norm(te_4 - le_4)) / 2
-    return (; pts, groups, R_body,
-        le_center, cam_pos, qc,
+    return (; pts, groups, R_body, chord_w,
+        le_center, cam_pos, cr,
         le_3, te_3, le_4, te_4,
         te_mid=(te_3 + te_4) / 2,
         offset, depower, steering, chord_len)
@@ -135,84 +135,130 @@ function halo_text!(ax, x, y; text, fontsize=12,
     text!(ax, x, y; text, fontsize, color, kw...)
 end
 
-function add_bridle_overlay!(ax, kcu_2d, qc_2d,
-        te_2d, offset_deg)
-    # KCU->QC and QC->TE lines
+"""Draw a 2D reference frame on a side-view axis."""
+function draw_frame_axes!(ax, origin, x_dir, z_dir,
+        scale)
+    ox, oz = origin
+    perp = 0.35 * scale
+    # x-axis (red arrow)
+    arrows2d!(ax, [ox], [oz],
+        [x_dir[1] * scale], [x_dir[2] * scale];
+        color=:red, shaftwidth=2, tipwidth=10)
+    halo_text!(ax,
+        ox + x_dir[1] * 0.7 * scale - x_dir[2] * perp,
+        oz + x_dir[2] * 0.7 * scale + x_dir[1] * perp;
+        text=L"x", fontsize=14, color=:red,
+        align=(:center, :center))
+    # z-axis (blue arrow)
+    arrows2d!(ax, [ox], [oz],
+        [z_dir[1] * scale], [z_dir[2] * scale];
+        color=:blue, shaftwidth=2, tipwidth=10)
+    halo_text!(ax,
+        ox + z_dir[1] * 0.7 * scale - z_dir[2] * perp,
+        oz + z_dir[2] * 0.7 * scale + z_dir[1] * perp;
+        text=L"z", fontsize=14, color=:blue,
+        align=(:center, :center))
+end
+
+function add_bridle_overlay!(ax, kcu_2d, cr_2d,
+        te_2d, le_2d, offset_deg)
+    # LE->TE chord line (see-through)
     lines!(ax,
-        [kcu_2d[1], qc_2d[1]],
-        [kcu_2d[2], qc_2d[2]];
+        [le_2d[1], te_2d[1]],
+        [le_2d[2], te_2d[2]];
+        color=(:black, 0.4), linewidth=2)
+    # KCU->CR and CR->TE lines
+    lines!(ax,
+        [kcu_2d[1], cr_2d[1]],
+        [kcu_2d[2], cr_2d[2]];
         color=:black, linewidth=2)
     lines!(ax,
-        [qc_2d[1], te_2d[1]],
-        [qc_2d[2], te_2d[2]];
+        [cr_2d[1], te_2d[1]],
+        [cr_2d[2], te_2d[2]];
         color=:black, linewidth=2)
     scatter!(ax,
-        [kcu_2d[1], qc_2d[1], te_2d[1]],
-        [kcu_2d[2], qc_2d[2], te_2d[2]];
+        [kcu_2d[1], cr_2d[1], te_2d[1], le_2d[1]],
+        [kcu_2d[2], cr_2d[2], te_2d[2], le_2d[2]];
         markersize=10, color=:black)
     halo_text!(ax, kcu_2d[1], kcu_2d[2];
         text="KCU", fontsize=12, color=:black,
         align=(:right, :top), offset=(-6, -4))
-    halo_text!(ax, qc_2d[1], qc_2d[2];
-        text="QC", fontsize=12, color=:black,
-        align=(:right, :bottom), offset=(-8, 8))
+    halo_text!(ax, cr_2d[1], cr_2d[2];
+        text="CR", fontsize=12, color=:black,
+        offset=(4, 4))
     halo_text!(ax, te_2d[1], te_2d[2];
         text="TE", fontsize=12, color=:black,
-        align=(:right, :bottom), offset=(-8, 8))
+        offset=(-20, 4))
+    halo_text!(ax, le_2d[1], le_2d[2];
+        text="LE", fontsize=12, color=:black,
+        offset=(-10, -20))
 
-    # Angle arc at QC
-    v_kcu = normalize([kcu_2d[1] - qc_2d[1],
-                       kcu_2d[2] - qc_2d[2]])
-    v_te = normalize([te_2d[1] - qc_2d[1],
-                      te_2d[2] - qc_2d[2]])
+    # Angle arc at CR
+    v_kcu = normalize([kcu_2d[1] - cr_2d[1],
+                       kcu_2d[2] - cr_2d[2]])
+    v_te = normalize([te_2d[1] - cr_2d[1],
+                      te_2d[2] - cr_2d[2]])
     th1 = atan(v_kcu[2], v_kcu[1])
     th2 = atan(v_te[2], v_te[1])
     dth = th2 - th1
     dth > pi && (dth -= 2pi)
     dth < -pi && (dth += 2pi)
-    arm_kcu = norm([kcu_2d[1] - qc_2d[1],
-                    kcu_2d[2] - qc_2d[2]])
-    arm_te = norm([te_2d[1] - qc_2d[1],
-                   te_2d[2] - qc_2d[2]])
+    arm_kcu = norm([kcu_2d[1] - cr_2d[1],
+                    kcu_2d[2] - cr_2d[2]])
+    arm_te = norm([te_2d[1] - cr_2d[1],
+                   te_2d[2] - cr_2d[2]])
     radius = 0.3 * min(arm_kcu, arm_te)
     ths = range(th1, th1 + dth, length=30)
-    arc_x = qc_2d[1] .+ radius .* cos.(ths)
-    arc_y = qc_2d[2] .+ radius .* sin.(ths)
+    arc_x = cr_2d[1] .+ radius .* cos.(ths)
+    arc_y = cr_2d[2] .+ radius .* sin.(ths)
     lines!(ax, arc_x, arc_y;
         color=:purple, linewidth=2)
 
     th_mid = th1 + dth / 2
     halo_text!(ax,
-        qc_2d[1] + radius * 1.5 * cos(th_mid),
-        qc_2d[2] + radius * 1.5 * sin(th_mid);
+        cr_2d[1] + radius * 1.5 * cos(th_mid),
+        cr_2d[2] + radius * 1.5 * sin(th_mid);
         text="$(round(abs(rad2deg(dth)); digits=1))\u00b0",
         fontsize=14, color=:purple)
 end
 
-# --- Side-view plots with bridle geometry per frame ---
+# --- Side-view plots with chord ref geometry per frame ---
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
-    "Torque2026", "figures")
+    "T26-BART", "figures")
 mkpath(FIGURES_DIR)
 
 for (frame_num, fd) in frame_results
-    local body_pts, kcu_2d, qc_2d, te_2d
+    local body_pts, kcu_2d, cr_2d, te_2d, le_2d
+    local frame_scale, x_chord, z_chord
     local fig, ax, fig_pdf, ax_pdf
-    to_body(p) = fd.R_body' * (p - fd.le_center)
+    to_body(p) = fd.R_body' * (p - fd.cam_pos)
     to_side(b) = (b[1], b[3])
 
     body_pts = [Tuple(fd.R_body' *
-        (collect(p) - fd.le_center))
+        (collect(p) - fd.cam_pos))
         for p in fd.pts]
 
     kcu_2d = to_side(to_body(fd.cam_pos))
-    qc_2d = to_side(to_body(collect(fd.qc)))
+    cr_2d = to_side(to_body(collect(fd.cr)))
     te_2d = to_side(to_body(fd.te_mid))
+    le_2d = to_side(to_body(fd.le_center))
+
+    # Reference frame axes
+    frame_scale = 0.3 * fd.chord_len
+    chord_body = fd.R_body' * fd.chord_w
+    x_vec = normalize([chord_body[1], chord_body[3]])
+    x_chord = (x_vec[1], x_vec[2])
+    z_chord = (-x_chord[2], x_chord[1])
 
     fig = plot_photogrammetry(body_pts,
         fd.groups; dir=:side)
     ax = content(fig[1, 1])
-    add_bridle_overlay!(ax, kcu_2d, qc_2d, te_2d,
-        fd.offset)
+    add_bridle_overlay!(ax, kcu_2d, cr_2d, te_2d,
+        le_2d, fd.offset)
+    draw_frame_axes!(ax, kcu_2d,
+        (1.0, 0.0), (0.0, 1.0), frame_scale)
+    draw_frame_axes!(ax, le_2d,
+        x_chord, z_chord, frame_scale)
     autolimits!(ax)
     display(fig)
 
@@ -220,10 +266,14 @@ for (frame_num, fd) in frame_results
     fig_pdf = plot_photogrammetry(body_pts,
         fd.groups; dir=:side)
     ax_pdf = content(fig_pdf[1, 1])
-    add_bridle_overlay!(ax_pdf, kcu_2d, qc_2d,
-        te_2d, fd.offset)
+    add_bridle_overlay!(ax_pdf, kcu_2d, cr_2d,
+        te_2d, le_2d, fd.offset)
+    draw_frame_axes!(ax_pdf, kcu_2d,
+        (1.0, 0.0), (0.0, 1.0), frame_scale)
+    draw_frame_axes!(ax_pdf, le_2d,
+        x_chord, z_chord, frame_scale)
     autolimits!(ax_pdf)
-    fname = "bridle_incidence_side" *
+    fname = "chord_ref_incidence_side" *
         "_frame_$(frame_num).pdf"
     @info "Saving $fname"
     save(fname, fig_pdf)

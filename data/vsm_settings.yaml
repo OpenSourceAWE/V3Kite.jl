@@ -45,11 +45,12 @@ condition:
 wings:
   - name: V3_Kite # Wing identifier for output labeling
     geometry_file: data/v3/aero_geometry.yaml
-    n_panels: 36 # Total number of panels along wingspan
-    spanwise_panel_distribution: LINEAR # Panel spacing algorithm
+    n_panels: 72 # Total number of panels along wingspan
+    spanwise_panel_distribution: BILLOWING # Panel spacing algorithm
     spanwise_direction: [0.0, 1.0, 0.0] # Unit vector defining wingspan direction
     remove_nan: true # Remove NaN values from polar data
     use_prior_polar: true # Use previously computed polars if available
+    billowing_percentage: 5
 
 # Numerical method settings and convergence criteria
 solver_settings:

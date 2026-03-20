@@ -112,21 +112,22 @@ function load_extra_points(csv_path::String,
             sys_struct.points[12].pos_w)
         sim_le_center = (sim_p10 + sim_p12) / 2
 
-        # Direction vectors
-        csv_span = [1.0, 0.0, 0.0]
-        csv_y = csv_span
-        csv_z = [0.0, 0.0, 1.0]
-        csv_x = cross(csv_y, csv_z)
+        # Direction vectors: z exact from camera→CR,
+        # x/y orthogonalized around it (use snapped LE)
+        csv_cr = chord_ref_mid(
+            csv_le_3, strut3[te_idx],
+            csv_le_4, strut4[te_idx])
+        csv_z = normalize([0.0, csv_cr[2], csv_cr[3]])
+        csv_y_temp = [1.0, 0.0, 0.0]
+        csv_x = normalize(cross(csv_y_temp, csv_z))
+        csv_y = normalize(cross(csv_z, csv_x))
 
-        # Sim basis
+        # Sim basis: z from KCU→CR, x/y orthogonalized
         R_b_w = calc_R_b_w(sys_struct)
-        sim_x = R_b_w[:, 1]
-        sim_y = R_b_w[:, 2]
-        sim_z = R_b_w[:, 3]
 
         # Rotation: R * csv_basis = sim_basis
         csv_basis = hcat(csv_x, csv_y, csv_z)
-        sim_basis = hcat(sim_x, sim_y, sim_z)
+        sim_basis = R_b_w
         R = sim_basis * csv_basis'
 
         # Translation: align LE centers

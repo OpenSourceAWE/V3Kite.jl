@@ -88,10 +88,10 @@ export sim_step!, log_state!, should_report
 export compute_drag_coeff, compute_lift_coeff
 export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
-export compute_bridle_aoa, compute_bridle_euler
+export compute_kite_aoa, compute_bridle_euler
 export compute_wing_incidence
 export compute_bridle_pitch_angle
-export quarter_chord_mid
+export chord_ref_mid
 export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
@@ -112,7 +112,8 @@ export load_extra_points
 export plot_body_frame_local, plot_twist_dist
 export plot_photogrammetry
 export plot_yaw_rate_vs_steering
-export plot_replay, plot_sphere_trajectory, plot_2d_trajectory
+export plot_replay, plot_sphere_trajectory
+export plot_2d_trajectory, plot_2d_panels
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -185,6 +186,17 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_2d_trajectory end
+
+"""
+    plot_2d_panels(logs; tapes, labels, kwargs...)
+
+Time-series panel plot (steering, winch force, v_app, etc.)
+split from `plot_2d_trajectory`. Requires GLMakie/CairoMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_2d_panels end
 
 # include("precompile.jl") # disabled: precompilation workload
 
