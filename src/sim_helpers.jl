@@ -270,22 +270,27 @@ function chord_ref_mid(sys; frac=0.3)
 end
 
 """
+    compute_kite_aoa(R_b_w, kite_vel, wind_vec)
+
+Kite angle of attack from body-frame apparent wind.
+`R_b_w` rotates body→world, `kite_vel` and `wind_vec`
+are in world frame.
+"""
+function compute_kite_aoa(R_b_w, kite_vel, wind_vec)
+    v_app_b = R_b_w' * (kite_vel - wind_vec)
+    return atan(v_app_b[3], v_app_b[1])
+end
+
+"""
     compute_kite_aoa(sys) -> Float64
 
-Compute the kite angle of attack in the bridle reference
-frame. The bridle z-axis points from KCU (point 1) to the
-30%-chord midpoint, x-axis is perpendicular in the
-body y–bridle z plane.
+Convenience wrapper extracting R_b_w and apparent wind
+from the system structure.
 """
 function compute_kite_aoa(sys)
-    mid_w = chord_ref_mid(sys)
-    z_br = normalize(mid_w - sys.points[1].pos_w)
     R_b_w = calc_R_b_w(sys)
-    y_br = R_b_w[:, 2]
-    x_br = normalize(cross(y_br, z_br))
-    wing = sys.wings[1]
-    v_app_w = R_b_w * wing.va_b
-    return atan(dot(v_app_w, z_br), dot(v_app_w, x_br))
+    v_app_b = sys.wings[1].va_b
+    return atan(v_app_b[3], v_app_b[1])
 end
 
 """

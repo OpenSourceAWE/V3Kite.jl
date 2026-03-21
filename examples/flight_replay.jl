@@ -125,8 +125,8 @@ function update_vel_from_csv!(sys, row,
     sys.set.v_wind = hypot(
         row.wind_speed, row.wind_speed_vertical)
     sys.set.upwind_dir = rad2deg(row.upwind_dir)
-    sys.wind_elevation = atan(
-        row.wind_speed_vertical, row.wind_speed)
+    sys.wind_elevation = rad2deg(atan(
+        row.wind_speed_vertical, row.wind_speed))
 
     # CSV steering (positive = right turn)
     steering = clamp(row.steering, -1.0, 1.0)
@@ -193,6 +193,25 @@ function run_physics_replay(h5_path;
         R_b_w = quat2R(euler_to_quaternion(
             raw.ekf_kite_roll, raw.ekf_kite_pitch,
             raw.ekf_kite_yaw))
+        wind_elev = atan(
+            raw.ekf_wind_speed_vertical,
+            raw.ekf_wind_speed_horizontal)
+        wind_dir = rotate_around_z(
+            rotate_around_x(
+                [0.0, -1.0, 0.0], wind_elev),
+            -wrap_to_pi(
+                -raw.ekf_wind_direction - π/2))
+        v_wind_total = hypot(
+            raw.ekf_wind_speed_horizontal,
+            raw.ekf_wind_speed_vertical)
+        wind_vec = v_wind_total .* wind_dir
+        kite_vel = [raw.ekf_kite_velocity_x,
+                    raw.ekf_kite_velocity_y,
+                    raw.ekf_kite_velocity_z]
+        kite_aoa = compute_kite_aoa(
+            R_b_w, kite_vel, wind_vec)
+        wing_aoa = kite_aoa + deg2rad(
+            AOA_OFFSET_A * dp * 100 + AOA_OFFSET_B)
         return (
             time = raw.time,
             video_frame = round(Int, raw.video_frame),
@@ -227,6 +246,10 @@ function run_physics_replay(h5_path;
                 raw.ekf_bridles_drag_coefficient,
             kcu_drag_coeff =
                 raw.ekf_kcu_drag_coefficient,
+            wind_elevation = wind_elev,
+            wind_vec = wind_vec,
+            kite_aoa = kite_aoa,
+            wing_aoa = wing_aoa,
         )
     end
 
@@ -364,24 +387,10 @@ function run_physics_replay(h5_path;
         data_R_b_w = row.R_b_w
         data_state.var_08 = compute_bridle_pitch_angle(
             data_sam.sys_struct, data_R_b_w)
-        wind_elev = atan(
-            row.wind_speed_vertical, row.wind_speed)
-        wind_vec = rotate_around_z(
-            rotate_around_x(
-                [0.0, -1.0, 0.0], wind_elev),
-            -row.upwind_dir)
-        v_wind_total = hypot(
-            row.wind_speed, row.wind_speed_vertical)
-        data_state.v_wind_gnd .= v_wind_total .* wind_vec
-        v_app_w = [row.vx, row.vy, row.vz] -
-            v_wind_total .* wind_vec
-        v_app_b = data_R_b_w' * v_app_w
-        data_aoa = atan(v_app_b[3], v_app_b[1])
-        data_state.AoA = data_aoa
-        data_state.var_04 = data_aoa
-        data_state.var_12 = data_aoa + deg2rad(
-            AOA_OFFSET_A * row.depower * 100 +
-            AOA_OFFSET_B)
+        data_state.v_wind_gnd .= row.wind_vec
+        data_state.AoA = row.kite_aoa
+        data_state.var_04 = row.kite_aoa
+        data_state.var_12 = row.wing_aoa
         log!(data_logger, data_state)
 
         push!(data_tape.time, row.time)
@@ -461,6 +470,10 @@ function run_physics_replay(h5_path;
                 sam, sam.prob, FBDF())
 
             next_step!(sam; dt)
+            @assert isapprox(
+                sam.sys_struct.wind_vec_gnd,
+                row.wind_vec; atol=1e-6) (
+                "wind_vec_gnd mismatch: $(sam.sys_struct.wind_vec_gnd), $(row.wind_vec)")
 
             cur_sim_pos = sam.sys_struct.wings[1].pos_w
             sim_cum_dist += norm(
@@ -585,7 +598,7 @@ geom_config = settle_config.geom
 
 function create_plots()
     global fig, trajectory, panels, traj_2d, panels_2d
-    global yaw_fig, body, twist
+    global yaw_fig, body, twist, hdot_fig
     fig = plot_replay(
         [sam.sys_struct, data_sam.sys_struct],
         [syslog, datalog];
@@ -654,7 +667,9 @@ function create_plots()
     body = Dict{Int, Dict{Symbol, Any}}()
     twist = Dict{Int, Any}()
     CairoMakie.activate!()
-    for (csv, target_frame) in frame_csvs
+    frame_annotations = ["right turn", "straight flight"]
+    for (fi, (csv, target_frame)) in
+            enumerate(frame_csvs)
         idx = findfirst(
             x -> x[1] == target_frame,
             frame_syslog_idxs)
@@ -665,6 +680,7 @@ function create_plots()
             syslog.syslog[syslog_idx])
         pts, groups = load_extra_points(
             csv, sam.sys_struct)
+        ann = get(frame_annotations, fi, "")
         frame_figs = Dict{Symbol, Any}()
         sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
         tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
@@ -678,6 +694,13 @@ function create_plots()
             end
             leg_pos = dir == :front ? :top : :right
             is_side = dir == :side
+            dir_ann = if dir == :front
+                REDUCE_TIP ?
+                    "bridle reduced $(tr)m" :
+                    "bridle unreduced"
+            else
+                ann
+            end
             bf = plot_body_frame_local(
                 sam.sys_struct;
                 extra_points=pts,
@@ -686,7 +709,8 @@ function create_plots()
                 legend_position=leg_pos,
                 show_incidence=false,
                 show_kcu=false,
-                show_camera=false)
+                show_camera=false,
+                annotation=dir_ann)
             fname = "body_frame_$(dir)" *
                 "_$(SECTION)" *
                 "_frame_$(target_frame)" *
@@ -707,7 +731,8 @@ function create_plots()
             extra_points=pts,
             extra_groups=groups,
             title=false, legend=false,
-            limits=(-3,12))
+            limits=(-3,12),
+            annotation=ann)
         twist_fname = "twist_dist" *
             "_$(SECTION)" *
             "_frame_$(target_frame)" *
@@ -731,6 +756,8 @@ function create_plots()
 
     # Average gk for |steering| > 5%
     mean_gk = Dict{String,Float64}()
+    hdot_series = Dict{String,Vector{Float64}}()
+    hdot_time = Dict{String,Vector{Float64}}()
     for (label, lg, tape) in [("sim", syslog, sim_tape),
                                ("data", datalog, data_tape)]
         sl = lg.syslog
@@ -740,6 +767,16 @@ function create_plots()
             while hw[j] - hw[j-1] < -pi; hw[j] += 2pi; end
         end
         hdot = diff(hw) ./ dt
+        # Subtract frame transport: ψ̇_m = ψ̇_T − φ̇·sin(β)
+        az = copy(sl.azimuth)
+        for j in 2:length(az)
+            while az[j] - az[j-1] > pi; az[j] -= 2pi; end
+            while az[j] - az[j-1] < -pi; az[j] += 2pi; end
+        end
+        az_dot = diff(az) ./ dt
+        hdot .= hdot .- az_dot .* sin.(sl.elevation[2:end])
+        hdot_series[label] = hdot
+        hdot_time[label] = tape.time[2:end]
         us = tape.steering[2:end]
         va = sl.v_app[2:end]
         mask = abs.(us) .> 0.05
@@ -751,6 +788,19 @@ function create_plots()
     pct = (mean_gk["sim"] - mean_gk["data"]) /
         mean_gk["data"] * 100
     @info "gk difference" pct=round(pct; digits=1)
+
+    # Validation plot: heading rate vs time
+    hdot_fig = Figure(size=(900, 400))
+    ax = Axis(hdot_fig[1, 1];
+        xlabel="time [s]",
+        ylabel="heading rate [rad/s]",
+        title="Body yaw rate (frame-transport corrected)")
+    lines!(ax, hdot_time["sim"], hdot_series["sim"];
+        label="sim", color=:blue)
+    lines!(ax, hdot_time["data"], hdot_series["data"];
+        label="data", color=:red)
+    axislegend(ax)
+    display(hdot_fig)
 
     panels
 end

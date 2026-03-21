@@ -204,7 +204,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                show_twist=false,
                                show_incidence=false,
                                show_kcu=false,
-                               show_camera=false)
+                               show_camera=false,
+                               annotation="")
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -269,6 +270,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         for wing in wings
             if wing.wing_type == SymbolicAWEModels.REFINE
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
+                wing.pos_w .= points[1].pos_w
                 for point in points
                     if point.wing_idx == wing.idx
                         point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
@@ -491,11 +493,11 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 lines!(ax_twist,
                     photo_span[perm],
                     photo_aoa[perm];
-                    color=:red, linewidth=2,
+                    color=:orange, linewidth=2,
                     label="photogrammetry")
                 scatter!(ax_twist,
                     photo_span, photo_aoa;
-                    color=:red, markersize=8)
+                    color=:orange, markersize=8)
             end
         end
     end
@@ -623,7 +625,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
         if !isnothing(extra_points)
             push!(legend_elements,
-                  MarkerElement(color=:red,
+                  MarkerElement(color=:orange,
                       marker=:circle, markersize=10))
             push!(legend_labels, "photogrammetry")
         end
@@ -645,6 +647,15 @@ function V3Kite.plot_body_frame_local(sys_structs;
             Legend(fig[1, 2], legend_elements,
                 legend_labels)
         end
+    end
+
+    if !isempty(annotation)
+        text!(ax, annotation;
+            position=Point2f(1, 1),
+            space=:relative,
+            align=(:right, :top),
+            offset=(-6, -6),
+            fontsize=14, font=:bold)
     end
 
     return fig
@@ -675,7 +686,8 @@ function V3Kite.plot_twist_dist(sys_structs;
         title=true,
         legend=true,
         wingtips=false,
-        limits=(-7, 10))
+        limits=(-7, 10),
+        annotation="")
     structs = sys_structs isa Vector ?
         sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -703,6 +715,7 @@ function V3Kite.plot_twist_dist(sys_structs;
         for wing in sys_struct.wings
             if wing.wing_type == SymbolicAWEModels.REFINE
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
+                wing.pos_w .= points[1].pos_w
                 for point in points
                     if point.wing_idx == wing.idx
                         point.pos_b .= R_w_b * (
@@ -805,16 +818,26 @@ function V3Kite.plot_twist_dist(sys_structs;
                     dot(chord, body_x)))
             end
             lines!(ax, span_pos, photo_aoa;
-                color=:red, linewidth=2,
+                color=:orange, linewidth=2,
                 label="photogrammetry")
             scatter!(ax, span_pos, photo_aoa;
-                color=:red, markersize=8)
+                color=:orange, markersize=8)
         end
     end
 
     if legend
         axislegend(ax; position=:rt)
     end
+
+    if !isempty(annotation)
+        text!(ax, annotation;
+            position=Point2f(1, 1),
+            space=:relative,
+            align=(:right, :top),
+            offset=(-6, -6),
+            fontsize=14, font=:bold)
+    end
+
     return fig
 end
 
@@ -1426,7 +1449,7 @@ function V3Kite.plot_2d_trajectory(
             legend_labels; labelsize=14,
             halign=:left, valign=:bottom,
             tellwidth=false, tellheight=false,
-            margin=(10, 0, 0, 0))
+            margin=(0, 20, 22, 20))
     end
 
     return fig
