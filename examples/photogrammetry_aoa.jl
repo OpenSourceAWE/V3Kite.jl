@@ -137,7 +137,7 @@ end
 
 """Draw a 2D reference frame on a side-view axis."""
 function draw_frame_axes!(ax, origin, x_dir, z_dir,
-        scale)
+        scale; x_label=L"x", z_label=L"z")
     ox, oz = origin
     perp = 0.35 * scale
     # x-axis (red arrow)
@@ -147,7 +147,7 @@ function draw_frame_axes!(ax, origin, x_dir, z_dir,
     halo_text!(ax,
         ox + x_dir[1] * 0.7 * scale - x_dir[2] * perp,
         oz + x_dir[2] * 0.7 * scale + x_dir[1] * perp;
-        text=L"x", fontsize=14, color=:red,
+        text=x_label, fontsize=22, color=:black,
         align=(:center, :center))
     # z-axis (blue arrow)
     arrows2d!(ax, [ox], [oz],
@@ -156,7 +156,7 @@ function draw_frame_axes!(ax, origin, x_dir, z_dir,
     halo_text!(ax,
         ox + z_dir[1] * 0.7 * scale - z_dir[2] * perp,
         oz + z_dir[2] * 0.7 * scale + z_dir[1] * perp;
-        text=L"z", fontsize=14, color=:blue,
+        text=z_label, fontsize=22, color=:black,
         align=(:center, :center))
 end
 
@@ -227,10 +227,7 @@ FIGURES_DIR = joinpath(@__DIR__, "..", "..",
     "T26-BART", "figures")
 mkpath(FIGURES_DIR)
 
-for (frame_num, fd) in frame_results
-    local body_pts, kcu_2d, cr_2d, te_2d, le_2d
-    local frame_scale, x_chord, z_chord
-    local fig, ax, fig_pdf, ax_pdf
+function build_frame_plot!(ax, fd)
     to_body(p) = fd.R_body' * (p - fd.cam_pos)
     to_side(b) = (b[1], b[3])
 
@@ -243,43 +240,101 @@ for (frame_num, fd) in frame_results
     te_2d = to_side(to_body(fd.te_mid))
     le_2d = to_side(to_body(fd.le_center))
 
-    # Reference frame axes
+    # Plot photogrammetry lines (side view: x, z)
+    strut_inner = Set{Int}()
+    for (gname, indices) in fd.groups
+        is_le = gname == "LE"
+        is_strut = startswith(gname, "strut")
+        clr = is_le ? :orange : (:orange, 0.6)
+        lw = is_le ? 5 : 3
+        for i in 1:(length(indices)-1)
+            c1 = body_pts[indices[i]]
+            c2 = body_pts[indices[i+1]]
+            lines!(ax,
+                [c1[1], c2[1]], [c1[3], c2[3]];
+                color=clr, linewidth=lw)
+        end
+        if is_strut
+            for idx in indices[2:end]
+                push!(strut_inner, idx)
+            end
+        end
+    end
+    # Opaque points (non-strut-inner)
+    opaque = [i for i in eachindex(body_pts)
+              if i ∉ strut_inner]
+    scatter!(ax,
+        [body_pts[i][1] for i in opaque],
+        [body_pts[i][3] for i in opaque];
+        color=:orange, markersize=8)
+    # Transparent strut inner points
+    if !isempty(strut_inner)
+        inner = collect(strut_inner)
+        scatter!(ax,
+            [body_pts[i][1] for i in inner],
+            [body_pts[i][3] for i in inner];
+            color=(:orange, 0.4), markersize=8)
+    end
+
+    add_bridle_overlay!(ax, kcu_2d, cr_2d,
+        te_2d, le_2d, fd.offset)
+
     frame_scale = 0.3 * fd.chord_len
     chord_body = fd.R_body' * fd.chord_w
     x_vec = normalize([chord_body[1], chord_body[3]])
     x_chord = (x_vec[1], x_vec[2])
     z_chord = (-x_chord[2], x_chord[1])
 
-    fig = plot_photogrammetry(body_pts,
-        fd.groups; dir=:side)
-    ax = content(fig[1, 1])
-    add_bridle_overlay!(ax, kcu_2d, cr_2d, te_2d,
-        le_2d, fd.offset)
     draw_frame_axes!(ax, kcu_2d,
-        (1.0, 0.0), (0.0, 1.0), frame_scale)
+        (1.0, 0.0), (0.0, 1.0), frame_scale;
+        x_label=L"x_\textrm{k}", z_label=L"z_\textrm{k}")
     draw_frame_axes!(ax, le_2d,
-        x_chord, z_chord, frame_scale)
+        x_chord, z_chord, frame_scale;
+        x_label=L"x_\textrm{c}", z_label=L"z_\textrm{c}")
     autolimits!(ax)
-    display(fig)
-
-    CairoMakie.activate!()
-    fig_pdf = plot_photogrammetry(body_pts,
-        fd.groups; dir=:side)
-    ax_pdf = content(fig_pdf[1, 1])
-    add_bridle_overlay!(ax_pdf, kcu_2d, cr_2d,
-        te_2d, le_2d, fd.offset)
-    draw_frame_axes!(ax_pdf, kcu_2d,
-        (1.0, 0.0), (0.0, 1.0), frame_scale)
-    draw_frame_axes!(ax_pdf, le_2d,
-        x_chord, z_chord, frame_scale)
-    autolimits!(ax_pdf)
-    fname = "chord_ref_incidence_side" *
-        "_frame_$(frame_num).pdf"
-    @info "Saving $fname"
-    save(fname, fig_pdf)
-    save(joinpath(FIGURES_DIR, fname), fig_pdf)
-    GLMakie.activate!()
 end
+
+# Combined figure with all frames side by side
+sorted_frames = sort(collect(keys(frame_results)))
+n_frames = length(sorted_frames)
+function build_combined(sorted_frames, frame_results)
+    n = length(sorted_frames)
+    fig = Figure(size=(280 * n, 700))
+    axes = Axis[]
+    for (col, frame_num) in enumerate(sorted_frames)
+        fd = frame_results[frame_num]
+        show_ylabel = col == 1
+        ax = Axis(fig[1, col];
+            xlabel=L"x \; [m]",
+            ylabel=show_ylabel ? L"z \; [m]" : "",
+            xlabelsize=18, ylabelsize=18,
+            title="Frame $frame_num",
+            aspect=DataAspect(),
+            yticklabelsvisible=show_ylabel,
+            yticksvisible=show_ylabel)
+        build_frame_plot!(ax, fd)
+        push!(axes, ax)
+    end
+    if length(axes) > 1
+        linkyaxes!(axes...)
+    end
+    colgap!(fig.layout, 10)
+    return fig
+end
+
+combined = build_combined(sorted_frames,
+    frame_results)
+display(combined)
+
+# Save PDF
+CairoMakie.activate!()
+combined_pdf = build_combined(sorted_frames,
+    frame_results)
+fname = "chord_ref_incidence_combined.pdf"
+@info "Saving $fname"
+save(fname, combined_pdf)
+save(joinpath(FIGURES_DIR, fname), combined_pdf)
+GLMakie.activate!()
 
 # Linear depower-to-offset model: offset = a * u + b
 # Two points → direct solve
