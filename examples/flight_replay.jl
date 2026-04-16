@@ -25,6 +25,7 @@ using Rotations
 using UnPack
 using LinearAlgebra
 using OrdinaryDiffEqBDF
+using KiteUtils
 
 using Dates
 using SymbolicAWEModels
@@ -37,7 +38,6 @@ generate_drag_adjusted_polars(1.0)
 
 SECTION = "straight_right"
 YEAR = 2025
-SETTLE_ONLY = false
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -9.0
@@ -122,11 +122,7 @@ end
 function update_vel_from_csv!(sys, row,
         gc::V3GeomAdjustConfig;
         heading_correction=0.0)
-    sys.set.v_wind = hypot(
-        row.wind_speed, row.wind_speed_vertical)
-    sys.set.upwind_dir = rad2deg(row.upwind_dir)
-    sys.wind_elevation = rad2deg(atan(
-        row.wind_speed_vertical, row.wind_speed))
+    sys.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
 
     # CSV steering (positive = right turn)
     steering = clamp(row.steering, -1.0, 1.0)
@@ -138,8 +134,9 @@ function update_vel_from_csv!(sys, row,
     # Speed-controlled winch
     winch = sys.winches[1]
     winch.speed_controlled = true
-    winch.tether_vel = row.tether_vel
-    winch.tether_len = row.tether_len
+    winch.vel = row.tether_vel
+    sys.tethers[1].len = row.tether_len
+    sys.tethers[1].stretched_len = row.tether_len
 
     # Depower from CSV (returns adjusted dp)
     eff_depower = set_depower!(
@@ -217,7 +214,7 @@ function run_physics_replay(h5_path;
             video_frame = round(Int, raw.video_frame),
             roll = raw.ekf_kite_roll,
             pitch = raw.ekf_kite_pitch,
-            yaw = raw.ekf_kite_yaw,
+            yaw = raw.ekf_kite_yaw, # TODO: try using kin
             x = raw.ekf_kite_position_x,
             y = raw.ekf_kite_position_y,
             z = raw.ekf_kite_position_z,
@@ -272,7 +269,6 @@ function run_physics_replay(h5_path;
         dt=0.001,
         num_steps=1000,
         num_substeps=5,
-        n_panels=54,
         start_depower=row1.depower * 100.0 + 10.0,
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
@@ -282,11 +278,36 @@ function run_physics_replay(h5_path;
             tip_reduction=TIP_REDUCTION,
             depower_offset=DEPOWER_OFFSET_2025 / 100.0),
         fix_sphere_idxs=[])
+    settle_log = nothing
+    sam = nothing
+    data_sam = nothing
+    logger = nothing
+    data_logger = nothing
+    sim_tape = (time=Float64[], steering=Float64[],
+        depower=Float64[])
+    data_tape = (time=Float64[], steering=Float64[],
+        depower=Float64[])
+    frame_syslog_idxs = Tuple{Int, Int}[]
+    replay_start = time()
+    dt = data.time[2] - data.time[1]
+
+    try
+
+    data_path = v3_data_path()
+    source_struc = joinpath(
+        data_path, settle_config.source_struc_path)
+    source_aero = joinpath(
+        data_path, settle_config.source_aero_path)
+    vsm_path = joinpath(
+        data_path, settle_config.vsm_settings_path)
+    vsm_set = VortexStepMethod.VSMSettings(
+        vsm_path; data_prefix=false)
+    vsm_set.wings[1].geometry_file = source_aero
+
     if SETTLE
         sam, settle_log = settle_wing(settle_config;
             init_row=row1, power_zone=true, remake=false)
     else
-        data_path = v3_data_path()
         set_data_path(data_path)
         set = Settings("system.yaml")
         set.g_earth = 9.81
@@ -295,18 +316,6 @@ function run_physics_replay(h5_path;
         set.profile_law = 0
 
         gc = settle_config.geom
-        source_struc = joinpath(
-            data_path, settle_config.source_struc_path)
-        source_aero = joinpath(
-            data_path, settle_config.source_aero_path)
-        vsm_path = joinpath(
-            data_path, settle_config.vsm_settings_path)
-        vsm_set = VortexStepMethod.VSMSettings(
-            vsm_path; data_prefix=false)
-        vsm_set.wings[1].n_panels =
-            settle_config.n_panels
-        vsm_set.wings[1].geometry_file = source_aero
-
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
             wing_type=SymbolicAWEModels.REFINE, vsm_set)
@@ -316,11 +325,6 @@ function run_physics_replay(h5_path;
             remake=false, ignore_l0=false,
             remake_vsm=true)
         settle_log = nothing
-    end
-    if SETTLE_ONLY
-        return sam, nothing, nothing, nothing, data,
-            nothing, nothing, Tuple{Int, Int}[],
-            settle_config, settle_log, nothing, ""
     end
     sys_struct = sam.sys_struct
     set = sam.set
@@ -333,18 +337,14 @@ function run_physics_replay(h5_path;
     logger = Logger(sam, max_sim_steps)
 
     # CSV reference model
-    data_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
+    data_struct = load_sys_struct_from_yaml(source_struc;
+        system_name=V3_MODEL_NAME, set,
+        wing_type=SymbolicAWEModels.REFINE, vsm_set)
+    data_sam = SymbolicAWEModel(set, data_struct)
+    data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
     init!(data_sam)
     data_state = SysState(data_sam)
     data_logger = Logger(data_sam, n_data_steps)
-
-    # Tape storage
-    data_tape = (time=Float64[], steering=Float64[],
-        depower=Float64[])
-    sim_tape = (time=Float64[], steering=Float64[],
-        depower=Float64[])
-
-    frame_syslog_idxs = Tuple{Int, Int}[]
 
     @info "Replaying CSV data..."
     replay_start = time()
@@ -357,7 +357,6 @@ function run_physics_replay(h5_path;
         sys, POINT_37_38_DAMPING, 37:38)
     distribute_wing_mass!(sys, 11.0; dist=0.7)
 
-    dt = data.time[2] - data.time[1]
     heading_pid = create_heading_pid(;
         K=HEADING_KP, Ti=HEADING_TI, dt)
     lateral_pid = create_heading_pid(;
@@ -401,169 +400,166 @@ function run_physics_replay(h5_path;
     sim_cum_dist = 0.0
     prev_sim_pos = copy(sam.sys_struct.wings[1].pos_w)
 
-    try
-        step = 0
-        sim_time = 0.0
-        while true
-            step += 1
+    step = 0
+    sim_time = 0.0
+    while true
+        step += 1
 
-            # Termination conditions
-            if DISTANCE_BASED_STEERING
-                sim_cum_dist >= total_data_dist && break
-            else
-                step > n_data_steps - 1 && break
-            end
+        # Termination conditions
+        if DISTANCE_BASED_STEERING
+            sim_cum_dist >= total_data_dist && break
+        else
+            step > n_data_steps - 1 && break
+        end
 
-            # Get data row (clamp to data range)
-            data_step = min(step, n_data_steps)
-            row = get_row(data, data_step)
+        # Get data row (clamp to data range)
+        data_step = min(step, n_data_steps)
+        row = get_row(data, data_step)
 
-            if step == 1
-                sim_time = row.time
-                update_sys_struct_from_data!(
-                    sam.sys_struct, row)
-                SymbolicAWEModels.reinit!(
-                    sam, sam.prob, FBDF())
-                prev_sim_pos = copy(
-                    sam.sys_struct.wings[1].pos_w)
-            end
+        if step == 1
+            sim_time = row.time
+            prev_sim_pos = copy(
+                sam.sys_struct.wings[1].pos_w)
+        end
 
-            if DISTANCE_BASED_STEERING
-                dist_raw = get_row_at_distance(
-                    dist_lookup_data, sim_cum_dist)
-                phys_row = make_row(dist_raw)
-            else
-                phys_row = row
-            end
+        if DISTANCE_BASED_STEERING
+            dist_raw = get_row_at_distance(
+                dist_lookup_data, sim_cum_dist)
+            phys_row = make_row(dist_raw)
+        else
+            phys_row = row
+        end
 
-            data_heading = calc_csv_heading(
-                phys_row.roll, phys_row.pitch,
-                phys_row.yaw)
-            sim_heading =
-                sam.sys_struct.wings[1].heading
-            heading_error = wrap_to_pi(
-                data_heading - sim_heading)
-            heading_correction = heading_pid(
-                heading_error, 0.0, 0.0)
+        data_heading = calc_csv_heading(
+            phys_row.roll, phys_row.pitch,
+            phys_row.yaw)
+        sim_heading =
+            sam.sys_struct.wings[1].heading
+        heading_error = wrap_to_pi(
+            data_heading - sim_heading)
+        heading_correction = heading_pid(
+            heading_error, 0.0, 0.0)
 
-            # Lateral position feedback
-            data_pos = [phys_row.x, phys_row.y,
-                phys_row.z]
-            sim_pos = sam.sys_struct.wings[1].pos_w
-            body_y_world =
-                sam.sys_struct.wings[1].R_b_to_w[:, 2]
-            lateral_error = dot(
-                sim_pos - data_pos, body_y_world)
-            lateral_correction = lateral_pid(
-                lateral_error, 0.0, 0.0)
+        # Lateral position feedback
+        data_pos = [phys_row.x, phys_row.y,
+            phys_row.z]
+        sim_pos = sam.sys_struct.wings[1].pos_w
+        body_y_world =
+            sam.sys_struct.wings[1].R_b_to_w[:, 2]
+        lateral_error = dot(
+            sim_pos - data_pos, body_y_world)
+        lateral_correction = lateral_pid(
+            lateral_error, 0.0, 0.0)
 
-            eff_steer, eff_dep =
-                update_vel_from_csv!(
-                    sam.sys_struct, phys_row,
-                    settle_config.geom;
-                    heading_correction=
-                        heading_correction +
-                        lateral_correction +
-                        STEERING_OFFSET/100)
+        eff_steer, eff_dep =
+            update_vel_from_csv!(
+                sam.sys_struct, phys_row,
+                settle_config.geom;
+                heading_correction=
+                    heading_correction +
+                    lateral_correction +
+                    STEERING_OFFSET/100)
 
-            SymbolicAWEModels.reinit!(
-                sam, sam.prob, FBDF())
+        SymbolicAWEModels.reinit!(
+            sam, sam.prob, FBDF())
 
-            next_step!(sam; dt)
-            @assert isapprox(
-                sam.sys_struct.wind_vec_gnd,
-                row.wind_vec; atol=1e-6) (
-                "wind_vec_gnd mismatch: $(sam.sys_struct.wind_vec_gnd), $(row.wind_vec)")
+        next_step!(sam; dt)
+        if !isapprox(sam.set.wind_vec,
+                row.wind_vec; atol=1e-6)
+            @warn "wind_vec mismatch" step row.wind_vec sam.set.wind_vec
+            error("wind_vec mismatch at step $step")
+        end
 
-            cur_sim_pos = sam.sys_struct.wings[1].pos_w
-            sim_cum_dist += norm(
-                cur_sim_pos - prev_sim_pos)
-            prev_sim_pos = copy(cur_sim_pos)
-            sim_time += dt
+        cur_sim_pos = sam.sys_struct.wings[1].pos_w
+        sim_cum_dist += norm(
+            cur_sim_pos - prev_sim_pos)
+        prev_sim_pos = copy(cur_sim_pos)
+        sim_time += dt
 
-            if step % n_substeps == 0
-                sys = sam.sys_struct
-                for i in (4, 5)
-                    f = sys.points[i].aero_force_b[2]
-                    if f < 0.0
-                        @warn "Aero y-force negative" point=i force=round(f, digits=2)
-                    end
-                end
-                for i in (18, 19)
-                    f = sys.points[i].aero_force_b[2]
-                    if f > 0.0
-                        @warn "Aero y-force positive" point=i force=round(f, digits=2)
-                    end
+        if step % n_substeps == 0
+            sys = sam.sys_struct
+            for i in (4, 5)
+                f = sys.points[i].aero_force_b[2]
+                if f < 0.0
+                    @warn "Aero y-force negative" point=i force=round(f, digits=2)
                 end
             end
-
-            # Record syslog index for matched frames
-            if step <= n_data_steps - 1
-                for (_, frame) in frame_csvs
-                    if row.video_frame == frame &&
-                            !any(x -> x[1] == frame,
-                                frame_syslog_idxs)
-                        push!(frame_syslog_idxs,
-                            (frame, logger.index))
-                    end
+            for i in (18, 19)
+                f = sys.points[i].aero_force_b[2]
+                if f > 0.0
+                    @warn "Aero y-force positive" point=i force=round(f, digits=2)
                 end
-            end
-
-            log_state!(logger, sys_state, sam,
-                sim_time)
-
-            push!(sim_tape.time, sim_time)
-            push!(sim_tape.steering, eff_steer)
-            push!(sim_tape.depower, eff_dep)
-
-            if DISTANCE_BASED_STEERING
-                pct = sim_cum_dist / total_data_dist
-                report = pct >= 1.0 ||
-                    floor(Int, pct * 10) >
-                    floor(Int,
-                        (pct - dt / total_data_dist)
-                        * 10)
-            else
-                report = should_report(
-                    step, n_data_steps)
-            end
-            if report
-                sim_t = round(sim_time, digits=2)
-                wall_t = round(
-                    time() - replay_start, digits=1)
-                now_t = time()
-                dt_wall = now_t - last_report_time
-                dt_sim = sim_time - last_report_sim
-                rt = dt_wall > 0 ?
-                    round(dt_sim / dt_wall,
-                        digits=2) : 0.0
-                last_report_time = now_t
-                last_report_sim = sim_time
-                d = round(norm(sim_pos - data_pos),
-                    digits=2)
-                dist_pct = DISTANCE_BASED_STEERING ?
-                    round(sim_cum_dist /
-                        total_data_dist * 100,
-                        digits=1) : 0.0
-                msg = "Step $step" *
-                    " (t=$(sim_t)s," *
-                    " wall=$(wall_t)s," *
-                    " $(rt)x realtime"
-                if DISTANCE_BASED_STEERING
-                    msg *= ", dist=$(dist_pct)%"
-                end
-                msg *= ", pos_err=$(d)m" *
-                    ", frame=$(row.video_frame))"
-                @info msg
             end
         end
+
+        # Record syslog index for matched frames
+        if step <= n_data_steps - 1
+            for (_, frame) in frame_csvs
+                if row.video_frame == frame &&
+                        !any(x -> x[1] == frame,
+                            frame_syslog_idxs)
+                    push!(frame_syslog_idxs,
+                        (frame, logger.index))
+                end
+            end
+        end
+
+        log_state!(logger, sys_state, sam,
+            sim_time)
+
+        push!(sim_tape.time, sim_time)
+        push!(sim_tape.steering, eff_steer)
+        push!(sim_tape.depower, eff_dep)
+
+        if DISTANCE_BASED_STEERING
+            pct = sim_cum_dist / total_data_dist
+            report = pct >= 1.0 ||
+                floor(Int, pct * 10) >
+                floor(Int,
+                    (pct - dt / total_data_dist)
+                    * 10)
+        else
+            report = should_report(
+                step, n_data_steps)
+        end
+        if report
+            sim_t = round(sim_time, digits=2)
+            wall_t = round(
+                time() - replay_start, digits=1)
+            now_t = time()
+            dt_wall = now_t - last_report_time
+            dt_sim = sim_time - last_report_sim
+            rt = dt_wall > 0 ?
+                round(dt_sim / dt_wall,
+                    digits=2) : 0.0
+            last_report_time = now_t
+            last_report_sim = sim_time
+            d = round(norm(sim_pos - data_pos),
+                digits=2)
+            dist_pct = DISTANCE_BASED_STEERING ?
+                round(sim_cum_dist /
+                    total_data_dist * 100,
+                    digits=1) : 0.0
+            msg = "Step $step" *
+                " (t=$(sim_t)s," *
+                " wall=$(wall_t)s," *
+                " $(rt)x realtime"
+            if DISTANCE_BASED_STEERING
+                msg *= ", dist=$(dist_pct)%"
+            end
+            msg *= ", pos_err=$(d)m" *
+                ", frame=$(row.video_frame))"
+            @info msg
+        end
+    end
+
     catch err
         is_interrupt = err isa InterruptException ||
             any(e isa InterruptException
                 for (e, _) in current_exceptions())
         if err isa ErrorException &&
                 contains(err.msg, "Unstable")
-            @warn "Solver unstable, stopping replay" msg=err.msg
+            @warn "Solver unstable" msg=err.msg
         elseif is_interrupt
             @warn "Interrupted, stopping sim"
         else
@@ -571,15 +567,24 @@ function run_physics_replay(h5_path;
         end
     end
 
-    @info "Replay done" elapsed=round(time() - replay_start, digits=2)
+    elapsed = round(time() - replay_start, digits=2)
+    @info "Replay done" elapsed
 
     base_name = build_replay_name(h5_path, start_utc,
         end_utc, row1.depower, row1.steering,
         settle_config.geom)
-    save_log(logger, base_name * "_sim")
-    save_log(data_logger, base_name * "_data")
-    syslog = load_log(base_name * "_sim")
-    datalog = load_log(base_name * "_data")
+    if !isnothing(logger) && logger.index > 1
+        save_log(logger, base_name * "_sim")
+        syslog = load_log(base_name * "_sim")
+    else
+        syslog = nothing
+    end
+    if !isnothing(data_logger) && data_logger.index > 1
+        save_log(data_logger, base_name * "_data")
+        datalog = load_log(base_name * "_data")
+    else
+        datalog = nothing
+    end
 
     return sam, syslog, data_sam, datalog, data,
         sim_tape, data_tape, frame_syslog_idxs,
@@ -603,7 +608,8 @@ function create_plots()
         [sam.sys_struct, data_sam.sys_struct],
         [syslog, datalog];
         tape_lengths=[sim_tape, data_tape],
-        suffixes=["simulation", "data"])
+        suffixes=["simulation", "data"],
+        size=(1200, 800), labelsize=18)
 
     _logs = [syslog, datalog]
     _tapes = [sim_tape, data_tape]
@@ -612,10 +618,12 @@ function create_plots()
     # GLMakie display
     trajectory = plot_2d_trajectory(_logs;
         gradient=:vel, tapes=_tapes, labels=_labels,
-        frame_indexes=frame_syslog_idxs)
+        size=(560, 420), labelsize=20,
+        frame_indexes=frame_syslog_idxs,
+)
     panels = plot_2d_panels(_logs;
         tapes=_tapes, labels=_labels,
-        show_aoa=true,
+        show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
         frame_indexes=frame_syslog_idxs)
 
@@ -630,10 +638,12 @@ function create_plots()
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory(_logs;
         gradient=:vel, tapes=_tapes, labels=_labels,
-        frame_indexes=frame_syslog_idxs)
+        size=(560, 420), labelsize=20,
+        frame_indexes=frame_syslog_idxs,
+)
     panels_2d = plot_2d_panels(_logs;
         tapes=_tapes, labels=_labels,
-        show_aoa=true,
+        show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
         frame_indexes=frame_syslog_idxs)
     if SAVE_FIGS
@@ -661,7 +671,8 @@ function create_plots()
         [syslog, datalog],
         [sim_tape, data_tape];
         min_steering=0.05,
-        labels=["simulation", "data"], dt)
+        labels=["simulation", "data"],
+        figsize=(600, 400), labelsize=18, dt)
 
     # 2D body frame plots for PDF export
     body = Dict{Int, Dict{Symbol, Any}}()
@@ -730,8 +741,10 @@ function create_plots()
             sam.sys_struct;
             extra_points=pts,
             extra_groups=groups,
+            figsize=(560*0.8, 210*0.8),
+            labelsize=24,
             title=false, legend=false,
-            limits=(-3,12),
+            limits=(-3, 14),
             annotation=ann)
         twist_fname = "twist_dist" *
             "_$(SECTION)" *
@@ -804,6 +817,6 @@ function create_plots()
 
     panels
 end
-if !SETTLE_ONLY
+if !isnothing(syslog)
     create_plots()
 end

@@ -128,7 +128,7 @@ function _segment_ekf_drag(sys, seg; cd, cf=_CF_SKIN)
     p1, p2 = seg.point_idxs
     vel_mid = 0.5 .* (sys.points[p1].vel_w .+
                        sys.points[p2].vel_w)
-    va = sys.wind_vec_gnd .- vel_mid
+    va = sys.set.wind_vec .- vel_mid
     va_norm = norm(va)
     va_norm < 1e-6 && return 0.0
     e_seg = sys.points[p2].pos_w .- sys.points[p1].pos_w
@@ -223,7 +223,7 @@ function compute_kcu_drag_coeff(sam)
     v_app_kite = norm(wing.va_b)
     v_app_kite < 1e-6 && return 0.0
     kcu = sys.points[1]
-    va_kcu = sys.wind_vec_gnd .- kcu.vel_w
+    va_kcu = sys.set.wind_vec .- kcu.vel_w
     D_kcu = 0.5 * _RHO_SL * norm(va_kcu)^2 *
             kcu.area * kcu.drag_coeff
     A_proj = calculate_projected_area(wing.vsm_wing)

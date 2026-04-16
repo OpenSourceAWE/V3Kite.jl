@@ -675,6 +675,7 @@ sys_structs and optionally from photogrammetry data.
 - `extra_groups`: Optional photogrammetry groups
 - `labels`: Optional vector of labels
 - `figsize`: Figure size (default: (560, 210))
+- `labelsize`: Axis label font size (default: 16)
 - `wingtips`: Include wingtip struts (default: false)
 - `limits`: Twist axis limits in deg (default: (-7, 10))
 """
@@ -683,10 +684,12 @@ function V3Kite.plot_twist_dist(sys_structs;
         extra_groups=nothing,
         labels=nothing,
         figsize=(560, 210),
+        labelsize=16,
         title=true,
         legend=true,
         wingtips=false,
         limits=(-7, 10),
+        show_yaxis=true,
         annotation="")
     structs = sys_structs isa Vector ?
         sys_structs : [sys_structs]
@@ -702,7 +705,9 @@ function V3Kite.plot_twist_dist(sys_structs;
     ax_title = title ? "Twist Distribution" : ""
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]",
-        ylabel=L"\theta \; [°]",
+        ylabel=show_yaxis ? L"\theta \; [°]" : "",
+        xlabelsize=labelsize, ylabelsize=labelsize,
+        yticklabelsvisible=show_yaxis,
         title=ax_title, limits=((-5.3, 5.3), limits))
 
     # Sim AoA per sys_struct
@@ -826,7 +831,7 @@ function V3Kite.plot_twist_dist(sys_structs;
     end
 
     if legend
-        axislegend(ax; position=:rt)
+        axislegend(ax; position=:rb, margin=(0, 0, 0, 0))
     end
 
     if !isempty(annotation)
@@ -834,7 +839,7 @@ function V3Kite.plot_twist_dist(sys_structs;
             position=Point2f(1, 1),
             space=:relative,
             align=(:right, :top),
-            offset=(-6, -6),
+            offset=(-5, -2),
             fontsize=14, font=:bold)
     end
 
@@ -888,10 +893,12 @@ Scatter plot of |yaw rate| vs |u_s * v_a| for one or more logs.
 - `tapes`: Matching tape(s) with `.steering` and `.time` fields
 - `labels`: Optional vector of series labels
 - `figsize`: Figure size tuple (default: (600, 400))
+- `labelsize`: Axis label font size (default: 18)
 """
 function V3Kite.plot_yaw_rate_vs_steering(
         syslogs, tapes;
         labels=nothing, figsize=(600, 400),
+        labelsize=18,
         min_steering=0.0, dt=0.01)
     logs = syslogs isa Vector ? syslogs : [syslogs]
     tps = tapes isa Vector ? tapes : [tapes]
@@ -906,7 +913,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
     ax = Axis(fig[1, 1];
         xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
         ylabel=L"|\dot{\psi}| \; [rad/s]",
-        xlabelsize=18, ylabelsize=18)
+        xlabelsize=labelsize, ylabelsize=labelsize)
 
     has_data = false
     for (i, (lg, tape)) in enumerate(zip(logs, tps))
@@ -964,7 +971,8 @@ function V3Kite.plot_replay(
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
         tape_lengths=nothing,
         suffixes=nothing,
-        size=(1200, 800))
+        size=(1200, 800),
+        labelsize=18)
 
     n = length(logs)
     actual_suffixes = if n == 1
@@ -1126,7 +1134,7 @@ function V3Kite.plot_replay(
     n_panels = length(panels)
     fig = Figure(; size)
     axes = Axis[]
-    label_fontsize = 18
+    label_fontsize = labelsize
     ticklabelsize = 12
 
     for (i, panel) in enumerate(panels)
@@ -1311,6 +1319,7 @@ Plot kite y vs z position colored by a gradient quantity.
 - `labels`: legend labels per log
 - `colormap=:viridis`: colormap for trajectory
 - `size=(800, 600)`: figure size
+- `labelsize=20`: axis and colorbar label font size
 - `t_start=nothing`: start time in seconds from log start
 - `t_end=nothing`: end time in seconds from log start
 - `frame_indexes=nothing`: vector of `(frame_nr, syslog_idx)`
@@ -1324,6 +1333,7 @@ function V3Kite.plot_2d_trajectory(
         labels=nothing,
         colormap=:viridis,
         size=(560, 420),
+        labelsize=20,
         t_start=nothing,
         t_end=nothing,
         frame_indexes=nothing)
@@ -1338,7 +1348,7 @@ function V3Kite.plot_2d_trajectory(
     fig = Figure(; size)
     ax = Axis(fig[1, 1];
         xlabel=L"y \; [m]", ylabel=L"z \; [m]",
-        xlabelsize=20, ylabelsize=20,
+        xlabelsize=labelsize, ylabelsize=labelsize,
         aspect=DataAspect())
 
     # Collect all gradient values for consistent range
@@ -1385,7 +1395,7 @@ function V3Kite.plot_2d_trajectory(
             lines!(ax, y_pos[1:n], z_pos[1:n];
                 color=:white, linewidth=lw,
                 linestyle=Makie.Linestyle(
-                    [0, 2, 5, 7]))
+                    [0, 1, 5, 6]))
         end
     end
 
@@ -1396,7 +1406,7 @@ function V3Kite.plot_2d_trajectory(
     end
     Colorbar(fig[2, 1]; colormap,
         colorrange=(vmin, vmax), label=cb_label,
-        labelsize=20, vertical=false,
+        labelsize, vertical=false,
         flipaxis=false)
     rowgap!(fig.layout, 1, 8)
 
@@ -1408,7 +1418,7 @@ function V3Kite.plot_2d_trajectory(
             "trajectory $i" : labels[i]
         lw = i == 1 ? 4.0 : 2.5
         ls = i == 1 ? :solid :
-            Makie.Linestyle([0, 2, 5, 7])
+            Makie.Linestyle([0, 1, 3, 4])
         push!(legend_elems, [LineElement(;
             color=:black, linewidth=lw,
             linestyle=ls)])
@@ -1506,6 +1516,7 @@ function V3Kite.plot_2d_panels(
         t_start=nothing,
         t_end=nothing,
         twin_time_axes::Bool=false,
+        labelsize=20,
         frame_indexes=nothing)
 
     show_steering = something(show_steering,
@@ -1539,7 +1550,7 @@ function V3Kite.plot_2d_panels(
 
     function _twin_panel!(fig, row, ylabel)
         ax = Axis(fig[row, 1]; ylabel,
-            ylabelsize=20,
+            ylabelsize=labelsize,
             xticklabelsvisible=false)
         push!(time_axes, ax)
         if use_twin
@@ -1952,13 +1963,13 @@ function V3Kite.plot_2d_panels(
         time_axes[end].xticklabelsvisible = true
         time_axes[end].xlabel = use_twin ?
             L"t_{\text{sim}} \; [s]" : L"t \; [s]"
-        time_axes[end].xlabelsize = 20
+        time_axes[end].xlabelsize = labelsize
         if use_twin && !isempty(top_axes)
             linkxaxes!(top_axes...)
             top_axes[1].xticklabelsvisible = true
             top_axes[1].xlabel =
                 L"t_{\text{data}} \; [s]"
-            top_axes[1].xlabelsize = 20
+            top_axes[1].xlabelsize = labelsize
         end
     end
 

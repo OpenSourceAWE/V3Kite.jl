@@ -377,9 +377,11 @@ function run_physics_replay(csv_path;
 
             set_value = update_vel_from_csv!(
                 sam.sys_struct, row, true)
-            sam.sys_struct.winches[1].tether_len =
+            sam.sys_struct.tethers[1].len =
                 row.tether_len + tether_delta
-            sam.sys_struct.winches[1].tether_vel =
+            sam.sys_struct.tethers[1].stretched_len =
+                row.tether_len + tether_delta
+            sam.sys_struct.winches[1].vel =
                 row.tether_vel
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())

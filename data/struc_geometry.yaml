@@ -86,12 +86,7 @@ points:
     - [38, [0.241368, -0.584502, 1.470805], DYNAMIC, 1, 1, 0.1, 30.0, 0.0, 0.0, 0.0]
 
     # Tether and ground particle
-    - [39, [0.0, 0.0, -45.0], DYNAMIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
-    - [40, [0.0, 0.0, -90.0], DYNAMIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
-    - [41, [0.0, 0.0, -135.0], DYNAMIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
-    - [42, [0.0, 0.0, -180.0], DYNAMIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
-    - [43, [0.0, 0.0, -225.0], DYNAMIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
-    - [44, [0.0, 0.0, -270.0], STATIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
+    - [39, [0.0, 0.0, -100.0], STATIC, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 ###########################
 ## Segments ###############
@@ -256,7 +251,7 @@ segments:
 
     # Central pulley system - M-line (non-compressive, using dyneema)
     # because Br,main,e is not modelled. Some additional length should be added to the M-line.
-    # it is under an supposably 20deg angle
+    # it is under a supposably 20deg angle
     # 0deg would mean the addition was 2x70mm
     # at 80deg we get, 70/cos(10deg) = 71mm --> addition of 2x71mm = 0.142m
     # that gives us M = 4856+0.142 = 4.998m --> 2499mm per
@@ -270,13 +265,6 @@ segments:
     - [87, 37, 1, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
     - [88, 35, 1, 2.2, 5.0, dyneema, nothing, 0.01] # Power Tape
     - [89, 38, 1, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
-
-    - [90, 1, 39, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [91, 39, 40, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [92, 40, 41, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [93, 41, 42, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [94, 42, 43, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [95, 43, 44, 45.0, 13.5, dyneema, nothing, 0.01]
 
 ###########################
 ## Pulleys ################
@@ -316,9 +304,9 @@ groups:
 # winch_point moved to Winch in v0.8.0
 
 tethers:
-  headers: [idx, segment_idxs]
+  headers: [idx, start_point, end_point, n_segments, material, diameter_mm, init_unstretched_length]
   data:
-    - [1, [90, 91, 92, 93, 94, 95]]
+    - [1, 1, 39, 6, dyneema, 13.5, 100.0]
 
 ###########################
 ## Winches ################
@@ -329,7 +317,7 @@ tethers:
 winches:
   headers: [idx, tether_idxs, winch_point]
   data:
-    - [1, [1], 44]
+    - [1, [1], 39]
 
 ###########################
 ## Wings ##################
@@ -372,4 +360,4 @@ transforms:
       heading: 0.0
       wing_idx: 1 # Transform applies to wing 1
       base_pos: [0.0, 0.0, 0.0] # Base position (at KCU/ground point)
-      base_point_idx: 44 # Reference to point 39 (ground attachment)
+      base_point_idx: 39 # Reference to point 39 (ground attachment)
