@@ -22,6 +22,7 @@ using Rotations
 using Dates
 using DiscretePIDs
 using HDF5
+using Serialization
 
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState

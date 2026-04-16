@@ -55,7 +55,6 @@ Base.@kwdef mutable struct V3SimConfig
     # Model options
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.REFINE
     remake_cache::Bool = false
-    n_panels::Int = 36
 
     # Winch control
     brake::Bool = true
@@ -97,7 +96,6 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     vsm_set_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(vsm_set_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = joinpath(data_path, config.aero_yaml_path)
-    vsm_set.wings[1].n_panels = config.n_panels
 
     # Determine model name
     model_name = config.wing_type == SymbolicAWEModels.QUATERNION ?

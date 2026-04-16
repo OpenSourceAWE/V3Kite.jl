@@ -50,21 +50,6 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
             sys.segments[idx].l0 *= config.te_frac
         end
     end
-    if !isnothing(config.tether_length)
-        wf = norm(sys.winches[1].force)
-        wf = isnan(wf) ? 0.0 : wf
-        stiffness = sys.segments[end].unit_stiffness
-        n_segs = length(V3_TETHER_POINT_IDXS)
-        seg_len = config.tether_length / n_segs *
-            (1 + wf / stiffness)
-        for (n, i) in enumerate(V3_TETHER_POINT_IDXS)
-            sys.points[i].pos_cad .= [
-                0.0, 0.0, -n * seg_len]
-        end
-        for i in 90:95
-            sys.segments[i].l0 = seg_len
-        end
-    end
     return nothing
 end
 
@@ -132,10 +117,13 @@ function adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw;
         SymbolicAWEModels.reinit!([transform], sys)
     end
 
+    if !isempty(sys.tethers)
+        sys.tethers[1].len = tether_length
+        sys.tethers[1].stretched_len = tether_length
+    end
     if !isempty(sys.winches)
         winch = sys.winches[1]
-        winch.tether_len = tether_length
-        winch.tether_vel = 0.0
+        winch.vel = 0.0
         winch.brake = true
     end
     return nothing

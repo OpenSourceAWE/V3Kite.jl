@@ -97,7 +97,7 @@ Calculate the body-to-world rotation matrix for REFINE wing type.
 - 3x3 rotation matrix R_b_w
 """
 function calc_R_b_w(sys_struct::SymbolicAWEModels.SystemStructure)
-    @unpack points, wings, wind_vec_gnd = sys_struct
+    @unpack points, wings = sys_struct
     wing = wings[1]
     R_b_w, origin = SymbolicAWEModels.calc_refine_wing_frame(
         points,

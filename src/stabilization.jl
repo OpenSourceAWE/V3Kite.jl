@@ -51,7 +51,6 @@ Base.@kwdef mutable struct V3SettleConfig
     end_depower::Union{Nothing,Float64} = nothing
 
     # Model options
-    n_panels::Int = 36
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
@@ -118,7 +117,7 @@ function settle_wing(config::V3SettleConfig;
         suffix *= "_pz"
     end
     dest_struc = joinpath(
-        data_path, "struc_geometry_$(suffix).yaml")
+        data_path, "settled_$(suffix).bin")
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -126,42 +125,71 @@ function settle_wing(config::V3SettleConfig;
 
     # Run settling simulation if needed
     syslog = nothing
+    settle_failed = false
     if remake || !isfile(dest_struc)
-        if power_zone
-            syslog = _run_power_zone_settling!(config;
-                data_path, show_progress,
-                source_struc, source_aero,
-                dest_struc, init_row)
-        else
-            syslog = _run_zero_g_settling!(config;
-                data_path, show_progress,
-                source_struc, source_aero,
-                dest_struc, init_row)
+        try
+            if power_zone
+                syslog = _run_power_zone_settling!(
+                    config; data_path, show_progress,
+                    source_struc, source_aero,
+                    dest_struc, init_row)
+            else
+                syslog = _run_zero_g_settling!(
+                    config; data_path, show_progress,
+                    source_struc, source_aero,
+                    dest_struc, init_row)
+            end
+        catch err
+            is_unstable = err isa ErrorException &&
+                contains(err.msg, "Unstable")
+            is_interrupt = err isa InterruptException ||
+                any(e isa InterruptException
+                    for (e, _) in current_exceptions())
+            if is_unstable
+                @warn "Settling failed" msg=err.msg
+                settle_failed = true
+            elseif is_interrupt
+                @warn "Settling interrupted"
+                settle_failed = true
+            else
+                rethrow(err)
+            end
         end
     end
 
-    # Always load a fresh model from settled YAML
-    @info "Loading settled geometry" dest_struc
+    # Load model from serialized sys_struct, or source
+    # YAML if settling failed
     set_data_path(data_path)
     set = Settings("system.yaml")
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.profile_law = 0
-    if power_zone
-        set.v_wind = init_row.wind_speed
+    if power_zone && hasproperty(init_row, :wind_vec)
+        set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
     end
 
-    vsm_path = joinpath(data_path, config.vsm_settings_path)
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_path; data_prefix=false)
-    vsm_set.wings[1].geometry_file = source_aero
-
-    sys = load_sys_struct_from_yaml(dest_struc;
-        system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.REFINE, vsm_set)
-    sam = SymbolicAWEModel(set, sys)
-    SymbolicAWEModels.init!(sam;
-        remake=false, ignore_l0=false, remake_vsm=true)
+    if !settle_failed && isfile(dest_struc)
+        @info "Loading settled geometry" dest_struc
+        sys = deserialize(dest_struc)
+        sam = SymbolicAWEModel(set, sys)
+        SymbolicAWEModels.init!(sam;
+            remake=false, remake_vsm=true,
+            reinit_sys=false)
+    else
+        @info "Loading source geometry" source_struc
+        vsm_path = joinpath(
+            data_path, config.vsm_settings_path)
+        vsm_set = VortexStepMethod.VSMSettings(
+            vsm_path; data_prefix=false)
+        vsm_set.wings[1].geometry_file = source_aero
+        sys = load_sys_struct_from_yaml(source_struc;
+            system_name=V3_MODEL_NAME, set,
+            wing_type=SymbolicAWEModels.REFINE, vsm_set)
+        sam = SymbolicAWEModel(set, sys)
+        SymbolicAWEModels.init!(sam;
+            remake=false, ignore_l0=false,
+            remake_vsm=true)
+    end
 
     return sam, syslog
 end
@@ -197,6 +225,8 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
+    sys.tethers[1].init_unstretched_len = gc.tether_length
+    sys.tethers[1].init_stretched_len = gc.tether_length
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
 
@@ -204,7 +234,6 @@ function _setup_settling_model(config::V3SettleConfig;
 
     for winch in sys.winches
         winch.brake = true
-        winch.tether_len = config.tether_length
     end
 
     return sam, sys, gc
@@ -267,12 +296,24 @@ function _run_zero_g_settling!(config::V3SettleConfig;
     SymbolicAWEModels.reinit!(
         sys.transforms, sys; update_vel=false)
 
-    @info "Updating YAML with settled positions..."
-    SymbolicAWEModels.update_yaml_from_sys_struct!(
-        sys, source_struc, dest_struc,
-        source_aero, source_aero)
+    # Copy settled world positions into CAD slots so
+    # that copy_cad_to_world! during init! restores
+    # the settled state exactly.
+    for point in sys.points
+        point.pos_cad .= point.pos_w
+    end
+    for wing in sys.wings
+        wing.pos_cad .= wing.pos_w
+        wing.R_b_to_c .=
+            SymbolicAWEModels.quaternion_to_rotation_matrix(
+                wing.Q_b_to_w)
+    end
 
-    syslog = save_and_load_log(logger, "settle_refine_wing")
+    @info "Serializing settled sys_struct..."
+    serialize(dest_struc, sys)
+
+    syslog = save_and_load_log(
+        logger, "settle_refine_wing")
     @info "Settling complete" dest_struc
     return syslog
 end
@@ -285,7 +326,6 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         init_row)
     sam, sys, gc = _setup_settling_model(config;
         g_earth=9.81, data_path, source_struc, source_aero)
-    sam.set.v_wind = init_row.wind_speed
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
@@ -296,6 +336,15 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
     SymbolicAWEModels.reinit!(
         sam, sam.prob, SymbolicAWEModels.FBDF())
+
+    if hasproperty(init_row, :wind_vec)
+        @assert isapprox(
+            sam.set.wind_vec, init_row.wind_vec;
+            atol=1e-6) "wind_vec mismatch " *
+            "after settle init: " *
+            "got $(sam.set.wind_vec), " *
+            "expected $(init_row.wind_vec)"
+    end
 
     for idx in config.fix_sphere_idxs
         sys.points[idx].fix_sphere = true
@@ -349,12 +398,24 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         failed && break
     end
 
-    @info "Updating YAML with settled positions..."
-    SymbolicAWEModels.update_yaml_from_sys_struct!(
-        sys, source_struc, dest_struc,
-        source_aero, source_aero)
+    # Copy settled world positions into CAD slots so
+    # that copy_cad_to_world! during init! restores
+    # the settled state exactly.
+    for point in sys.points
+        point.pos_cad .= point.pos_w
+    end
+    for wing in sys.wings
+        wing.pos_cad .= wing.pos_w
+        wing.R_b_to_c .=
+            SymbolicAWEModels.quaternion_to_rotation_matrix(
+                wing.Q_b_to_w)
+    end
 
-    syslog = save_and_load_log(logger, "settle_refine_wing")
+    @info "Serializing settled sys_struct..."
+    serialize(dest_struc, sys)
+
+    syslog = save_and_load_log(
+        logger, "settle_refine_wing")
     @info "Settling complete" dest_struc
     return syslog
 end
