@@ -13,6 +13,11 @@ Usage:
     julia --project=examples examples/batch_run_zenith_than_circles.jl
 """
 
+using Pkg
+if Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN

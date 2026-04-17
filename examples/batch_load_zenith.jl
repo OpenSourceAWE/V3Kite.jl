@@ -11,6 +11,11 @@ Usage:
     julia --project=examples examples/batch_load_zenith.jl
 """
 
+using Pkg
+if Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using V3Kite
 using LinearAlgebra
 using Statistics
