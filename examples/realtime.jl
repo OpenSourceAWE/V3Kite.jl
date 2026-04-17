@@ -18,6 +18,11 @@ Usage:
     julia --project=examples examples/realtime.jl
 """
 
+using Pkg
+if Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using V3Kite
 using GLMakie
 using LinearAlgebra

@@ -12,6 +12,11 @@ Usage:
     julia --project=examples examples/flight_replay.jl
 """
 
+using Pkg
+if Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using V3Kite
 using SymbolicAWEModels: reposition!, rotate_around_z,
     rotate_around_y, calc_steady_torque, FBDF
