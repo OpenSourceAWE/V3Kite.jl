@@ -3,7 +3,7 @@
 
 # V3Kite.jl
 
-Julia package for simulation and validation of the TU Delft V3 ram-air kite.
+Julia package for simulation and validation of the TU Delft V3 leading edge inflatable (LEI) kite.
 
 ## Overview
 
