@@ -22,6 +22,7 @@ using Rotations
 using Dates
 using DiscretePIDs
 using HDF5
+using Serialization
 
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState
@@ -63,6 +64,8 @@ export get_depower, set_depower!
 # Model setup exports
 export V3GeomAdjustConfig, apply_geom_adjustments!
 export adjust_tether_length!, adjust_elevation!
+export distribute_wing_mass!
+export generate_drag_adjusted_polars
 export segment_stretch_stats
 
 # Coordinate utilities exports
@@ -74,16 +77,27 @@ export calc_R_b_w
 export parse_time_to_seconds, unix_to_utc_seconds
 export utc_to_video_frame
 export load_flight_data, find_indices_by_utc, limit_by_utc
-export add_distance_column, interpolate_flight_data
+export add_distance_column, get_row_at_distance,
+    find_closest_trajectory_index
+export interpolate_flight_data
 export update_sys_struct_from_data!
 
 # Simulation helper exports
 export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
+export compute_drag_coeff, compute_lift_coeff
+export compute_tether_drag_coeff, compute_bridle_drag_coeff
+export compute_kcu_drag_coeff
+export compute_kite_aoa, compute_bridle_euler
+export compute_wing_incidence
+export compute_bridle_pitch_angle
+export chord_ref_mid
+export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
+export build_replay_name
 
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
@@ -96,7 +110,11 @@ export V3SettleConfig, settle_wing
 export load_extra_points
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
-export plot_body_frame_local
+export plot_body_frame_local, plot_twist_dist
+export plot_photogrammetry
+export plot_yaw_rate_vs_steering
+export plot_replay, plot_sphere_trajectory
+export plot_2d_trajectory, plot_2d_panels
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -107,6 +125,79 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_body_frame_local end
+
+"""
+    plot_twist_dist(sys_structs; kwargs...)
+
+Plot twist distribution along the span. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_twist_dist end
+
+"""
+    plot_photogrammetry(points, groups; dir, kwargs...)
+
+Plot photogrammetry points in 2D. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_photogrammetry end
+
+"""
+    plot_yaw_rate_vs_steering(syslogs, tapes; kwargs...)
+
+Scatter plot of |yaw rate| vs |u_s * v_a|. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_yaw_rate_vs_steering end
+
+"""
+    plot_replay(syss, logs; tape_lengths, suffixes, size)
+
+Custom time-series plot for V3 kite replay data. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_replay end
+
+"""
+    plot_sphere_trajectory(logs; radius, colors, labels, kwargs...)
+
+Plot kite trajectories on a unit sphere with body-frame axes
+at final positions. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_sphere_trajectory end
+
+"""
+    plot_2d_trajectory(logs; kwargs...)
+
+Plot kite y vs z position colored by a gradient quantity
+(`:vel` or `:steering`). Requires GLMakie/CairoMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_2d_trajectory end
+
+"""
+    plot_2d_panels(logs; tapes, labels, kwargs...)
+
+Time-series panel plot (steering, winch force, v_app, etc.)
+split from `plot_2d_trajectory`. Requires GLMakie/CairoMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_2d_panels end
 
 # include("precompile.jl") # disabled: precompilation workload
 

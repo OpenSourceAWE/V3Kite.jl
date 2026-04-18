@@ -12,7 +12,7 @@ Functions for adjusting tether length, elevation, and other model parameters.
 Configuration for wing geometry adjustments (tip reduction, trailing
 edge shortening, depower tape reduction, and tether length).
 """
-Base.@kwdef struct V3GeomAdjustConfig
+Base.@kwdef mutable struct V3GeomAdjustConfig
     reduce_tip::Bool = false
     tip_reduction::Float64 = 0.4
     tip_segments::Vector{Int} = [47, 48, 57, 58]
@@ -23,6 +23,8 @@ Base.@kwdef struct V3GeomAdjustConfig
 
     reduce_depower::Bool = false
     depower_reduction::Float64 = 0.2
+    depower_offset::Float64 = 0.0       # added to depower (0..1)
+    steering_dp_offset::Float64 = 0.0   # Δdp per abs(steering), normalized
 
     reduce_steering::Bool = false
     steering_reduction::Float64 = 0.2
@@ -48,20 +50,31 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
             sys.segments[idx].l0 *= config.te_frac
         end
     end
-    if !isnothing(config.tether_length)
-        wf = norm(sys.winches[1].force)
-        wf = isnan(wf) ? 0.0 : wf
-        stiffness = sys.segments[end].unit_stiffness
-        n_segs = length(V3_TETHER_POINT_IDXS)
-        seg_len = config.tether_length / n_segs *
-            (1 + wf / stiffness)
-        for (n, i) in enumerate(V3_TETHER_POINT_IDXS)
-            sys.points[i].pos_cad .= [
-                0.0, 0.0, -n * seg_len]
-        end
-        for i in 90:95
-            sys.segments[i].l0 = seg_len
-        end
+    return nothing
+end
+
+"""
+    distribute_wing_mass!(sys, mass; dist=0.75)
+
+Distribute wing mass over LE-TE pairs proportional to chord
+length. `dist` controls the LE/TE split (0.75 = 75% on LE).
+"""
+function distribute_wing_mass!(sys, mass; dist=0.75)
+    wing_pts = sort(
+        [p for p in sys.points if p.type == WING],
+        by=p -> p.idx)
+    n = length(wing_pts)
+    iseven(n) || error(
+        "Expected even number of wing points, got $n")
+    pairs = [(wing_pts[i], wing_pts[i+1])
+             for i in 1:2:n]
+    chords = [norm(le.pos_b - te.pos_b)
+              for (le, te) in pairs]
+    total_chord = sum(chords)
+    for (i, (le, te)) in enumerate(pairs)
+        pair_mass = mass * chords[i] / total_chord
+        le.extra_mass = pair_mass * dist
+        te.extra_mass = pair_mass * (1 - dist)
     end
     return nothing
 end
@@ -104,11 +117,36 @@ function adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw;
         SymbolicAWEModels.reinit!([transform], sys)
     end
 
+    if !isempty(sys.tethers)
+        sys.tethers[1].len = tether_length
+        sys.tethers[1].stretched_len = tether_length
+    end
     if !isempty(sys.winches)
         winch = sys.winches[1]
-        winch.tether_len = tether_length
-        winch.tether_vel = 0.0
+        winch.vel = 0.0
         winch.brake = true
+    end
+    return nothing
+end
+
+"""
+    generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
+
+Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
+write the adjusted polars to `dst_dir`.
+"""
+function generate_drag_adjusted_polars(drag_factor;
+        data_path=v3_data_path(),
+        src_dir="2D_polars_CFD_NF_combined",
+        dst_dir="2D_polars_drag_adjusted")
+    src = joinpath(data_path, src_dir)
+    dst = joinpath(data_path, dst_dir)
+    mkpath(dst)
+    for f in readdir(src)
+        endswith(f, ".csv") || continue
+        df = CSV.read(joinpath(src, f), DataFrame)
+        df.Cd .*= drag_factor
+        CSV.write(joinpath(dst, f), df)
     end
     return nothing
 end

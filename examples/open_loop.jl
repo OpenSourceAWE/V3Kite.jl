@@ -33,8 +33,9 @@ ELEVATION = 20.0            # degrees
 
 # Geometry config
 gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
+GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
+    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
+    gc.tip_reduction, gc.te_frac)
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]
@@ -112,7 +113,7 @@ for step in 1:n_steps
     set_steering!(sys, rf_us * US, gc)
 
     # Instant depower
-    set_depower!(sys, UP, gc)
+    set_depower!(sys, UP, 0.0, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
