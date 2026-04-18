@@ -157,7 +157,7 @@ function local_update_sys_from_csv!(sys, row)
     transform = transforms[1]
 
     quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
-    csv_heading = calc_heading(sys,
+    csv_heading = calc_heading(
         SymbolicAWEModels.quaternion_to_rotation_matrix(quat)) + pi
     R_b_w = calc_R_b_w(sys)
 
@@ -382,9 +382,11 @@ function run_physics_replay(csv_path;
 
             set_value = update_vel_from_csv!(
                 sam.sys_struct, row, true)
-            sam.sys_struct.winches[1].tether_len =
+            sam.sys_struct.tethers[1].len =
                 row.tether_len + tether_delta
-            sam.sys_struct.winches[1].tether_vel =
+            sam.sys_struct.tethers[1].stretched_len =
+                row.tether_len + tether_delta
+            sam.sys_struct.winches[1].vel =
                 row.tether_vel
             SymbolicAWEModels.reinit!(
                 sam, sam.prob, FBDF())

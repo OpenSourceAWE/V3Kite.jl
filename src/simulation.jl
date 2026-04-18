@@ -55,7 +55,6 @@ Base.@kwdef mutable struct V3SimConfig
     # Model options
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.REFINE
     remake_cache::Bool = false
-    n_panels::Int = 36
 
     # Winch control
     brake::Bool = true
@@ -97,7 +96,6 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     vsm_set_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(vsm_set_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = joinpath(data_path, config.aero_yaml_path)
-    vsm_set.wings[1].n_panels = config.n_panels
 
     # Determine model name
     model_name = config.wing_type == SymbolicAWEModels.QUATERNION ?
@@ -199,7 +197,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         set_steering!(sys,
             steering_ramp * config.us / 100.0, gc)
         set_depower!(sys,
-            power_ramp * config.up / 100.0, gc)
+            power_ramp * config.up / 100.0, 0.0, gc)
 
         # Log tape percentages
         push!(tape_times, t)
@@ -218,9 +216,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         end
 
         # Log state
-        update_sys_state!(sys_state, sam)
-        sys_state.time = t
-        log!(logger, sys_state)
+        log_state!(logger, sys_state, sam, t)
 
         # Progress updates
         if show_progress && (step % max(1, div(n_steps, 10)) == 0 || step == n_steps)

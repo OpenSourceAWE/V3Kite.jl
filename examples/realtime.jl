@@ -38,8 +38,9 @@ ELEVATION = 20.0
 
 # Geometry config
 gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(
-    V3_DEPOWER_L0_BASE, gc.tip_reduction, gc.te_frac)
+GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
+    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
+    gc.tip_reduction, gc.te_frac)
 
 # Base control values
 UP = 0.42                  # Depower fraction (old 0-1)
@@ -213,7 +214,7 @@ try
         up_target = UP + depower_pct_delta[] / 100.0
         depower_val = nominal_depower +
             rf_up * (up_target - nominal_depower)
-        set_depower!(sys, depower_val, gc)
+        set_depower!(sys, depower_val, 0.0, gc)
 
         # Step simulation
         step_start = time()

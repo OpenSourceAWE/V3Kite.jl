@@ -42,18 +42,17 @@ function euler_to_quaternion(roll, pitch, yaw)
 end
 
 """
-    calc_heading(sys_struct::SystemStructure, R_b_w)
+    calc_heading(R_b_w)
 
 Calculate heading angle from rotation matrix, wrapped to [-π, π].
 
 # Arguments
-- `sys_struct`: System structure
 - `R_b_w`: Rotation matrix from body to world frame
 
 # Returns
 - Heading angle in radians, wrapped to [-π, π]
 """
-function calc_heading(sys_struct::SymbolicAWEModels.SystemStructure, R_b_w)
+function calc_heading(R_b_w)
     e_x = R_b_w[:, 1]
     wind_norm = [1,0,0]
     minus_e_x = -e_x
@@ -67,7 +66,7 @@ function calc_heading(sys_struct::SymbolicAWEModels.SystemStructure, R_b_w)
 end
 
 """
-    calc_csv_heading(roll, pitch, yaw, sys_struct)
+    calc_csv_heading(roll, pitch, yaw)
 
 Calculate heading from Euler angles, wrapped to [-π, π].
 
@@ -75,15 +74,14 @@ Calculate heading from Euler angles, wrapped to [-π, π].
 - `roll`: Roll angle in radians
 - `pitch`: Pitch angle in radians
 - `yaw`: Yaw angle in radians
-- `sys_struct`: System structure
 
 # Returns
 - Heading angle in radians, wrapped to [-π, π]
 """
-function calc_csv_heading(roll, pitch, yaw, sys_struct)
+function calc_csv_heading(roll, pitch, yaw)
     quat = euler_to_quaternion(roll, pitch, yaw)
     R = SymbolicAWEModels.quaternion_to_rotation_matrix(quat)
-    heading = calc_heading(sys_struct, R)
+    heading = calc_heading(R)
     return wrap_to_pi(heading + π)
 end
 
@@ -99,7 +97,7 @@ Calculate the body-to-world rotation matrix for REFINE wing type.
 - 3x3 rotation matrix R_b_w
 """
 function calc_R_b_w(sys_struct::SymbolicAWEModels.SystemStructure)
-    @unpack points, wings, wind_vec_gnd = sys_struct
+    @unpack points, wings = sys_struct
     wing = wings[1]
     R_b_w, origin = SymbolicAWEModels.calc_refine_wing_frame(
         points,

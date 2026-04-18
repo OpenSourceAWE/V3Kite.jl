@@ -69,7 +69,7 @@ function load_flight_data(h5_path::String)
         if haskey(fid, "ekf_output")
             for name in keys(fid["ekf_output"])
                 ds = read(fid["ekf_output"][name])
-                if eltype(ds) <: AbstractFloat
+                if eltype(ds) <: Real
                     data[Symbol("ekf_", name)] =
                         convert(Vector{Float64}, ds)
                 end
@@ -80,7 +80,7 @@ function load_flight_data(h5_path::String)
         if haskey(fid, "flight_data")
             for name in keys(fid["flight_data"])
                 ds = read(fid["flight_data"][name])
-                if eltype(ds) <: AbstractFloat
+                if eltype(ds) <: Real
                     data[Symbol(name)] =
                         convert(Vector{Float64}, ds)
                 end
@@ -107,9 +107,11 @@ Find row indices corresponding to a UTC time range.
 - `(start_idx, end_idx)` tuple of row indices
 """
 function find_indices_by_utc(data,
-        start_utc::String, end_utc::String)
+        start_utc::String,
+        end_utc::Union{String, Nothing}=nothing)
     start_sec = parse_time_to_seconds(start_utc)
-    end_sec = parse_time_to_seconds(end_utc)
+    end_sec = isnothing(end_utc) ? Inf :
+        parse_time_to_seconds(end_utc)
 
     start_idx = nothing
     end_idx = nothing
@@ -150,10 +152,12 @@ and adds a video_frame column.
 - `(data, start_idx)`: Sliced NamedTuple and starting index
 """
 function limit_by_utc(data,
-        start_utc::String, end_utc::String)
+        start_utc::String,
+        end_utc::Union{String, Nothing}=nothing)
     start_idx, end_idx = find_indices_by_utc(
         data, start_utc, end_utc)
-    @info "UTC range $start_utc to $end_utc" *
+    end_str = isnothing(end_utc) ? "end" : end_utc
+    @info "UTC range $start_utc to $end_str" *
         " -> rows $start_idx to $end_idx"
 
     # Slice each vector
@@ -205,6 +209,56 @@ function add_distance_column(data)
 
     return merge(data, (distance=distances,
         cumulative_distance=cumulative_distances))
+end
+
+"""
+    find_closest_trajectory_index(data, query_pos;
+        start_idx=1)
+
+Find the data index whose (x, y, z) position is closest to
+`query_pos`. Searches forward from `start_idx` to avoid
+matching already-passed trajectory segments.
+"""
+function find_closest_trajectory_index(data, query_pos;
+        start_idx=1)
+    best_idx = start_idx
+    best_dist2 = Inf
+    for i in start_idx:length(data.time)
+        dx = data.ekf_kite_position_x[i] - query_pos[1]
+        dy = data.ekf_kite_position_y[i] - query_pos[2]
+        dz = data.ekf_kite_position_z[i] - query_pos[3]
+        d2 = dx^2 + dy^2 + dz^2
+        if d2 < best_dist2
+            best_dist2 = d2
+            best_idx = i
+        end
+    end
+    return best_idx
+end
+
+"""
+    get_row_at_distance(data, target_dist)
+
+Interpolate all fields of `data` at a given cumulative
+distance. Uses `searchsortedlast` on `cumulative_distance`
+to find the bracketing interval and linearly interpolates.
+
+Returns a NamedTuple with the same fields as `data`.
+"""
+function get_row_at_distance(data, target_dist)
+    cd = data.cumulative_distance
+    idx = searchsortedlast(cd, target_dist)
+    idx = clamp(idx, 1, length(cd) - 1)
+    d0, d1 = cd[idx], cd[idx + 1]
+    alpha = (d1 > d0) ?
+        clamp((target_dist - d0) / (d1 - d0), 0.0, 1.0) :
+        0.0
+    ks = keys(data)
+    vals = Tuple(
+        (1 - alpha) * data[k][idx] +
+        alpha * data[k][idx + 1]
+        for k in ks)
+    return NamedTuple{ks}(vals)
 end
 
 """
@@ -276,10 +330,12 @@ function update_sys_struct_from_data!(sys, row;
     wing = wings[1]
     transform = transforms[1]
 
+    sys.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
+
     # calc target heading from data
     quat = euler_to_quaternion(
         row.roll, row.pitch, row.yaw)
-    data_heading = calc_heading(sys,
+    data_heading = calc_heading(
         SymbolicAWEModels.quaternion_to_rotation_matrix(
             quat)) + pi
     R_b_w = calc_R_b_w(sys)
@@ -306,10 +362,8 @@ function update_sys_struct_from_data!(sys, row;
     # update winch
     winches[1].brake = true
 
-    # Set steering/depower from CSV data (KCU convention)
-    # row.steering is KCU: positive = left turn
-    # set_steering! expects positive = right turn, so negate
-    set_steering!(sys, -row.steering / 100.0, config;
+    # Set steering/depower from CSV data
+    set_steering!(sys, row.steering, config;
         min_l0=0.01)
-    set_depower!(sys, row.depower / 100.0, config)
+    set_depower!(sys, row.depower, 0.0, config)
 end

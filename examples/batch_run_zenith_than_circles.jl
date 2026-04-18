@@ -142,7 +142,7 @@ function run_zenith_circles(;
             umax=abs(max_steering))
 
         # Winch PID
-        nominal_tether_length = sys.winches[1].tether_len
+        nominal_tether_length = sys.tethers[1].len
         init_winch_torque!(sys)
         winch_pid = create_winch_pid(;
             K=winch_p,
@@ -181,7 +181,7 @@ function run_zenith_circles(;
                 nom_right - steer_ctrl
 
             # Winch PID
-            tl = sys.winches[1].tether_len
+            tl = sys.tethers[1].len
             wf = winch_pid(nominal_tether_length, tl, 0.0)
             wt = force_to_torque(wf, sys)
             sys.winches[1].set_value = -wt
