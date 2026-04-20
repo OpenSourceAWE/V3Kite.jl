@@ -963,9 +963,9 @@ version = "9.25.1"
 
 [[deps.KiteUtils]]
 deps = ["Arrow", "CSV", "DocStringExtensions", "LinearAlgebra", "OrderedCollections", "Parameters", "Parsers", "Pkg", "PrecompileTools", "RecursiveArrayTools", "ReferenceFrameRotations", "Rotations", "StaticArrays", "StructArrays", "StructTypes", "YAML"]
-git-tree-sha1 = "d94b15095b1bef491536e0459e4f982248f5ca18"
+git-tree-sha1 = "0d4160c6f845b7e19f754f4b9179d4e51b96f43f"
 uuid = "90980105-b163-44e5-ba9f-8b1c83bb0533"
-version = "0.11.6"
+version = "0.11.7"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
@@ -2306,9 +2306,9 @@ version = "0.1.0"
 
 [[deps.VortexStepMethod]]
 deps = ["Colors", "DefaultApplication", "DelimitedFiles", "DifferentiationInterface", "FiniteDiff", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "Measures", "NonlinearSolve", "Parameters", "Pkg", "PreallocationTools", "PrecompileTools", "RecursiveArrayTools", "SciMLBase", "Serialization", "StaticArrays", "Statistics", "StructMapping", "Timers", "Xfoil", "YAML"]
-git-tree-sha1 = "0944cc26b07a484eaa766632dbc317178cc290c5"
+git-tree-sha1 = "3aca611316e5195f8731cb7ded7ab86cc69b7f18"
 uuid = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
-version = "3.0.1"
+version = "3.1.2"
 
     [deps.VortexStepMethod.extensions]
     VortexStepMethodControlPlotsExt = "ControlPlots"
