@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "cd4a69b30430c371abfeaba212c729b991d58d7e"
+project_hash = "e64d738ebdbd291dc7f730ba9a0e352932ca6fbc"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -762,9 +762,9 @@ version = "1.1.3"
 
 [[deps.FunctionWrappersWrappers]]
 deps = ["FunctionWrappers", "PrecompileTools", "TruncatedStacktraces"]
-git-tree-sha1 = "3e13d0b39d117a03d3fb5c88a039e94787a37fcb"
+git-tree-sha1 = "ce6762f8f0e7542534f01523ae051e625cbf0468"
 uuid = "77dc65aa-8811-40c2-897b-53d922fa7daf"
-version = "1.4.0"
+version = "1.5.0"
 
     [deps.FunctionWrappersWrappers.extensions]
     FunctionWrappersWrappersEnzymeExt = ["Enzyme", "EnzymeCore"]
@@ -1026,9 +1026,9 @@ version = "1.18.0+0"
 
 [[deps.LineSearch]]
 deps = ["ADTypes", "CommonSolve", "ConcreteStructs", "FastClosures", "LinearAlgebra", "MaybeInplace", "PrecompileTools", "SciMLBase", "SciMLJacobianOperators", "StaticArraysCore"]
-git-tree-sha1 = "69da095e4c24ed3c4a168bb76dc9c620a6d7239c"
+git-tree-sha1 = "25454bc65c3eec4656cbe201c3d9336af49178c7"
 uuid = "87fe0de2-c867-4266-b59a-2f0a94fc965b"
-version = "0.1.7"
+version = "0.1.8"
 
     [deps.LineSearch.extensions]
     LineSearchLineSearchesExt = "LineSearches"
@@ -1164,9 +1164,9 @@ version = "2025.2.0+0"
 
 [[deps.MPIABI_jll]]
 deps = ["Artifacts", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
-git-tree-sha1 = "fdc0f7ca9e7e645d1114b93c9eee98f352b59a0c"
+git-tree-sha1 = "8d684b5918769c4f9423e0ee3bbdefdab82709e8"
 uuid = "b5ada748-db0f-5fc0-8972-9331c762740c"
-version = "0.1.3+0"
+version = "0.1.4+0"
 
 [[deps.MPICH_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "Libdl", "MPIPreferences", "TOML"]
@@ -2112,9 +2112,9 @@ version = "0.2.8"
 
 [[deps.SymbolicAWEModels]]
 deps = ["AtmosphericModels", "CodecZlib", "ControlSystemsBase", "Dates", "DocStringExtensions", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "Logging", "ModelingToolkit", "NonlinearSolve", "NonlinearSolveQuasiNewton", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqNonlinearSolve", "Parameters", "Pkg", "PrecompileTools", "Printf", "RecipesBase", "SHA", "Serialization", "StaticArrays", "Statistics", "SteadyStateDiffEq", "Suppressor", "SymbolicIndexingInterface", "SymbolicUtils", "Symbolics", "TOML", "Tar", "Timers", "UnPack", "VortexStepMethod", "YAML"]
-path = "../SymbolicAWEModels.jl"
+git-tree-sha1 = "752653d876dcd4e0ed916d38e9c6deda2ee0a13a"
 uuid = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
-version = "0.7.2"
+version = "0.8.0"
 
     [deps.SymbolicAWEModels.extensions]
     SymbolicAWEModelsMakieExt = ["GeometryBasics", "Makie"]
@@ -2293,7 +2293,7 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 version = "1.11.0"
 
 [[deps.V3Kite]]
-deps = ["CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KiteUtils", "LinearAlgebra", "PrecompileTools", "Rotations", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod"]
+deps = ["CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "PrecompileTools", "Rotations", "Serialization", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod"]
 path = "."
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
 version = "0.1.0"
@@ -2454,9 +2454,9 @@ version = "5.15.0+0"
 
 [[deps.mpif_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIABI_jll", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "TOML"]
-git-tree-sha1 = "c5ce26ac1d6d17f35e965d82a4d13566330e368c"
+git-tree-sha1 = "a8083ee0737c243c8f40a4ba86a0956997facb73"
 uuid = "9aeb927a-4695-514f-a259-621a69f20ec0"
-version = "0.1.6+0"
+version = "0.1.7+0"
 
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
