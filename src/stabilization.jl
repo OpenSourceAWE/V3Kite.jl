@@ -171,11 +171,17 @@ function settle_wing(config::V3SettleConfig;
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled geometry" dest_struc
         sys = deserialize(dest_struc)
-        sys.set = set
-        sam = SymbolicAWEModel(set, sys)
+        sys.set.v_wind = set.v_wind
+        sys.set.l_tether = set.l_tether
+        sys.set.profile_law = set.profile_law
+        if power_zone && hasproperty(init_row, :wind_vec)
+            sys.set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
+        end
+        sam = SymbolicAWEModel(sys.set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, remake_vsm=true,
-            reinit_sys=false)
+            reinit_sys=false,
+            lin_vsm=false)
     else
         @info "Loading source geometry" source_struc
         vsm_path = joinpath(
@@ -189,7 +195,8 @@ function settle_wing(config::V3SettleConfig;
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
-            remake_vsm=true)
+            remake_vsm=true,
+            lin_vsm=false)
     end
 
     return sam, syslog
@@ -229,7 +236,8 @@ function _setup_settling_model(config::V3SettleConfig;
     sys.tethers[1].init_unstretched_len = gc.tether_length
     sys.tethers[1].init_stretched_len = gc.tether_length
     SymbolicAWEModels.init!(
-        sam; remake=false, ignore_l0=false, remake_vsm=true)
+        sam; remake=false, ignore_l0=false,
+        remake_vsm=true, lin_vsm=false)
 
     @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
@@ -336,7 +344,8 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     end
 
     SymbolicAWEModels.reinit!(
-        sam, sam.prob, SymbolicAWEModels.FBDF())
+        sam, sam.prob, SymbolicAWEModels.FBDF();
+        lin_vsm=false)
 
     if hasproperty(init_row, :wind_vec)
         @assert isapprox(
@@ -378,7 +387,8 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         SymbolicAWEModels.reposition!(
             sys.transforms, sys)
         SymbolicAWEModels.reinit!(
-            sam, sam.prob, SymbolicAWEModels.FBDF())
+            sam, sam.prob, SymbolicAWEModels.FBDF();
+            lin_vsm=false)
 
         for sub in 1:config.num_substeps
             global_step = (step - 1) * config.num_substeps + sub

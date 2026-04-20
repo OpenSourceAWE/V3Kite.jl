@@ -24,6 +24,20 @@ using DiscretePIDs
 using HDF5
 using Serialization
 
+# Compatibility shim for SymbolicAWEModels versions that call
+# set_va!(body_aero, va_dist::AbstractMatrix, center_vel)
+# while newer VortexStepMethod exposes set_va!(body_aero, va_dist).
+if !hasmethod(VortexStepMethod.set_va!,
+    Tuple{VortexStepMethod.BodyAerodynamics,
+          AbstractMatrix, Any})
+    function VortexStepMethod.set_va!(
+            body_aero::VortexStepMethod.BodyAerodynamics,
+            va_dist::AbstractMatrix,
+            _)
+        return VortexStepMethod.set_va!(body_aero, va_dist)
+    end
+end
+
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
