@@ -78,7 +78,7 @@ config = V3SimConfig(
         "struc_geometry_$(GEOM_SUFFIX).yaml",
     aero_yaml_path =
         "aero_geometry_$(GEOM_SUFFIX).yaml",
-    vsm_settings_path = "CORRECT_vsm_settings.yaml",
+    vsm_settings_path = "vsm_settings.yaml",
     sim_time = SIM_TIME,
     fps = FPS,
     v_wind = V_WIND,
