@@ -171,6 +171,7 @@ function settle_wing(config::V3SettleConfig;
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled geometry" dest_struc
         sys = deserialize(dest_struc)
+        sys.set = set
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, remake_vsm=true,
