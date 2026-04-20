@@ -36,6 +36,12 @@ gc = V3GeomAdjustConfig()
 GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
     V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
     gc.tip_reduction, gc.te_frac)
+struc_candidate = "struc_geometry_$(GEOM_SUFFIX).yaml"
+aero_candidate = "aero_geometry_$(GEOM_SUFFIX).yaml"
+struc_yaml = isfile(joinpath(v3_data_path(), struc_candidate)) ?
+    struc_candidate : "struc_geometry.yaml"
+aero_yaml = isfile(joinpath(v3_data_path(), aero_candidate)) ?
+    aero_candidate : "aero_geometry.yaml"
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]
@@ -57,8 +63,8 @@ FPS = 120
 # =============================================================================
 
 config = V3SimConfig(
-    struc_yaml_path = "struc_geometry_$(GEOM_SUFFIX).yaml",
-    aero_yaml_path = "aero_geometry_$(GEOM_SUFFIX).yaml",
+    struc_yaml_path = struc_yaml,
+    aero_yaml_path = aero_yaml,
     vsm_settings_path = "vsm_settings.yaml",
     sim_time = SIM_TIME,
     fps = FPS,
