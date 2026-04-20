@@ -152,6 +152,14 @@ function update_vel_from_csv!(sys, row,
     return eff_steering, eff_depower
 end
 
+function clamp_pulley_lengths!(sys; eps=1e-6)
+    for pu in sys.pulleys
+        hi = max(pu.sum_len - eps, eps)
+        pu.len = clamp(pu.len, eps, hi)
+    end
+    return nothing
+end
+
 # =============================================================================
 # Main replay function
 # =============================================================================
@@ -465,10 +473,13 @@ function run_physics_replay(h5_path;
                     lateral_correction +
                     STEERING_OFFSET/100)
 
+        clamp_pulley_lengths!(sam.sys_struct)
+
         SymbolicAWEModels.reinit!(
             sam, sam.prob, FBDF())
 
         next_step!(sam; dt)
+        clamp_pulley_lengths!(sam.sys_struct)
         if !isapprox(sam.set.wind_vec,
                 row.wind_vec; atol=1e-6)
             @warn "wind_vec mismatch" step row.wind_vec sam.set.wind_vec

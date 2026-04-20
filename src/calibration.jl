@@ -236,7 +236,7 @@ function set_depower!(sys, depower, steering,
     L_depower = depower_percentage_to_length(
         dp * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - reduction)
-    sys.segments[V3_DEPOWER_IDX].l0 = L_depower
+    sys.segments[V3_DEPOWER_IDX].l0 = max(0.01, L_depower)
     return dp
 end
 
