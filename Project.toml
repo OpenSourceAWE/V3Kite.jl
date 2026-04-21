@@ -30,7 +30,7 @@ V3KiteMakieExt = "GLMakie"
 HDF5 = "0.17.2"
 LaTeXStrings = "1.4.0"
 SymbolicAWEModels = "0.8"
-VortexStepMethod = "3.0.1"
+VortexStepMethod = "3.1.2"
 julia = "1.10"
 
 [extras]
