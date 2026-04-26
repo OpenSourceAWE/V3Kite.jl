@@ -630,7 +630,9 @@ function create_plots()
         tapes=_tapes, labels=_labels,
         show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
-        frame_indexes=frame_syslog_idxs)
+        frame_indexes=frame_syslog_idxs,
+        show_drag_coeff=true,
+        show_lift_coeff=true)
 
     # CairoMakie PDF saves
     sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
@@ -650,7 +652,9 @@ function create_plots()
         tapes=_tapes, labels=_labels,
         show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
-        frame_indexes=frame_syslog_idxs)
+        frame_indexes=frame_syslog_idxs,
+        show_drag_coeff=true,
+        show_lift_coeff=true)
     if SAVE_FIGS
         mkpath(FIGURES_DIR)
         traj_fname = "trajectory_2d$(suffix).pdf"
