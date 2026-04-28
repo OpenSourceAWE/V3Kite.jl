@@ -54,6 +54,19 @@ Base.@kwdef mutable struct V3SettleConfig
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
+_round_for_log(x; digits=1) =
+    x isa Number ? round(x, digits=digits) :
+    round.(x, digits=digits)
+
+function _decayed_damping(world_damping, min_damping,
+        step, decay_steps)
+    frac = decay_steps <= 0 ? 1.0 : step / decay_steps
+    scaled = world_damping * (1.0 - frac)
+    return (scaled isa Number && min_damping isa Number) ?
+           max(scaled, min_damping) :
+           max.(scaled, min_damping)
+end
+
 """
     settle_wing(config::V3SettleConfig; data_path=nothing,
                 show_progress=true, remake=false,
@@ -171,8 +184,18 @@ function settle_wing(config::V3SettleConfig;
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled geometry" dest_struc
         sys = deserialize(dest_struc)
-        sys.set = set
-        sam = SymbolicAWEModel(set, sys)
+
+        # sys.set is const in SystemStructure; update it in place.
+        settled_set = sys.set
+        settled_set.v_wind = set.v_wind
+        settled_set.l_tether = set.l_tether
+        settled_set.profile_law = set.profile_law
+        settled_set.g_earth = set.g_earth
+        if power_zone && hasproperty(init_row, :wind_vec)
+            settled_set.wind_vec = set.wind_vec
+        end
+
+        sam = SymbolicAWEModel(settled_set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, remake_vsm=true,
             reinit_sys=false)
@@ -272,9 +295,11 @@ function _run_zero_g_settling!(config::V3SettleConfig;
     for step in 1:config.num_steps
         t = step * config.dt
 
-        damping = max(config.world_damping *
-            (1.0 - step / config.decay_steps),
-            config.min_damping)
+        damping = _decayed_damping(
+            config.world_damping,
+            config.min_damping,
+            step,
+            config.decay_steps)
         SymbolicAWEModels.set_world_frame_damping(
             sys, damping)
 
@@ -286,7 +311,7 @@ function _run_zero_g_settling!(config::V3SettleConfig;
         log_state!(logger, sys_state, sam, t)
 
         if show_progress && step % 20 == 0
-            @info "Step $step/$(config.num_steps)" damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+            @info "Step $step/$(config.num_steps)" damping=_round_for_log(damping) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
         end
     end
 
@@ -358,9 +383,11 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     wing = sys.wings[1]
     failed = false
     for step in 1:config.num_steps
-        damping = max(config.world_damping *
-            (1.0 - step / config.decay_steps),
-            config.min_damping)
+        damping = _decayed_damping(
+            config.world_damping,
+            config.min_damping,
+            step,
+            config.decay_steps)
         SymbolicAWEModels.set_world_frame_damping(
             sys, damping)
 
@@ -393,7 +420,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
             log_state!(logger, sys_state, sam, t)
 
             if show_progress && global_step % 20 == 0
-                @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                @info "Step $step/$(config.num_steps)" substep=sub damping=_round_for_log(damping) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
             end
         end
         failed && break

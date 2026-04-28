@@ -36,57 +36,68 @@ gc = V3GeomAdjustConfig()
 GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
     V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
     gc.tip_reduction, gc.te_frac)
+struc_candidate = "struc_geometry_$(GEOM_SUFFIX).yaml"
+aero_candidate = "aero_geometry_$(GEOM_SUFFIX).yaml"
+struc_yaml = isfile(joinpath(v3_data_path(), struc_candidate)) ?
+    struc_candidate : "struc_geometry.yaml"
+aero_yaml = isfile(joinpath(v3_data_path(), aero_candidate)) ?
+    aero_candidate : "aero_geometry.yaml"
 
 # Control
 US = 0.1                   # Steering percentage [-100, 100]
 UP = 0.42                   # Depower percentage [0, 100] (old fraction)
 V_WIND = 7.6
 DAMPING_PATTERN = [0.0, 0.0, 20.0]
+STARTUP_DAMPING_PATTERN = [0.0, 30.0, 60.0]
+STARTUP_DECAY_TIME = 2.0
 
 # Ramp timing
 RAMP_START_UP = 0.1
 RAMP_END_UP = 1.5
 RAMP_START_US = 3.0
 RAMP_END_US = 5.0
+STARTUP_HOLD_TIME = 0.5
 
 SIM_TIME = 60.0
-FPS = 120
+FPS = 240
+
+damping_profile = function (t)
+    if STARTUP_DECAY_TIME <= 0
+        return DAMPING_PATTERN
+    end
+    mix = clamp(t / STARTUP_DECAY_TIME, 0.0, 1.0)
+    return STARTUP_DAMPING_PATTERN .+
+           (DAMPING_PATTERN .- STARTUP_DAMPING_PATTERN) .* mix
+end
 
 # =============================================================================
-# Model setup
+# Model setup (settle first, then run open-loop)
 # =============================================================================
 
-config = V3SimConfig(
-    struc_yaml_path = "struc_geometry_$(GEOM_SUFFIX).yaml",
-    aero_yaml_path = "aero_geometry_$(GEOM_SUFFIX).yaml",
-    vsm_settings_path = "CORRECT_vsm_settings.yaml",
-    sim_time = SIM_TIME,
-    fps = FPS,
+settle_config = V3SettleConfig(
+    source_struc_path = struc_yaml,
+    source_aero_path = aero_yaml,
+    vsm_settings_path = "vsm_settings.yaml",
     v_wind = V_WIND,
-    tether_length = TETHER_LENGTH,
-    up = UP * 100,        # Convert old 0-1 fraction to percentage
-    us = US * 100,        # Convert old 0-1 fraction to percentage
-    ramp_start_time_up = RAMP_START_UP,
-    ramp_end_time_up = RAMP_END_UP,
-    ramp_start_time_us = RAMP_START_US,
-    ramp_end_time_us = RAMP_END_US,
-    wing_type = REFINE,
-    brake = true,
-    damping_pattern = DAMPING_PATTERN,
     elevation = ELEVATION,
+    tether_length = TETHER_LENGTH,
+    body_damping = STARTUP_DAMPING_PATTERN,
+    geom = gc,
 )
 
 @info "Creating V3 model..."
-sam, sys = create_v3_model(config)
-
-@info "Initializing model..."
-init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
+sam, _ = settle_wing(settle_config; remake=false)
+sys = sam.sys_struct
 sys.winches[1].brake = true
 
 # Logger
 n_steps = Int(round(FPS * SIM_TIME))
 dt = SIM_TIME / n_steps
 logger, sys_state = create_logger(sam, n_steps)
+
+# Start from the initialized trim and blend to the requested controls
+nominal_steering = get_steering(sys, gc)
+nominal_depower = get_depower(sys, gc)
 
 # Stretch stats storage
 max_stretch_samples = Float64[]
@@ -107,17 +118,26 @@ sim_start_time = time()
 
 for step in 1:n_steps
     t = step * dt
+    t_ctrl = max(0.0, t - STARTUP_HOLD_TIME)
+
+    SymbolicAWEModels.set_body_frame_damping(
+        sys, damping_profile(t))
 
     # Ramp steering
-    rf_us = ramp_factor(t, RAMP_START_US, RAMP_END_US)
-    set_steering!(sys, rf_us * US, gc)
+    rf_us = ramp_factor(t_ctrl, RAMP_START_US, RAMP_END_US)
+    steering_cmd = nominal_steering +
+                   (US - nominal_steering) * rf_us
+    set_steering!(sys, steering_cmd, gc)
 
-    # Instant depower
-    set_depower!(sys, UP, 0.0, gc)
+    # Ramp depower from initialized trim to requested input
+    rf_up = ramp_factor(t_ctrl, RAMP_START_UP, RAMP_END_UP)
+    depower_cmd = nominal_depower +
+                  (UP - nominal_depower) * rf_up
+    set_depower!(sys, depower_cmd, 0.0, gc)
 
     push!(tape_times, t)
-    push!(tape_steering_pct, rf_us * US * 100)
-    push!(tape_depower_pct, UP * 100)
+    push!(tape_steering_pct, steering_cmd * 100)
+    push!(tape_depower_pct, depower_cmd * 100)
 
     # Step
     if !sim_step!(sam; set_values=[0.0], dt, vsm_interval=1)
