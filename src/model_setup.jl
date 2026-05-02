@@ -54,6 +54,25 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 end
 
 """
+    distribute_wing_drag!(sys, area, drag_coeff)
+
+Divide `area` equally over all wing points and set each
+point's `drag_coeff`. This lets the solver account for
+parasitic drag distributed along the span.
+"""
+function distribute_wing_drag!(sys, area, drag_coeff)
+    wing_pts = [p for p in sys.points if p.type == WING]
+    n = length(wing_pts)
+    n > 0 || error("No wing points found")
+    area_per_point = area / n
+    for p in wing_pts
+        p.area = area_per_point
+        p.drag_coeff = drag_coeff
+    end
+    return nothing
+end
+
+"""
     distribute_wing_mass!(sys, mass; dist=0.75)
 
 Distribute wing mass over LE-TE pairs proportional to chord

@@ -47,7 +47,7 @@ SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -9.0
 STEERING_MULTIPLIER = 1.0
-HEADING_KP = 0.0
+HEADING_KP = 0.1
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
@@ -195,18 +195,11 @@ function run_physics_replay(h5_path;
         R_b_w = quat2R(euler_to_quaternion(
             raw.ekf_kite_roll, raw.ekf_kite_pitch,
             raw.ekf_kite_yaw))
-        wind_elev = atan(
-            raw.ekf_wind_speed_vertical,
-            raw.ekf_wind_speed_horizontal)
-        wind_dir = rotate_around_z(
-            rotate_around_x(
-                [0.0, -1.0, 0.0], wind_elev),
-            -wrap_to_pi(
-                -raw.ekf_wind_direction - π/2))
-        v_wind_total = hypot(
-            raw.ekf_wind_speed_horizontal,
-            raw.ekf_wind_speed_vertical)
-        wind_vec = v_wind_total .* wind_dir
+        wdir = raw.ekf_wind_direction
+        wh = raw.ekf_wind_speed_horizontal
+        wv = raw.ekf_wind_speed_vertical
+        wind_vec = [wh * cos(wdir),
+                    wh * sin(wdir), wv]
         kite_vel = [raw.ekf_kite_velocity_x,
                     raw.ekf_kite_velocity_y,
                     raw.ekf_kite_velocity_z]
@@ -235,7 +228,7 @@ function run_physics_replay(h5_path;
             cumulative_distance = raw.cumulative_distance,
             wind_speed = raw.ekf_wind_speed_horizontal,
             upwind_dir = wrap_to_pi(
-                -raw.ekf_wind_direction - π/2),
+                -wdir - π/2),
             wind_speed_vertical =
                 raw.ekf_wind_speed_vertical,
             R_b_w = R_b_w,
@@ -248,7 +241,7 @@ function run_physics_replay(h5_path;
                 raw.ekf_bridles_drag_coefficient,
             kcu_drag_coeff =
                 raw.ekf_kcu_drag_coefficient,
-            wind_elevation = wind_elev,
+            wind_elevation = atan(wv, wh),
             wind_vec = wind_vec,
             kite_aoa = kite_aoa,
             wing_aoa = wing_aoa,
@@ -347,6 +340,7 @@ function run_physics_replay(h5_path;
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
     data_sam = SymbolicAWEModel(set, data_struct)
     data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
+    data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam)
     data_state = SysState(data_sam)
     data_logger = Logger(data_sam, n_data_steps)
@@ -360,7 +354,7 @@ function run_physics_replay(h5_path;
         sys, BODY_DAMPING, 1:38)
     SymbolicAWEModels.set_body_frame_damping(
         sys, POINT_37_38_DAMPING, 37:38)
-    distribute_wing_mass!(sys, 11.0; dist=0.7)
+    distribute_wing_mass!(sys, 11.0; dist=0.5)
 
     heading_pid = create_heading_pid(;
         K=HEADING_KP, Ti=HEADING_TI, dt)
@@ -435,9 +429,11 @@ function run_physics_replay(h5_path;
             phys_row = row
         end
 
+        data_pos_enu = [phys_row.x, phys_row.y,
+            phys_row.z]
         data_heading = calc_csv_heading(
             phys_row.roll, phys_row.pitch,
-            phys_row.yaw)
+            phys_row.yaw, data_pos_enu)
         sim_heading =
             sam.sys_struct.wings[1].heading
         heading_error = wrap_to_pi(
@@ -631,17 +627,20 @@ function create_plots()
         show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
         frame_indexes=frame_syslog_idxs,
-        show_drag_coeff=true,
-        show_lift_coeff=true)
+        show_heading=true,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=true)
 
     # CairoMakie PDF saves
     sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
     tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
     dist_suffix = DISTANCE_BASED_STEERING ?
         "_dist" : ""
-    suffix = "_$(SECTION)" *
-        "_dpoff_$(DEPOWER_OFFSET_2025)" *
-        "_sr_$(sr)_tr_$(tr)"
+    config_suffix = "_dpoff_$(DEPOWER_OFFSET_2025)" *
+        "_sr_$(sr)_tr_$(tr)" *
+        "_ecd_$(WING_EXTRA_DRAG_COEFF)"
+    suffix = "_$(SECTION)" * config_suffix
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory(_logs;
         gradient=:vel, tapes=_tapes, labels=_labels,
@@ -653,8 +652,10 @@ function create_plots()
         show_aoa=true, labelsize=20,
         twin_time_axes=DISTANCE_BASED_STEERING,
         frame_indexes=frame_syslog_idxs,
-        show_drag_coeff=true,
-        show_lift_coeff=true)
+        show_heading=true,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=true)
     if SAVE_FIGS
         mkpath(FIGURES_DIR)
         traj_fname = "trajectory_2d$(suffix).pdf"
@@ -734,8 +735,7 @@ function create_plots()
             fname = "body_frame_$(dir)" *
                 "_$(SECTION)" *
                 "_frame_$(target_frame)" *
-                "_dpoff_$(DEPOWER_OFFSET_2025)" *
-                "_sr_$(sr)_tr_$(tr).pdf"
+                "$(config_suffix).pdf"
             if SAVE_FIGS
                 @info "Saving $fname"
                 save(fname, bf)
@@ -758,8 +758,7 @@ function create_plots()
         twist_fname = "twist_dist" *
             "_$(SECTION)" *
             "_frame_$(target_frame)" *
-            "_dpoff_$(DEPOWER_OFFSET_2025)" *
-            "_sr_$(sr)_tr_$(tr).pdf"
+            "$(config_suffix).pdf"
         if SAVE_FIGS
             @info "Saving $twist_fname"
             save(twist_fname, twist_fig)

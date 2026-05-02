@@ -79,19 +79,32 @@ end
 """
     compute_drag_coeff(sam) -> Float64
 
-Compute the drag coefficient from the first wing's aero force
-projected onto the apparent wind direction, normalized by
-`q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
+Wing drag coefficient: VSM aero drag plus parasitic drag
+from WING-type points. Together with tether, bridle, and
+KCU drag coefficients, the four sum to the total CD.
 """
 function compute_drag_coeff(sam)
-    wing = sam.sys_struct.wings[1]
+    sys = sam.sys_struct
+    wing = sys.wings[1]
     va_b = wing.va_b
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
-    drag_force = dot(wing.aero_force_b, va_b / v_app)
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_inf = 0.5 * 1.225 * v_app^2
-    return drag_force / (q_inf * A_proj)
+    va_hat_b, q_ref = _drag_coeff_ref(wing)
+
+    # VSM drag component (body frame → scalar)
+    vsm_drag = dot(wing.aero_force_b, va_hat_b)
+
+    # Parasitic drag from wing points (world frame)
+    parasitic_w = zeros(3)
+    for p in sys.points
+        p.type == WING || continue
+        parasitic_w .+= p.drag_force
+    end
+    R_b_w = calc_R_b_w(sys)
+    va_hat_w = R_b_w * va_hat_b
+    parasitic_drag = dot(parasitic_w, va_hat_w)
+
+    return (vsm_drag + parasitic_drag) / q_ref
 end
 
 """
@@ -109,126 +122,111 @@ function compute_lift_coeff(sam)
     va_hat = va_b / v_app
     lift_vec = wing.aero_force_b - dot(wing.aero_force_b, va_hat) * va_hat
     A_proj = calculate_projected_area(wing.vsm_wing)
-    q_inf = 0.5 * 1.225 * v_app^2
+    q_inf = 0.5 * _RHO_SL * v_app^2
     return norm(lift_vec) / (q_inf * A_proj)
 end
 
 const _RHO_SL = 1.225
-const _CF_SKIN = 0.01  # EKF-AWE hardcoded skin friction
 
 """
-    _segment_ekf_drag(sys, seg; cd, cf) -> Float64
+    _tether_point_idxs(sys) -> Set{Int}
 
-EKF-AWE drag force magnitude for one segment. Uses the
-EKF formula `cd_t = cd * sin(θ)³ + π * cf * cos(θ)³`
-with ground-level wind (consistent with `compute_drag_coeff`
-using `ρ = 1.225`).
+Collect all point indices that belong to tether segments.
 """
-function _segment_ekf_drag(sys, seg; cd, cf=_CF_SKIN)
-    p1, p2 = seg.point_idxs
-    vel_mid = 0.5 .* (sys.points[p1].vel_w .+
-                       sys.points[p2].vel_w)
-    va = sys.set.wind_vec .- vel_mid
-    va_norm = norm(va)
-    va_norm < 1e-6 && return 0.0
-    e_seg = sys.points[p2].pos_w .- sys.points[p1].pos_w
-    e_len = norm(e_seg)
-    e_len < 1e-6 && return 0.0
-    e_hat = e_seg ./ e_len
-    cos_th = clamp(abs(dot(va, e_hat)) / va_norm, 0.0, 1.0)
-    sin_th = sqrt(1.0 - cos_th^2)
-    cd_t = cd * sin_th^3 + π * cf * cos_th^3
-    area = seg.len * seg.diameter
-    return 0.5 * _RHO_SL * va_norm^2 * area * cd_t
+function _tether_point_idxs(sys)
+    pts = Set{Int}()
+    for tether in sys.tethers
+        for seg_idx in tether.segment_idxs
+            seg = sys.segments[seg_idx]
+            push!(pts, seg.point_idxs[1])
+            push!(pts, seg.point_idxs[2])
+        end
+    end
+    return pts
 end
 
 """
-    _classify_segments(sys) -> (tether_idxs, bridle_idxs)
+    _drag_coeff_ref(wing) -> (va_hat_b, q_ref)
 
-Classify segments into tether vs bridle. Wing structural
-segments (both endpoints WING) are excluded from both.
+Common reference quantities for drag coefficient functions:
+apparent-wind unit vector (body frame) and dynamic pressure
+times projected area.
 """
-function _classify_segments(sys)
-    tether_set = Set{Int}()
-    for tether in sys.tethers
-        union!(tether_set, tether.segment_idxs)
+function _drag_coeff_ref(wing)
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    va_hat_b = va_b / v_app
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    return va_hat_b, q_ref
+end
+
+"""
+    _point_drag_cd(sys, wing, idxs) -> Float64
+
+Sum `point.drag_force` for points whose index is in `idxs`,
+project onto kite apparent wind, normalize by `q * A_proj`.
+"""
+function _point_drag_cd(sys, wing, idxs)
+    va_hat_b, q_ref = _drag_coeff_ref(wing)
+    drag_w = zeros(3)
+    for p in sys.points
+        p.idx in idxs || continue
+        drag_w .+= p.drag_force
     end
-    tether_idxs = Int[]
-    bridle_idxs = Int[]
-    for seg in sys.segments
-        p1_type = sys.points[seg.point_idxs[1]].type
-        p2_type = sys.points[seg.point_idxs[2]].type
-        p1_type == WING && p2_type == WING && continue
-        if seg.idx in tether_set
-            push!(tether_idxs, seg.idx)
-        else
-            push!(bridle_idxs, seg.idx)
-        end
-    end
-    return tether_idxs, bridle_idxs
+    R_b_w = calc_R_b_w(sys)
+    va_hat_w = R_b_w * va_hat_b
+    return dot(drag_w, va_hat_w) / q_ref
 end
 
 """
     compute_tether_drag_coeff(sam) -> Float64
 
-Tether drag coefficient using EKF-AWE formula, normalized
-by the same `q_inf * A_proj` reference as `compute_drag_coeff`.
+Tether drag coefficient from tether-point drag forces,
+projected onto the kite apparent wind and normalized by
+`q * A_proj`.
 """
 function compute_tether_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
-    v_app = norm(wing.va_b)
-    v_app < 1e-6 && return 0.0
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
-    cd = sam.set.cd_tether
-    tether_idxs, _ = _classify_segments(sys)
-    D = sum(
-        _segment_ekf_drag(sys, sys.segments[i]; cd)
-        for i in tether_idxs; init=0.0)
-    return D / q_ref
+    norm(wing.va_b) < 1e-6 && return 0.0
+    return _point_drag_cd(sys, wing,
+        _tether_point_idxs(sys))
 end
 
 """
     compute_bridle_drag_coeff(sam) -> Float64
 
-Bridle drag coefficient using EKF-AWE formula, normalized
-by the same `q_inf * A_proj` reference as `compute_drag_coeff`.
+Bridle drag coefficient: drag from non-tether, non-wing
+points (excluding KCU / point 1), normalized by
+`q * A_proj`.
 """
 function compute_bridle_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
-    v_app = norm(wing.va_b)
-    v_app < 1e-6 && return 0.0
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
-    cd = sam.set.cd_tether
-    _, bridle_idxs = _classify_segments(sys)
-    D = sum(
-        _segment_ekf_drag(sys, sys.segments[i]; cd)
-        for i in bridle_idxs; init=0.0)
-    return D / q_ref
+    norm(wing.va_b) < 1e-6 && return 0.0
+    tether_pts = _tether_point_idxs(sys)
+    bridle_idxs = Set{Int}()
+    for p in sys.points
+        p.idx in tether_pts && continue
+        p.type == WING && continue
+        p.idx == 1 && continue  # KCU
+        push!(bridle_idxs, p.idx)
+    end
+    return _point_drag_cd(sys, wing, bridle_idxs)
 end
 
 """
     compute_kcu_drag_coeff(sam) -> Float64
 
-KCU drag coefficient. Nondimensionalizes the sim's own
-KCU drag (point 1 with area and drag_coeff from YAML)
-by `q_inf * A_proj` using kite apparent wind speed.
+KCU drag coefficient from point 1's drag force,
+normalized by `q * A_proj`.
 """
 function compute_kcu_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
-    v_app_kite = norm(wing.va_b)
-    v_app_kite < 1e-6 && return 0.0
-    kcu = sys.points[1]
-    va_kcu = sys.set.wind_vec .- kcu.vel_w
-    D_kcu = 0.5 * _RHO_SL * norm(va_kcu)^2 *
-            kcu.area * kcu.drag_coeff
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app_kite^2 * A_proj
-    return D_kcu / q_ref
+    norm(wing.va_b) < 1e-6 && return 0.0
+    return _point_drag_cd(sys, wing, Set([1]))
 end
 
 """
@@ -405,13 +403,14 @@ end
 Update sys_state from the model, set time, and log.
 
 Computed variables:
-- `var_01`/`var_02`: wing drag/lift coefficients
+- `var_01`: total non-tether CD (VSM + parasitic)
+- `var_02`: wing lift coefficient
 - `var_03`: mean TE segment force
 - `var_04`: kite AoA
 - `var_05`-`var_07`: bridle NED Euler (yaw, pitch, roll)
 - `var_08`: bridle pitch angle
 - `var_09`-`var_11`: tether/bridle/KCU drag coefficients
-  (EKF-AWE formula for apples-to-apples comparison)
+  (from point drag forces)
 - `var_12`: geometric wing incidence (photogrammetry-style)
 - `var_13`: center-of-pressure x-coordinate (body frame)
 """
