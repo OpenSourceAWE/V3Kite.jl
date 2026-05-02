@@ -42,47 +42,39 @@ function euler_to_quaternion(roll, pitch, yaw)
 end
 
 """
-    calc_heading(R_b_w)
+    calc_heading(R_b_w, pos_w)
 
-Calculate heading angle from rotation matrix, wrapped to [-π, π].
+Heading in the tangential sphere frame, matching
+`wing.heading` from SymbolicAWEModels. Zero when the
+nose (body x-axis) points toward the ground station
+along the great circle.
 
 # Arguments
 - `R_b_w`: Rotation matrix from body to world frame
-
-# Returns
-- Heading angle in radians, wrapped to [-π, π]
+- `pos_w`: Kite position in world (ENU) frame
 """
-function calc_heading(R_b_w)
+function calc_heading(R_b_w, pos_w)
     e_x = R_b_w[:, 1]
-    wind_norm = [1,0,0]
-    minus_e_x = -e_x
-    proj_on_wind = dot(minus_e_x, wind_norm) * wind_norm
-    e_x_perp = minus_e_x - proj_on_wind
-    wind_cross_z = [wind_norm[2], -wind_norm[1], 0]
-    heading_x = dot(e_x_perp, wind_cross_z)
-    heading_z = e_x_perp[3]
-    heading = atan(heading_x, heading_z)
-    return wrap_to_pi(heading)
+    # Tangential sphere frame (same as scalar_eqs.jl)
+    z = normalize(pos_w)
+    y = normalize([-pos_w[2], pos_w[1], 0.0])
+    x = cross(y, z)
+    return atan(dot(e_x, y), dot(e_x, x))
 end
 
 """
-    calc_csv_heading(roll, pitch, yaw)
+    calc_csv_heading(roll, pitch, yaw, pos_w)
 
-Calculate heading from Euler angles, wrapped to [-π, π].
-
-# Arguments
-- `roll`: Roll angle in radians
-- `pitch`: Pitch angle in radians
-- `yaw`: Yaw angle in radians
-
-# Returns
-- Heading angle in radians, wrapped to [-π, π]
+Heading from EKF NED Euler angles and kite position,
+using the tangential sphere frame. Adds π because
+`euler_to_quaternion` produces a body x-axis that
+points opposite to SymbolicAWEModels' convention.
 """
-function calc_csv_heading(roll, pitch, yaw)
+function calc_csv_heading(roll, pitch, yaw, pos_w)
     quat = euler_to_quaternion(roll, pitch, yaw)
-    R = SymbolicAWEModels.quaternion_to_rotation_matrix(quat)
-    heading = calc_heading(R)
-    return wrap_to_pi(heading + π)
+    R = SymbolicAWEModels.quaternion_to_rotation_matrix(
+        quat)
+    return wrap_to_pi(calc_heading(R, pos_w) + π)
 end
 
 """

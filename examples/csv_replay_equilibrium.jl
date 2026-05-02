@@ -156,12 +156,12 @@ function local_update_sys_from_csv!(sys, row)
     wing = wings[1]
     transform = transforms[1]
 
-    quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
-    csv_heading = calc_heading(
-        SymbolicAWEModels.quaternion_to_rotation_matrix(quat)) + pi
-    R_b_w = calc_R_b_w(sys)
-
     csv_pos = [row.x, row.y, row.z]
+    quat = euler_to_quaternion(row.roll, row.pitch, row.yaw)
+    csv_heading = wrap_to_pi(calc_heading(
+        SymbolicAWEModels.quaternion_to_rotation_matrix(
+            quat), csv_pos) + π)
+    R_b_w = calc_R_b_w(sys)
     for (n, pidx) in enumerate(39:44)
         points[pidx].pos_b .= [
             0.0, 0.0, -n * row.tether_len / 6 * 1.01]

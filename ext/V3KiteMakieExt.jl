@@ -1673,6 +1673,9 @@ function V3Kite.plot_2d_panels(
         cur_row += 1
         ax_cd = _twin_panel!(fig, cur_row,
             L"C_{\text{D}} \; [-]")
+        cd_vars = [:var_01, :var_09, :var_10, :var_11]
+        cd_colors = [:black, :blue, :orange, :red]
+        cd_labels = ["wing", "tether", "bridle", "KCU"]
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
@@ -1680,14 +1683,20 @@ function V3Kite.plot_2d_panels(
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
                 top_axes[end] : ax_cd
-            lines!(target,
-                collect(sl.time)[rng],
-                collect(sl.var_01)[rng];
-                linewidth=lw, linestyle=ls,
-                    color=:black)
+            t = collect(sl.time)[rng]
+            for (v, c, lab) in zip(
+                    cd_vars, cd_colors, cd_labels)
+                lines!(target, t,
+                    collect(getproperty(sl, v))[rng];
+                    linewidth=lw, linestyle=ls,
+                    color=c,
+                    label=(i == 1 ? lab : nothing))
+            end
         end
         hlines!(ax_cd, [0]; linewidth=0.5,
             color=:gray70)
+        axislegend(ax_cd; position=:rt,
+            labelsize=12, framevisible=false)
     end
 
     if show_lift_coeff
@@ -1714,14 +1723,17 @@ function V3Kite.plot_2d_panels(
     if show_lift_drag_ratio
         cur_row += 1
         ax_ld = _twin_panel!(fig, cur_row,
-            L"C_L / C_{\text{D}} \; [-]")
+            L"C_L / \Sigma C_{\text{D}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
             rng = log_ranges[i]
-            cd = collect(sl.var_01)[rng]
+            cd_total = collect(sl.var_01)[rng] .+
+                collect(sl.var_09)[rng] .+
+                collect(sl.var_10)[rng] .+
+                collect(sl.var_11)[rng]
             cl = collect(sl.var_02)[rng]
             ratio = [abs(d) > 1e-6 ? l / d : NaN
-                     for (l, d) in zip(cl, cd)]
+                     for (l, d) in zip(cl, cd_total)]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
