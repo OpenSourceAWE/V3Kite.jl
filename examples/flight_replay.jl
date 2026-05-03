@@ -638,8 +638,7 @@ function create_plots()
     dist_suffix = DISTANCE_BASED_STEERING ?
         "_dist" : ""
     config_suffix = "_dpoff_$(DEPOWER_OFFSET_2025)" *
-        "_sr_$(sr)_tr_$(tr)" *
-        "_ecd_$(WING_EXTRA_DRAG_COEFF)"
+        "_sr_$(sr)_tr_$(tr)"
     suffix = "_$(SECTION)" * config_suffix
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory(_logs;

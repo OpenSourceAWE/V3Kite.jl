@@ -1455,11 +1455,10 @@ function V3Kite.plot_2d_trajectory(
         end
     end
     if !isempty(legend_labels)
-        Legend(fig[1, 1], legend_elems,
+        axislegend(ax, legend_elems,
             legend_labels; labelsize=14,
-            halign=:left, valign=:bottom,
-            tellwidth=false, tellheight=false,
-            margin=(0, 20, 22, 20))
+            position=:lb, margin=(0, 0, 0, 0),
+            padding=(6, 6, 6, 6))
     end
 
     return fig
