@@ -99,3 +99,48 @@ function calc_R_b_w(sys_struct::SymbolicAWEModels.SystemStructure)
     )
     return R_b_w
 end
+
+"""
+    calc_turn_rate(syslog; source=:heading, dt=0.01)
+
+Frame-transport-corrected turn rate series for `syslog`,
+returned as a vector aligned to `syslog.time[2:end]`.
+
+`source` selects the angle whose derivative is taken:
+`:heading` (uses `syslog.heading`) or `:course` (uses
+`syslog.course`). Both angles live in the rotating
+tangent-sphere frame, so the same correction
+`χ̇ − φ̇·sin(β)` applies (φ = azimuth, β = elevation).
+
+Accepts either a `SysLog` or its inner syslog table.
+"""
+function calc_turn_rate(syslog; source=:heading, dt=0.01)
+    sl = hasproperty(syslog, :syslog) ? syslog.syslog :
+        syslog
+    if source === :heading
+        ang = copy(sl.heading)
+    elseif source === :course
+        ang = copy(sl.course)
+    else
+        error("Unknown source: $source " *
+            "(expected :heading or :course)")
+    end
+    _unwrap_inplace!(ang)
+    rate = diff(ang) ./ dt
+    az = copy(sl.azimuth)
+    _unwrap_inplace!(az)
+    az_dot = diff(az) ./ dt
+    return rate .- az_dot .* sin.(sl.elevation[2:end])
+end
+
+function _unwrap_inplace!(a)
+    for j in 2:length(a)
+        while a[j] - a[j-1] > π
+            a[j] -= 2π
+        end
+        while a[j] - a[j-1] < -π
+            a[j] += 2π
+        end
+    end
+    return a
+end

@@ -71,7 +71,7 @@ export segment_stretch_stats
 # Coordinate utilities exports
 export wrap_to_pi, euler_to_quaternion
 export calc_heading, calc_csv_heading
-export calc_R_b_w
+export calc_R_b_w, calc_turn_rate
 
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
@@ -112,7 +112,7 @@ export load_extra_points
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
 export plot_body_frame_local, plot_twist_dist
 export plot_photogrammetry
-export plot_yaw_rate_vs_steering
+export plot_yaw_rate_vs_steering, plot_turn_rate_vs_time
 export plot_replay, plot_sphere_trajectory
 export plot_2d_trajectory, plot_2d_panels
 
@@ -155,6 +155,18 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_yaw_rate_vs_steering end
+
+"""
+    plot_turn_rate_vs_time(syslogs; sources, labels, dt, kwargs...)
+
+Time-series plot of frame-transport-corrected turn rate, with
+one or more `sources` (`:heading` and/or `:course`) per log.
+Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_turn_rate_vs_time end
 
 """
     plot_replay(syss, logs; tape_lengths, suffixes, size)

@@ -47,7 +47,7 @@ SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -9.0
 STEERING_MULTIPLIER = 1.0
-HEADING_KP = 0.1
+HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
 STEERING_OFFSET = 0.0
@@ -74,13 +74,7 @@ else
         "flight_data", "ekf_awe_2019-10-08.h5")
 end
 SECTION = "$(SECTION)_$(YEAR)"
-if SECTION == "straight_2025"
-    start_utc = "15:36:27.0"
-    end_utc = "15:36:33.1"
-elseif SECTION == "right_2025"
-    start_utc = "15:36:34.0"
-    end_utc = "15:36:38.0"
-elseif SECTION == "straight_right_2025"
+if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
     end_utc = "15:36:38.0"
 elseif SECTION == "straight_left_2025"
@@ -604,7 +598,8 @@ geom_config = settle_config.geom
 
 function create_plots()
     global fig, trajectory, panels, traj_2d, panels_2d
-    global yaw_fig, body, twist, hdot_fig
+    global yaw_fig_heading, yaw_fig_course
+    global body, twist, hdot_fig
     fig = plot_replay(
         [sam.sys_struct, data_sam.sys_struct],
         [syslog, datalog];
@@ -676,9 +671,17 @@ function create_plots()
     end
     GLMakie.activate!()
 
-    yaw_fig = plot_yaw_rate_vs_steering(
+    yaw_fig_heading = plot_yaw_rate_vs_steering(
         [syslog, datalog],
         [sim_tape, data_tape];
+        source=:heading,
+        min_steering=0.05,
+        labels=["simulation", "data"],
+        figsize=(600, 400), labelsize=18, dt)
+    yaw_fig_course = plot_yaw_rate_vs_steering(
+        [syslog, datalog],
+        [sim_tape, data_tape];
+        source=:course,
         min_steering=0.05,
         labels=["simulation", "data"],
         figsize=(600, 400), labelsize=18, dt)
@@ -775,51 +778,40 @@ function create_plots()
     GLMakie.activate!()
 
     # Average gk for |steering| > 5%
-    mean_gk = Dict{String,Float64}()
-    hdot_series = Dict{String,Vector{Float64}}()
-    hdot_time = Dict{String,Vector{Float64}}()
+    mean_gk = Dict{Tuple{String,Symbol},Float64}()
     for (label, lg, tape) in [("sim", syslog, sim_tape),
                                ("data", datalog, data_tape)]
         sl = lg.syslog
-        hw = copy(sl.heading)
-        for j in 2:length(hw)
-            while hw[j] - hw[j-1] > pi; hw[j] -= 2pi; end
-            while hw[j] - hw[j-1] < -pi; hw[j] += 2pi; end
+        for source in (:heading, :course)
+            rate = calc_turn_rate(lg; source, dt)
+            us = tape.steering[2:end]
+            va = sl.v_app[2:end]
+            mask = abs.(us) .> 0.05
+            gk_vals = rate[mask] ./ (va[mask] .* us[mask])
+            mean_gk[(label, source)] = mean(gk_vals)
+            @info "Mean gk" label source gk=round(
+                mean_gk[(label, source)]; digits=3)
         end
-        hdot = diff(hw) ./ dt
-        # Subtract frame transport: ψ̇_m = ψ̇_T − φ̇·sin(β)
-        az = copy(sl.azimuth)
-        for j in 2:length(az)
-            while az[j] - az[j-1] > pi; az[j] -= 2pi; end
-            while az[j] - az[j-1] < -pi; az[j] += 2pi; end
-        end
-        az_dot = diff(az) ./ dt
-        hdot .= hdot .- az_dot .* sin.(sl.elevation[2:end])
-        hdot_series[label] = hdot
-        hdot_time[label] = tape.time[2:end]
-        us = tape.steering[2:end]
-        va = sl.v_app[2:end]
-        mask = abs.(us) .> 0.05
-        gk_vals = hdot[mask] ./ (va[mask] .* us[mask])
-        mean_gk[label] = mean(gk_vals)
-        @info "Mean gk ($label)" gk=round(
-            mean_gk[label]; digits=3)
     end
-    pct = (mean_gk["sim"] - mean_gk["data"]) /
-        mean_gk["data"] * 100
-    @info "gk difference" pct=round(pct; digits=1)
+    for source in (:heading, :course)
+        pct = (mean_gk[("sim", source)] -
+            mean_gk[("data", source)]) /
+            mean_gk[("data", source)] * 100
+        @info "gk difference" source pct=round(pct;
+            digits=1)
+    end
 
-    # Validation plot: heading rate vs time
-    hdot_fig = Figure(size=(900, 400))
-    ax = Axis(hdot_fig[1, 1];
-        xlabel="time [s]",
-        ylabel="heading rate [rad/s]",
-        title="Body yaw rate (frame-transport corrected)")
-    lines!(ax, hdot_time["sim"], hdot_series["sim"];
-        label="sim", color=:blue)
-    lines!(ax, hdot_time["data"], hdot_series["data"];
-        label="data", color=:red)
-    axislegend(ax)
+    n_steer = min(length(sim_tape.steering),
+        length(data_tape.steering))
+    steer_diff = sim_tape.steering[1:n_steer] .-
+        data_tape.steering[1:n_steer]
+    @info "Mean steering input diff (sim - data)" mean=round(
+            mean(steer_diff); digits=4) mean_abs=round(
+            mean(abs.(steer_diff)); digits=4)
+
+    hdot_fig = plot_turn_rate_vs_time(
+        [syslog, datalog];
+        labels=["sim", "data"], dt)
     display(hdot_fig)
 
     panels
