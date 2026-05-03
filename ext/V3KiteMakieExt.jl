@@ -884,19 +884,24 @@ function V3Kite.plot_photogrammetry(points, groups;
 end
 
 """
-    plot_yaw_rate_vs_steering(syslogs, tapes; labels, figsize)
+    plot_yaw_rate_vs_steering(syslogs, tapes; source, labels, figsize)
 
-Scatter plot of |yaw rate| vs |u_s * v_a| for one or more logs.
+Scatter plot of |turn rate| vs |u_s * v_a| for one or more
+logs. The turn rate is computed by `calc_turn_rate` with the
+given `source` (`:heading` or `:course`), which applies the
+frame-transport correction internally.
 
 # Arguments
 - `syslogs`: Single syslog or vector of syslogs
 - `tapes`: Matching tape(s) with `.steering` and `.time` fields
+- `source`: `:heading` (default) or `:course`
 - `labels`: Optional vector of series labels
 - `figsize`: Figure size tuple (default: (600, 400))
 - `labelsize`: Axis label font size (default: 18)
 """
 function V3Kite.plot_yaw_rate_vs_steering(
         syslogs, tapes;
+        source=:heading,
         labels=nothing, figsize=(600, 400),
         labelsize=18,
         min_steering=0.0, dt=0.01)
@@ -909,32 +914,25 @@ function V3Kite.plot_yaw_rate_vs_steering(
             ["series_$i" for i in 1:n]
     end
 
+    ylabel = source === :course ?
+        L"|\dot{\chi}| \; [rad/s]" :
+        L"|\dot{\psi}| \; [rad/s]"
     fig = Figure(size=figsize)
     ax = Axis(fig[1, 1];
         xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
-        ylabel=L"|\dot{\psi}| \; [rad/s]",
-        xlabelsize=labelsize, ylabelsize=labelsize)
+        ylabel=ylabel,
+        xlabelsize=labelsize, ylabelsize=labelsize,
+        title="source = $source")
 
     has_data = false
     for (i, (lg, tape)) in enumerate(zip(logs, tps))
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
-
-        # Unwrap heading and compute yaw rate
-        hw = copy(sl.heading)
-        for j in 2:length(hw)
-            while hw[j] - hw[j-1] > pi
-                hw[j] -= 2pi
-            end
-            while hw[j] - hw[j-1] < -pi
-                hw[j] += 2pi
-            end
-        end
-        yaw_rate = diff(hw) ./ dt
+        rate = V3Kite.calc_turn_rate(lg; source, dt)
 
         us = tape.steering[2:end]
         mask = abs.(us) .> min_steering
         x = abs.(us[mask] .* sl.v_app[2:end][mask])
-        y = abs.(yaw_rate[mask])
+        y = abs.(rate[mask])
         isempty(x) && continue
         has_data = true
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
@@ -952,6 +950,60 @@ function V3Kite.plot_yaw_rate_vs_steering(
     if has_data
         axislegend(ax; position=:lt)
     end
+    return fig
+end
+
+"""
+    plot_turn_rate_vs_time(syslogs; sources, labels, dt,
+                           figsize, labelsize)
+
+Time-series of frame-transport-corrected turn rate for one
+or more logs. Each `(log, source)` combination becomes one
+line; `:heading` is drawn solid, `:course` dashed, and a
+distinct color is used per log.
+
+# Arguments
+- `syslogs`: Single syslog or vector of syslogs
+- `sources`: Iterable of `:heading` and/or `:course`
+  (default: `(:heading, :course)`)
+- `labels`: Optional vector of per-log labels
+- `dt`: Sample period passed to `calc_turn_rate`
+- `figsize`: Figure size (default: (900, 400))
+- `labelsize`: Axis label font size (default: 18)
+"""
+function V3Kite.plot_turn_rate_vs_time(
+        syslogs;
+        sources=(:heading, :course),
+        labels=nothing,
+        dt=0.01,
+        figsize=(900, 400),
+        labelsize=18)
+    logs = syslogs isa Vector ? syslogs : [syslogs]
+    n = length(logs)
+    if isnothing(labels)
+        labels = n == 1 ? ["series"] :
+            ["series_$i" for i in 1:n]
+    end
+
+    fig = Figure(size=figsize)
+    ax = Axis(fig[1, 1];
+        xlabel="time [s]",
+        ylabel="turn rate [rad/s]",
+        title="Turn rate (frame-transport corrected)",
+        xlabelsize=labelsize, ylabelsize=labelsize)
+
+    for (i, lg) in enumerate(logs)
+        sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+        color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
+        for source in sources
+            rate = V3Kite.calc_turn_rate(lg; source, dt)
+            style = source === :heading ? :solid : :dash
+            lines!(ax, sl.time[2:end], rate;
+                label="$(labels[i]) $source",
+                color=color, linestyle=style)
+        end
+    end
+    axislegend(ax)
     return fig
 end
 
