@@ -414,7 +414,11 @@ Computed variables:
 - `var_12`: geometric wing incidence (photogrammetry-style)
 - `var_13`: center-of-pressure x-coordinate (body frame)
 """
-function log_state!(logger, sys_state, sam, t)
+function log_state!(logger, sys_state, sam, t;
+        set_steering=nothing, depower=nothing,
+        video_frame=nothing,
+        wind_vec_ekf=nothing,
+        wind_vec_lidar=nothing)
     update_sys_state!(sys_state, sam)
     sys_state.var_01 = compute_drag_coeff(sam)
     sys_state.var_02 = compute_lift_coeff(sam)
@@ -432,6 +436,21 @@ function log_state!(logger, sys_state, sam, t)
     sys_state.var_12 = compute_wing_incidence(
         sam.sys_struct)
     sys_state.var_13 = compute_cop_x(sam)
+    if set_steering !== nothing
+        sys_state.set_steering = set_steering
+    end
+    if depower !== nothing
+        sys_state.depower = depower
+    end
+    if video_frame !== nothing
+        sys_state.var_14 = video_frame
+    end
+    if wind_vec_ekf !== nothing
+        sys_state.v_wind_gnd .= wind_vec_ekf
+    end
+    if wind_vec_lidar !== nothing
+        sys_state.v_wind_200m .= wind_vec_lidar
+    end
     sys_state.time = t
     log!(logger, sys_state)
     return nothing
@@ -494,6 +513,50 @@ function report_performance(sim_time, wall_time; label="")
         "Simulation completed: $label"
     @info msg wall_time=round(wall_time, digits=2) times_realtime=round(times_rt, digits=2)
     return nothing
+end
+
+"""
+    find_frame_syslog_idxs(syslog, frame_csvs) ->
+        Vector{Tuple{Int, Int}}
+
+Match each `(csv_path, video_frame)` entry in `frame_csvs`
+against `sl.var_14` (which is expected to hold the per-step
+video frame number). Returns a vector of
+`(video_frame, syslog_idx)` for the first match of each
+target frame, in the order of `frame_csvs`.
+"""
+function find_frame_syslog_idxs(syslog, frame_csvs)
+    sl = hasproperty(syslog, :syslog) ? syslog.syslog :
+        syslog
+    out = Tuple{Int, Int}[]
+    for (_, target) in frame_csvs
+        idx = findfirst(==(Float64(target)), sl.var_14)
+        isnothing(idx) && continue
+        push!(out, (target, idx))
+    end
+    return out
+end
+
+"""
+    build_replay_sys_struct(set, geom, source_struc,
+        vsm_set) -> (sam, sys_struct)
+
+Build a fresh `SymbolicAWEModel` and `SystemStructure`
+without running settling — load the YAML, apply geometry
+adjustments, and call `init!`. Mirrors the `SETTLE=false`
+branch of `flight_replay.jl` so plotting can be done after
+deserializing a syslog.
+"""
+function build_replay_sys_struct(set,
+        geom::V3GeomAdjustConfig, source_struc, vsm_set)
+    sys = load_sys_struct_from_yaml(source_struc;
+        system_name=V3_MODEL_NAME, set,
+        wing_type=SymbolicAWEModels.REFINE, vsm_set)
+    sam = SymbolicAWEModel(set, sys)
+    apply_geom_adjustments!(sys, geom)
+    SymbolicAWEModels.init!(sam;
+        remake=false, ignore_l0=false, remake_vsm=true)
+    return sam, sys
 end
 
 """

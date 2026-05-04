@@ -81,6 +81,7 @@ export add_distance_column, get_row_at_distance,
     find_closest_trajectory_index
 export interpolate_flight_data
 export update_sys_struct_from_data!
+export compute_wind_vec, interpolate_lidar_wind
 
 # Simulation helper exports
 export create_logger, ramp_factor
@@ -98,6 +99,7 @@ export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
 export build_replay_name
+export find_frame_syslog_idxs, build_replay_sys_struct
 
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
@@ -113,6 +115,7 @@ export load_extra_points
 export plot_body_frame_local, plot_twist_dist
 export plot_photogrammetry
 export plot_yaw_rate_vs_steering, plot_turn_rate_vs_time
+export plot_wind_compare
 export plot_replay, plot_sphere_trajectory
 export plot_2d_trajectory, plot_2d_panels
 
@@ -147,9 +150,9 @@ Load GLMakie before using: `using GLMakie`
 function plot_photogrammetry end
 
 """
-    plot_yaw_rate_vs_steering(syslogs, tapes; kwargs...)
+    plot_yaw_rate_vs_steering(syslogs; source, kwargs...)
 
-Scatter plot of |yaw rate| vs |u_s * v_a|. Requires GLMakie.
+Scatter plot of |turn rate| vs |u_s * v_a|. Requires GLMakie.
 
 This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
@@ -167,6 +170,17 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_turn_rate_vs_time end
+
+"""
+    plot_wind_compare(syslog; kwargs...)
+
+Plot EKF vs lidar wind components (x, y, z) over time.
+Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_wind_compare end
 
 """
     plot_replay(syss, logs; tape_lengths, suffixes, size)

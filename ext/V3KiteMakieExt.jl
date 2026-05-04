@@ -884,29 +884,28 @@ function V3Kite.plot_photogrammetry(points, groups;
 end
 
 """
-    plot_yaw_rate_vs_steering(syslogs, tapes; source, labels, figsize)
+    plot_yaw_rate_vs_steering(syslogs; source, labels, figsize)
 
 Scatter plot of |turn rate| vs |u_s * v_a| for one or more
 logs. The turn rate is computed by `calc_turn_rate` with the
 given `source` (`:heading` or `:course`), which applies the
-frame-transport correction internally.
+frame-transport correction internally. The steering input
+`u_s` is read from `sl.set_steering`.
 
 # Arguments
 - `syslogs`: Single syslog or vector of syslogs
-- `tapes`: Matching tape(s) with `.steering` and `.time` fields
 - `source`: `:heading` (default) or `:course`
 - `labels`: Optional vector of series labels
 - `figsize`: Figure size tuple (default: (600, 400))
 - `labelsize`: Axis label font size (default: 18)
 """
 function V3Kite.plot_yaw_rate_vs_steering(
-        syslogs, tapes;
+        syslogs;
         source=:heading,
         labels=nothing, figsize=(600, 400),
         labelsize=18,
         min_steering=0.0, dt=0.01)
     logs = syslogs isa Vector ? syslogs : [syslogs]
-    tps = tapes isa Vector ? tapes : [tapes]
     n = length(logs)
 
     if isnothing(labels)
@@ -925,11 +924,11 @@ function V3Kite.plot_yaw_rate_vs_steering(
         title="source = $source")
 
     has_data = false
-    for (i, (lg, tape)) in enumerate(zip(logs, tps))
+    for (i, lg) in enumerate(logs)
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
         rate = V3Kite.calc_turn_rate(lg; source, dt)
 
-        us = tape.steering[2:end]
+        us = sl.set_steering[2:end]
         mask = abs.(us) .> min_steering
         x = abs.(us[mask] .* sl.v_app[2:end][mask])
         y = abs.(rate[mask])
@@ -1004,6 +1003,41 @@ function V3Kite.plot_turn_rate_vs_time(
         end
     end
     axislegend(ax)
+    return fig
+end
+
+"""
+    plot_wind_compare(syslog; figsize, labelsize)
+
+Plot EKF vs lidar wind components (x, y, z in ENU) over
+time, in three stacked axes. The two wind sources are
+expected at `sl.v_wind_gnd` (ekf) and `sl.v_wind_200m`
+(lidar) — that's the convention used by `log_state!` when
+both `wind_vec_ekf` and `wind_vec_lidar` are passed.
+"""
+function V3Kite.plot_wind_compare(syslog;
+        figsize=(900, 600), labelsize=18)
+    sl = hasproperty(syslog, :syslog) ? syslog.syslog :
+        syslog
+    fig = Figure(size=figsize)
+    comp_labels = ("x (E)", "y (N)", "z (U)")
+    for (k, label) in enumerate(comp_labels)
+        ax = Axis(fig[k, 1];
+            xlabel=k == 3 ? "time [s]" : "",
+            ylabel="$label [m/s]",
+            xlabelsize=labelsize, ylabelsize=labelsize)
+        ekf = [sl.v_wind_gnd[i][k]
+            for i in eachindex(sl.v_wind_gnd)]
+        lid = [sl.v_wind_200m[i][k]
+            for i in eachindex(sl.v_wind_200m)]
+        lines!(ax, sl.time, ekf;
+            label="ekf", color=:blue)
+        lines!(ax, sl.time, lid;
+            label="lidar", color=:red)
+        if k == 1
+            axislegend(ax; position=:rt)
+        end
+    end
     return fig
 end
 
@@ -1556,6 +1590,7 @@ function V3Kite.plot_2d_panels(
         show_lift_drag_ratio=false,
         show_te_force=false,
         show_heading=false,
+        show_course=false,
         show_bridle_pitch=false,
         show_aoa=true,
         show_wing_vel=false,
@@ -1583,7 +1618,8 @@ function V3Kite.plot_2d_panels(
         show_tether_len +
         show_drag_coeff + show_lift_coeff +
         show_lift_drag_ratio + show_te_force +
-        show_heading + show_wing_vel + has_euler +
+        show_heading + show_course + show_wing_vel +
+        has_euler +
         show_bridle_pitch + has_aoa + show_cop
 
     fig_size = isnothing(size) ?
@@ -1837,6 +1873,27 @@ function V3Kite.plot_2d_panels(
                     color=:black)
         end
         hlines!(ax_hd, [0]; linewidth=0.5,
+            color=:gray70)
+    end
+
+    if show_course
+        cur_row += 1
+        ax_co = _twin_panel!(fig, cur_row,
+            L"\chi \; [°]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_co
+            lines!(target,
+                collect(sl.time)[rng],
+                rad2deg.(collect(sl.course)[rng]);
+                linewidth=lw, linestyle=ls,
+                    color=:black)
+        end
+        hlines!(ax_co, [0]; linewidth=0.5,
             color=:gray70)
     end
 

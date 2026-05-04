@@ -367,3 +367,100 @@ function update_sys_struct_from_data!(sys, row;
         min_l0=0.01)
     set_depower!(sys, row.depower, 0.0, config)
 end
+
+const LIDAR_HEIGHTS = (40, 60, 80, 100, 120, 140, 160, 180,
+    200, 220, 240, 250)
+
+"""
+    interpolate_lidar_wind(raw, altitude) ->
+        (wdir, wh, wv)
+
+Linearly interpolate the per-altitude lidar fields at the
+given `altitude` [m] and return wind direction (rad,
+ENU/math convention — CCW from East, "wind to" direction),
+horizontal speed (m/s), and vertical speed (m/s, +up).
+
+The lidar `Wind_Direction_deg` is in meteorological
+convention (degrees CW from North, "wind from"); converted
+via `wdir_enu = deg2rad(270° − wdir_lidar)`. `Z-wind` is
++up and matches ENU directly (no sign flip). Adjacent
+direction samples are unwrapped to the shortest arc before
+the lerp. Altitudes outside `[40, 250]` m are clamped.
+"""
+function interpolate_lidar_wind(raw, altitude)
+    h_clamped = clamp(Float64(altitude),
+        Float64(LIDAR_HEIGHTS[1]),
+        Float64(LIDAR_HEIGHTS[end]))
+    upper_idx = findfirst(>=(h_clamped), LIDAR_HEIGHTS)
+    if isnothing(upper_idx)
+        upper_idx = length(LIDAR_HEIGHTS)
+    end
+    lower_idx = max(1, upper_idx - 1)
+    h_lo = LIDAR_HEIGHTS[lower_idx]
+    h_hi = LIDAR_HEIGHTS[upper_idx]
+    t = h_lo == h_hi ? 0.0 :
+        (h_clamped - h_lo) / (h_hi - h_lo)
+    # Lidar direction: deg CW from N (wind from).
+    # Convert to ENU rad (CCW from E, wind to).
+    wdir_lo = deg2rad(270.0 - getproperty(raw,
+        Symbol("$(h_lo)m_Wind_Direction_deg")))
+    wdir_hi = deg2rad(270.0 - getproperty(raw,
+        Symbol("$(h_hi)m_Wind_Direction_deg")))
+    wh_lo = getproperty(raw,
+        Symbol("$(h_lo)m_Wind_Speed_m_s"))
+    wh_hi = getproperty(raw,
+        Symbol("$(h_hi)m_Wind_Speed_m_s"))
+    wv_lo = getproperty(raw,
+        Symbol("$(h_lo)m_Z-wind_m_s"))
+    wv_hi = getproperty(raw,
+        Symbol("$(h_hi)m_Z-wind_m_s"))
+    d = wdir_hi - wdir_lo
+    if d > π
+        wdir_hi -= 2π
+    elseif d < -π
+        wdir_hi += 2π
+    end
+    wdir = wdir_lo * (1 - t) + wdir_hi * t
+    wh   = wh_lo   * (1 - t) + wh_hi   * t
+    wv   = wv_lo   * (1 - t) + wv_hi   * t
+    return wdir, wh, wv
+end
+
+"""
+    compute_wind_vec(raw, altitude;
+        speed_source=:ekf, dir_source=:ekf) ->
+        Vector{Float64}
+
+Wind vector in the world (ENU) frame at the kite's
+altitude. Magnitude (`norm`) comes from `speed_source`,
+unit direction (`normalize`) from `dir_source`. When the
+two match, returns the source's own vector unchanged.
+
+Each source may be `:ekf` (uses `raw.ekf_wind_*`,
+altitude ignored) or `:lidar` (interpolates per-altitude
+lidar fields via `interpolate_lidar_wind`).
+"""
+function compute_wind_vec(raw, altitude;
+        speed_source=:ekf, dir_source=:ekf)
+    speed_vec = _wind_vec_from_source(
+        raw, altitude, speed_source)
+    speed_source === dir_source && return speed_vec
+    dir_vec = _wind_vec_from_source(
+        raw, altitude, dir_source)
+    return norm(speed_vec) .* normalize(dir_vec)
+end
+
+function _wind_vec_from_source(raw, altitude, source)
+    if source === :ekf
+        wdir = raw.ekf_wind_direction
+        wh   = raw.ekf_wind_speed_horizontal
+        wv   = raw.ekf_wind_speed_vertical
+    elseif source === :lidar
+        wdir, wh, wv = interpolate_lidar_wind(raw,
+            altitude)
+    else
+        error("Unknown wind source: $source " *
+            "(expected :ekf or :lidar)")
+    end
+    return [wh * cos(wdir), wh * sin(wdir), wv]
+end
