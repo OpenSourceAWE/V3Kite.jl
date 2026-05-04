@@ -28,6 +28,10 @@ Base.@kwdef mutable struct V3SettleConfig
     min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
     decay_steps::Int = 2000
     body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
+    # Per-point overrides applied AFTER body_damping
+    body_damping_overrides::Vector{
+        Tuple{UnitRange{Int}, Vector{Float64}}} =
+        Tuple{UnitRange{Int}, Vector{Float64}}[]
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -49,6 +53,8 @@ Base.@kwdef mutable struct V3SettleConfig
     # Depower ramp (power-zone settling only)
     start_depower::Union{Nothing,Float64} = nothing
     end_depower::Union{Nothing,Float64} = nothing
+
+    course_correction_gain::Float64 = 0.3
 
     # Model options
     fix_sphere_idxs::Vector{Int} = Int[]
@@ -140,19 +146,21 @@ function settle_wing(config::V3SettleConfig;
                     dest_struc, init_row)
             end
         catch err
-            is_unstable = err isa ErrorException &&
-                contains(err.msg, "Unstable")
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
                     for (e, _) in current_exceptions())
-            if is_unstable
-                @warn "Settling failed" msg=err.msg
-                settle_failed = true
-            elseif is_interrupt
+            if is_interrupt
                 @warn "Settling interrupted"
+                settle_failed = true
+            elseif err isa ErrorException
+                @warn "Settling failed" msg=err.msg
                 settle_failed = true
             else
                 rethrow(err)
+            end
+            try
+                syslog = load_log("settle_refine_wing")
+            catch
             end
         end
     end
@@ -192,7 +200,7 @@ function settle_wing(config::V3SettleConfig;
             remake_vsm=true)
     end
 
-    return sam, syslog
+    return sam, syslog, settle_failed
 end
 
 """
@@ -223,6 +231,10 @@ function _setup_settling_model(config::V3SettleConfig;
         sys, config.world_damping)
     SymbolicAWEModels.set_body_frame_damping(
         sys, config.body_damping)
+    for (rng, damp) in config.body_damping_overrides
+        SymbolicAWEModels.set_body_frame_damping(
+            sys, damp, rng)
+    end
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
@@ -330,6 +342,13 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
+    data_pos = [init_row.x, init_row.y, init_row.z]
+    data_vel = [init_row.vx, init_row.vy, init_row.vz]
+    R_t_to_w = SymbolicAWEModels.calc_R_t_to_w(data_pos)
+    target_course = atan(
+        data_vel ⋅ R_t_to_w[:, 2],
+        data_vel ⋅ R_t_to_w[:, 1])
+
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
         set_depower!(sys, config.start_depower / 100.0, 0.0, gc)
@@ -357,46 +376,84 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     @info "Starting power-zone settling..." num_substeps=config.num_substeps
     wing = sys.wings[1]
     failed = false
-    for step in 1:config.num_steps
-        damping = max(config.world_damping *
-            (1.0 - step / config.decay_steps),
-            config.min_damping)
-        SymbolicAWEModels.set_world_frame_damping(
-            sys, damping)
+    try
+        for step in 1:config.num_steps
+            damping = max(config.world_damping *
+                (1.0 - step / config.decay_steps),
+                config.min_damping)
+            SymbolicAWEModels.set_world_frame_damping(
+                sys, damping)
 
-        # Ramp depower linearly over settling steps
-        if !isnothing(config.start_depower)
-            dp_end = isnothing(config.end_depower) ?
-                init_row.depower * 100.0 :
-                config.end_depower
-            frac = (step - 1) / max(config.num_steps - 1, 1)
-            dp = config.start_depower +
-                frac * (dp_end - config.start_depower)
-            set_depower!(sys, dp / 100.0, 0.0, gc)
-        end
-
-        SymbolicAWEModels.reposition!(
-            sys.transforms, sys)
-        SymbolicAWEModels.reinit!(
-            sam, sam.prob, SymbolicAWEModels.FBDF())
-
-        for sub in 1:config.num_substeps
-            global_step = (step - 1) * config.num_substeps + sub
-            t = global_step * config.dt
-
-            if !sim_step!(sam; dt=config.dt, vsm_interval=1)
-                @error "Simulation failed" step sub t
-                failed = true
-                break
+            # Ramp depower linearly over settling steps
+            if !isnothing(config.start_depower)
+                dp_end = isnothing(config.end_depower) ?
+                    init_row.depower * 100.0 :
+                    config.end_depower
+                frac = (step - 1) /
+                    max(config.num_steps - 1, 1)
+                dp = config.start_depower +
+                    frac * (dp_end - config.start_depower)
+                set_depower!(sys, dp / 100.0, 0.0, gc)
             end
 
-            log_state!(logger, sys_state, sam, t)
+            SymbolicAWEModels.reposition!(
+                sys.transforms, sys)
+            SymbolicAWEModels.reinit!(
+                sam, sam.prob, SymbolicAWEModels.FBDF())
 
-            if show_progress && global_step % 20 == 0
-                @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+            for sub in 1:config.num_substeps
+                global_step =
+                    (step - 1) * config.num_substeps + sub
+                t = global_step * config.dt
+
+                if !sim_step!(sam; dt=config.dt,
+                        vsm_interval=1)
+                    @error "Simulation failed" step sub t
+                    failed = true
+                    break
+                end
+
+                log_state!(logger, sys_state, sam, t)
+
+                if show_progress && global_step % 20 == 0
+                    @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                end
+            end
+            failed && break
+
+            course_diff = wrap_to_pi(
+                target_course - wing.course)
+            delta_heading =
+                config.course_correction_gain * course_diff
+            old_heading = sys.transforms[1].heading
+            sys.transforms[1].heading = wrap_to_pi(
+                old_heading + delta_heading)
+
+            # reposition! does not rotate vel_w
+            transform = sys.transforms[1]
+            base_pos = sys.points[
+                transform.base_point_idx].pos_w
+            k = normalize(wing.pos_w - base_pos)
+            wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(
+                wing.vel_w, k, delta_heading)
+            for point in sys.points
+                point.transform_idx == transform.idx ||
+                    continue
+                point.vel_w .=
+                    SymbolicAWEModels.rotate_v_around_k(
+                        point.vel_w, k, delta_heading)
+            end
+
+            if show_progress && step % 4 == 0
+                @info "Course correction step $step" target_course=round(rad2deg(target_course), digits=2) wing_course=round(rad2deg(wing.course), digits=2) course_diff=round(rad2deg(course_diff), digits=2) old_heading=round(rad2deg(old_heading), digits=2) new_heading=round(rad2deg(sys.transforms[1].heading), digits=2)
             end
         end
-        failed && break
+    catch err
+        if logger.index > 1
+            @warn "Settling crashed, saving partial log" msg=sprint(showerror, err)
+            save_log(logger, "settle_refine_wing")
+        end
+        rethrow(err)
     end
 
     # Copy settled world positions into CAD slots so

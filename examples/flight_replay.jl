@@ -41,16 +41,17 @@ using SymbolicAWEModels
 
 generate_drag_adjusted_polars(1.0)
 
+LOAD_FROM_DISK = false   # toggle to skip sim and just plot
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -9.0
+DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
-STEERING_OFFSET = 0.0
+STEERING_OFFSET = 2.5
 DISTANCE_BASED_STEERING = false
 REDUCE_STEERING = true
 STEERING_REDUCTION = 0.2
@@ -64,6 +65,8 @@ POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "..",
     "T26-BART", "figures")
+WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
+WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
 
 # Maneuver selection
 if YEAR == 2025
@@ -189,11 +192,17 @@ function run_physics_replay(h5_path;
         R_b_w = quat2R(euler_to_quaternion(
             raw.ekf_kite_roll, raw.ekf_kite_pitch,
             raw.ekf_kite_yaw))
-        wdir = raw.ekf_wind_direction
-        wh = raw.ekf_wind_speed_horizontal
-        wv = raw.ekf_wind_speed_vertical
-        wind_vec = [wh * cos(wdir),
-                    wh * sin(wdir), wv]
+        alt = raw.ekf_kite_position_z
+        wind_vec_ekf = compute_wind_vec(raw, alt;
+            speed_source=:ekf, dir_source=:ekf)
+        wind_vec_lidar = compute_wind_vec(raw, alt;
+            speed_source=:lidar, dir_source=:lidar)
+        wind_vec = compute_wind_vec(raw, alt;
+            speed_source=WIND_SOURCE_SPEED,
+            dir_source=WIND_SOURCE_DIR)
+        wh = sqrt(wind_vec[1]^2 + wind_vec[2]^2)
+        wv = wind_vec[3]
+        wdir = atan(wind_vec[2], wind_vec[1])
         kite_vel = [raw.ekf_kite_velocity_x,
                     raw.ekf_kite_velocity_y,
                     raw.ekf_kite_velocity_z]
@@ -220,11 +229,10 @@ function run_physics_replay(h5_path;
             depower = dp,
             distance = raw.distance,
             cumulative_distance = raw.cumulative_distance,
-            wind_speed = raw.ekf_wind_speed_horizontal,
+            wind_speed = wh,
             upwind_dir = wrap_to_pi(
                 -wdir - π/2),
-            wind_speed_vertical =
-                raw.ekf_wind_speed_vertical,
+            wind_speed_vertical = wv,
             R_b_w = R_b_w,
             v_app = raw.ekf_kite_apparent_windspeed,
             drag_coeff = raw.ekf_wing_drag_coefficient,
@@ -237,6 +245,8 @@ function run_physics_replay(h5_path;
                 raw.ekf_kcu_drag_coefficient,
             wind_elevation = atan(wv, wh),
             wind_vec = wind_vec,
+            wind_vec_ekf = wind_vec_ekf,
+            wind_vec_lidar = wind_vec_lidar,
             kite_aoa = kite_aoa,
             wing_aoa = wing_aoa,
         )
@@ -254,14 +264,17 @@ function run_physics_replay(h5_path;
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         world_damping=0.0,
-        body_damping=BODY_DAMPING,
+        body_damping=BODY_DAMPING*2.0,
+        body_damping_overrides=[
+            (37:38, POINT_37_38_DAMPING*2.0)],
         min_damping=0.0,
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
-        num_steps=1000,
+        num_steps=400,
         num_substeps=5,
         start_depower=row1.depower * 100.0 + 10.0,
+        course_correction_gain=0.05,
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
             reduce_depower=false,
@@ -275,11 +288,6 @@ function run_physics_replay(h5_path;
     data_sam = nothing
     logger = nothing
     data_logger = nothing
-    sim_tape = (time=Float64[], steering=Float64[],
-        depower=Float64[])
-    data_tape = (time=Float64[], steering=Float64[],
-        depower=Float64[])
-    frame_syslog_idxs = Tuple{Int, Int}[]
     replay_start = time()
     dt = data.time[2] - data.time[1]
 
@@ -296,9 +304,21 @@ function run_physics_replay(h5_path;
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
 
+    settle_failed = false
     if SETTLE
-        sam, settle_log = settle_wing(settle_config;
-            init_row=row1, power_zone=true, remake=false)
+        sam, settle_log, settle_failed =
+            settle_wing(settle_config;
+                init_row=row1, power_zone=true,
+                remake=false)
+        if settle_failed
+            @warn "Settling failed — skipping sim"
+            base_name = build_replay_name(h5_path,
+                start_utc, end_utc,
+                row1.depower, row1.steering,
+                settle_config.geom)
+            return sam, nothing, nothing, nothing, data,
+                settle_config, settle_log, dt, base_name
+        end
     else
         set_data_path(data_path)
         set = Settings("system.yaml")
@@ -379,15 +399,15 @@ function run_physics_replay(h5_path;
         data_R_b_w = row.R_b_w
         data_state.var_08 = compute_bridle_pitch_angle(
             data_sam.sys_struct, data_R_b_w)
-        data_state.v_wind_gnd .= row.wind_vec
+        data_state.v_wind_gnd .= row.wind_vec_ekf
+        data_state.v_wind_200m .= row.wind_vec_lidar
         data_state.AoA = row.kite_aoa
         data_state.var_04 = row.kite_aoa
         data_state.var_12 = row.wing_aoa
+        data_state.set_steering = row.steering
+        data_state.depower = row.depower
+        data_state.var_14 = row.video_frame
         log!(data_logger, data_state)
-
-        push!(data_tape.time, row.time)
-        push!(data_tape.steering, row.steering)
-        push!(data_tape.depower, row.depower)
     end
 
     sim_cum_dist = 0.0
@@ -487,24 +507,11 @@ function run_physics_replay(h5_path;
             end
         end
 
-        # Record syslog index for matched frames
-        if step <= n_data_steps - 1
-            for (_, frame) in frame_csvs
-                if row.video_frame == frame &&
-                        !any(x -> x[1] == frame,
-                            frame_syslog_idxs)
-                    push!(frame_syslog_idxs,
-                        (frame, logger.index))
-                end
-            end
-        end
-
-        log_state!(logger, sys_state, sam,
-            sim_time)
-
-        push!(sim_tape.time, sim_time)
-        push!(sim_tape.steering, eff_steer)
-        push!(sim_tape.depower, eff_dep)
+        log_state!(logger, sys_state, sam, sim_time;
+            set_steering=eff_steer, depower=eff_dep,
+            video_frame=row.video_frame,
+            wind_vec_ekf=row.wind_vec_ekf,
+            wind_vec_lidar=row.wind_vec_lidar)
 
         if DISTANCE_BASED_STEERING
             pct = sim_cum_dist / total_data_dist
@@ -552,11 +559,10 @@ function run_physics_replay(h5_path;
         is_interrupt = err isa InterruptException ||
             any(e isa InterruptException
                 for (e, _) in current_exceptions())
-        if err isa ErrorException &&
-                contains(err.msg, "Unstable")
-            @warn "Solver unstable" msg=err.msg
-        elseif is_interrupt
+        if is_interrupt
             @warn "Interrupted, stopping sim"
+        elseif err isa ErrorException
+            @warn "Sim aborted, keeping partial log" msg=err.msg
         else
             rethrow(err)
         end
@@ -582,88 +588,106 @@ function run_physics_replay(h5_path;
     end
 
     return sam, syslog, data_sam, datalog, data,
-        sim_tape, data_tape, frame_syslog_idxs,
         settle_config, settle_log, dt, base_name
 end
 
 # =============================================================================
-# Main execution
+# Plot helpers
 # =============================================================================
 
-sam, syslog, data_sam, datalog, data, sim_tape, data_tape,
-    frame_syslog_idxs,
-    settle_config, settle_log, dt,
-    base_name = run_physics_replay(h5_path)
-geom_config = settle_config.geom
+"""
+    syslog_to_tape(syslog) -> NamedTuple
 
-function create_plots()
-    global fig, trajectory, panels, traj_2d, panels_2d
-    global yaw_fig_heading, yaw_fig_course
-    global body, twist, hdot_fig
-    fig = plot_replay(
-        [sam.sys_struct, data_sam.sys_struct],
-        [syslog, datalog];
-        tape_lengths=[sim_tape, data_tape],
-        suffixes=["simulation", "data"],
-        size=(1200, 800), labelsize=18)
+Build a `(time, steering, depower)` tape from a syslog,
+reading the inputs from `sl.set_steering` and `sl.depower`.
+Used for plot functions that still take a `tapes` argument.
+"""
+function syslog_to_tape(syslog)
+    sl = hasproperty(syslog, :syslog) ? syslog.syslog :
+        syslog
+    return (time=collect(sl.time),
+        steering=collect(sl.set_steering),
+        depower=collect(sl.depower))
+end
 
-    _logs = [syslog, datalog]
-    _tapes = [sim_tape, data_tape]
+function create_replay_plots(;
+        sys_struct, data_sys_struct,
+        syslog, datalog,
+        frame_csvs,
+        geom::V3GeomAdjustConfig,
+        section, distance_based_steering,
+        depower_offset_pct,
+        figures_dir, save_figs)
+    dt = syslog.syslog.time[2] - syslog.syslog.time[1]
+    frame_syslog_idxs = find_frame_syslog_idxs(
+        syslog, frame_csvs)
+
+    sim_tape  = syslog_to_tape(syslog)
+    data_tape = syslog_to_tape(datalog)
+    _logs   = [syslog, datalog]
+    _tapes  = [sim_tape, data_tape]
     _labels = ["simulation", "data"]
+
+    fig = plot_replay(
+        [sys_struct, data_sys_struct],
+        _logs;
+        tape_lengths=_tapes,
+        suffixes=_labels,
+        size=(1200, 800), labelsize=18)
 
     # GLMakie display
     trajectory = plot_2d_trajectory(_logs;
         gradient=:vel, tapes=_tapes, labels=_labels,
         size=(560, 420), labelsize=20,
-        frame_indexes=frame_syslog_idxs,
-)
+        frame_indexes=frame_syslog_idxs)
     panels = plot_2d_panels(_logs;
         tapes=_tapes, labels=_labels,
         show_aoa=true, labelsize=20,
-        twin_time_axes=DISTANCE_BASED_STEERING,
+        twin_time_axes=distance_based_steering,
         frame_indexes=frame_syslog_idxs,
         show_heading=true,
+        show_course=true,
         show_drag_coeff=false,
         show_lift_coeff=false,
         show_lift_drag_ratio=true)
 
     # CairoMakie PDF saves
-    sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
-    tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
-    dist_suffix = DISTANCE_BASED_STEERING ?
+    sr = geom.reduce_steering ? geom.steering_reduction : 0.0
+    tr = geom.reduce_tip ? geom.tip_reduction : 0.0
+    dist_suffix = distance_based_steering ?
         "_dist" : ""
-    config_suffix = "_dpoff_$(DEPOWER_OFFSET_2025)" *
+    config_suffix = "_dpoff_$(depower_offset_pct)" *
         "_sr_$(sr)_tr_$(tr)"
-    suffix = "_$(SECTION)" * config_suffix
+    suffix = "_$(section)" * config_suffix
     CairoMakie.activate!()
     traj_2d = plot_2d_trajectory(_logs;
         gradient=:vel, tapes=_tapes, labels=_labels,
         size=(560, 420), labelsize=20,
-        frame_indexes=frame_syslog_idxs,
-)
+        frame_indexes=frame_syslog_idxs)
     panels_2d = plot_2d_panels(_logs;
         tapes=_tapes, labels=_labels,
         show_aoa=true, labelsize=20,
-        twin_time_axes=DISTANCE_BASED_STEERING,
+        twin_time_axes=distance_based_steering,
         frame_indexes=frame_syslog_idxs,
         show_heading=true,
+        show_course=true,
         show_drag_coeff=false,
         show_lift_coeff=false,
         show_lift_drag_ratio=true)
-    if SAVE_FIGS
-        mkpath(FIGURES_DIR)
+    if save_figs
+        mkpath(figures_dir)
         traj_fname = "trajectory_2d$(suffix).pdf"
         panels_fname = "panels_2d$(suffix).pdf"
         @info "Saving $traj_fname"
         save(traj_fname, traj_2d)
-        fig_traj = joinpath(FIGURES_DIR, replace(
+        fig_traj = joinpath(figures_dir, replace(
             traj_fname,
             ".pdf" => "$(dist_suffix).pdf"))
         @info "Saving $fig_traj"
         save(fig_traj, traj_2d)
         @info "Saving $panels_fname"
         save(panels_fname, panels_2d)
-        fig_panels = joinpath(FIGURES_DIR, replace(
+        fig_panels = joinpath(figures_dir, replace(
             panels_fname,
             ".pdf" => "$(dist_suffix).pdf"))
         @info "Saving $fig_panels"
@@ -672,18 +696,16 @@ function create_plots()
     GLMakie.activate!()
 
     yaw_fig_heading = plot_yaw_rate_vs_steering(
-        [syslog, datalog],
-        [sim_tape, data_tape];
+        _logs;
         source=:heading,
         min_steering=0.05,
-        labels=["simulation", "data"],
+        labels=_labels,
         figsize=(600, 400), labelsize=18, dt)
     yaw_fig_course = plot_yaw_rate_vs_steering(
-        [syslog, datalog],
-        [sim_tape, data_tape];
+        _logs;
         source=:course,
         min_steering=0.05,
-        labels=["simulation", "data"],
+        labels=_labels,
         figsize=(600, 400), labelsize=18, dt)
 
     # 2D body frame plots for PDF export
@@ -698,34 +720,29 @@ function create_plots()
             frame_syslog_idxs)
         isnothing(idx) && continue
         _, syslog_idx = frame_syslog_idxs[idx]
-        update_from_sysstate!(
-            sam.sys_struct,
+        update_from_sysstate!(sys_struct,
             syslog.syslog[syslog_idx])
         pts, groups = load_extra_points(
-            csv, sam.sys_struct)
+            csv, sys_struct)
         ann = get(frame_annotations, fi, "")
         frame_figs = Dict{Symbol, Any}()
-        sr = REDUCE_STEERING ? STEERING_REDUCTION : 0.0
-        tr = REDUCE_TIP ? TIP_REDUCTION : 0.0
         for dir in (:front, :side, :top)
             show_leg = dir == :side &&
                 target_frame == 7362
-            no_adjust = !REDUCE_STEERING &&
-                !REDUCE_TIP
+            no_adjust = !geom.reduce_steering &&
+                !geom.reduce_tip
             if dir == :front && no_adjust
                 show_leg = true
             end
             leg_pos = dir == :front ? :top : :right
-            is_side = dir == :side
             dir_ann = if dir == :front
-                REDUCE_TIP ?
+                geom.reduce_tip ?
                     "bridle reduced $(tr)m" :
                     "bridle unreduced"
             else
                 ann
             end
-            bf = plot_body_frame_local(
-                sam.sys_struct;
+            bf = plot_body_frame_local(sys_struct;
                 extra_points=pts,
                 extra_groups=groups, dir,
                 title=false, legend=show_leg,
@@ -735,21 +752,20 @@ function create_plots()
                 show_camera=false,
                 annotation=dir_ann)
             fname = "body_frame_$(dir)" *
-                "_$(SECTION)" *
+                "_$(section)" *
                 "_frame_$(target_frame)" *
                 "$(config_suffix).pdf"
-            if SAVE_FIGS
+            if save_figs
                 @info "Saving $fname"
                 save(fname, bf)
                 fig_fname = replace(fname,
                     ".pdf" => "$(dist_suffix).pdf")
-                save(joinpath(FIGURES_DIR, fig_fname), bf)
+                save(joinpath(figures_dir, fig_fname), bf)
             end
             frame_figs[dir] = bf
         end
         # Twist distribution
-        twist_fig = plot_twist_dist(
-            sam.sys_struct;
+        twist_fig = plot_twist_dist(sys_struct;
             extra_points=pts,
             extra_groups=groups,
             figsize=(560*0.8, 210*0.8),
@@ -758,15 +774,15 @@ function create_plots()
             limits=(-3, 14),
             annotation=ann)
         twist_fname = "twist_dist" *
-            "_$(SECTION)" *
+            "_$(section)" *
             "_frame_$(target_frame)" *
             "$(config_suffix).pdf"
-        if SAVE_FIGS
+        if save_figs
             @info "Saving $twist_fname"
             save(twist_fname, twist_fig)
             fig_twist = replace(twist_fname,
                 ".pdf" => "$(dist_suffix).pdf")
-            save(joinpath(FIGURES_DIR, fig_twist),
+            save(joinpath(figures_dir, fig_twist),
                 twist_fig)
         end
         twist[target_frame] = twist_fig
@@ -779,26 +795,23 @@ function create_plots()
 
     # Average gk for |steering| > 5%
     mean_gk = Dict{Tuple{String,Symbol},Float64}()
-    for (label, lg, tape) in [("sim", syslog, sim_tape),
-                               ("data", datalog, data_tape)]
+    for (label, lg) in [("sim", syslog),
+                         ("data", datalog)]
         sl = lg.syslog
         for source in (:heading, :course)
             rate = calc_turn_rate(lg; source, dt)
-            us = tape.steering[2:end]
+            us = sl.set_steering[2:end]
             va = sl.v_app[2:end]
             mask = abs.(us) .> 0.05
             gk_vals = rate[mask] ./ (va[mask] .* us[mask])
             mean_gk[(label, source)] = mean(gk_vals)
-            @info "Mean gk" label source gk=round(
-                mean_gk[(label, source)]; digits=3)
         end
     end
     for source in (:heading, :course)
-        pct = (mean_gk[("sim", source)] -
-            mean_gk[("data", source)]) /
-            mean_gk[("data", source)] * 100
-        @info "gk difference" source pct=round(pct;
-            digits=1)
+        sim_gk  = mean_gk[("sim",  source)]
+        data_gk = mean_gk[("data", source)]
+        pct = (sim_gk - data_gk) / data_gk * 100
+        @info "Mean gk" source sim=round(sim_gk; digits=3) data=round(data_gk; digits=3) pct=round(pct; digits=1)
     end
 
     n_steer = min(length(sim_tape.steering),
@@ -809,13 +822,78 @@ function create_plots()
             mean(steer_diff); digits=4) mean_abs=round(
             mean(abs.(steer_diff)); digits=4)
 
-    hdot_fig = plot_turn_rate_vs_time(
-        [syslog, datalog];
+    hdot_fig = plot_turn_rate_vs_time(_logs;
         labels=["sim", "data"], dt)
     display(hdot_fig)
 
-    panels
+    wind_fig = plot_wind_compare(datalog)
+    display(wind_fig)
+
+    return (; fig, trajectory, panels, traj_2d, panels_2d,
+        yaw_fig_heading, yaw_fig_course,
+        body, twist, hdot_fig, wind_fig)
 end
+
+# =============================================================================
+# Main execution
+# =============================================================================
+
+geom_config = V3GeomAdjustConfig(
+    reduce_tip=REDUCE_TIP, reduce_te=true,
+    reduce_depower=false,
+    reduce_steering=REDUCE_STEERING,
+    steering_reduction=STEERING_REDUCTION,
+    tip_reduction=TIP_REDUCTION,
+    depower_offset=DEPOWER_OFFSET_2025 / 100.0)
+
+if LOAD_FROM_DISK
+    full_data = load_flight_data(h5_path)
+    limited_data, _ = limit_by_utc(
+        full_data, start_utc, end_utc)
+    is_2019 = occursin("2019", basename(h5_path))
+    raw_dp = limited_data.kcu_actual_depower[1]
+    row1_depower = is_2019 ?
+        (0.2564 - 0.0768 * raw_dp / 100.0) +
+            DEPOWER_OFFSET_2019 / 100.0 :
+        raw_dp / 100.0
+    row1_steering = limited_data.kcu_actual_steering[1] /
+        100.0
+    base_name = build_replay_name(h5_path, start_utc,
+        end_utc, row1_depower, row1_steering, geom_config)
+    syslog  = load_log(base_name * "_sim")
+    datalog = load_log(base_name * "_data")
+
+    data_path = v3_data_path()
+    set_data_path(data_path)
+    set = Settings("system.yaml")
+    set.g_earth = 9.81
+    set.profile_law = 0
+    source_struc = joinpath(data_path,
+        "struc_geometry.yaml")
+    source_aero = joinpath(data_path,
+        "aero_geometry.yaml")
+    vsm_path = joinpath(data_path, "vsm_settings.yaml")
+    vsm_set = VortexStepMethod.VSMSettings(
+        vsm_path; data_prefix=false)
+    vsm_set.wings[1].geometry_file = source_aero
+    sam, _ = build_replay_sys_struct(
+        set, geom_config, source_struc, vsm_set)
+    data_sam, _ = build_replay_sys_struct(
+        set, geom_config, source_struc, vsm_set)
+else
+    sam, syslog, data_sam, datalog, data,
+        settle_config, settle_log, dt,
+        base_name = run_physics_replay(h5_path)
+end
+
 if !isnothing(syslog)
-    create_plots()
+    plots = create_replay_plots(;
+        sys_struct=sam.sys_struct,
+        data_sys_struct=data_sam.sys_struct,
+        syslog, datalog,
+        frame_csvs, geom=geom_config,
+        section=SECTION,
+        distance_based_steering=DISTANCE_BASED_STEERING,
+        depower_offset_pct=DEPOWER_OFFSET_2025,
+        figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
 end
