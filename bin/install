@@ -433,10 +433,10 @@ echo "include(\"examples/menu.jl\")"
 
 # Add alias to shell configuration file
 if [[ "$(uname -s)" == "Linux" && -f ~/.bashrc ]]; then
-    if ! grep -q "alias v3j='bin/run_julia'" ~/.bashrc; then
-        echo "alias v3j='bin/run_julia'" >> ~/.bashrc
+    if ! grep -q "alias jl='bin/run_julia'" ~/.bashrc; then
+        echo "alias jl='bin/run_julia'" >> ~/.bashrc
         echo
-        echo "Added alias 'v3j' to ~/.bashrc"
+        echo "Added alias 'jl' to ~/.bashrc"
         echo "Run 'source ~/.bashrc' or restart your terminal to use it"
     fi
 elif [[ "$(uname -s)" == "Darwin" ]]; then
@@ -451,10 +451,10 @@ elif [[ "$(uname -s)" == "Darwin" ]]; then
     fi
 
     if [[ -n "$_config_file" ]]; then
-        if ! grep -q "alias v3j='bin/run_julia'" "$_config_file"; then
-            echo "alias v3j='bin/run_julia'" >> "$_config_file"
+        if ! grep -q "alias jl='bin/run_julia'" "$_config_file"; then
+            echo "alias jl='bin/run_julia'" >> "$_config_file"
             echo
-            echo "Added alias 'v3j' to $_config_file"
+            echo "Added alias 'jl' to $_config_file"
             echo "Run 'source $_config_file' or restart your terminal to use it"
         fi
     fi
