@@ -21,6 +21,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using VortexStepMethod
 using SymbolicAWEModels: reposition!, rotate_around_z,
     rotate_around_y, calc_steady_torque, FBDF
 using GLMakie
