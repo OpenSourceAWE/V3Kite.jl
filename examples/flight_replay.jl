@@ -19,9 +19,7 @@ end
 
 using V3Kite
 using VortexStepMethod
-using SymbolicAWEModels: reposition!, rotate_around_x,
-    rotate_around_z, rotate_around_y,
-    calc_steady_torque, FBDF
+using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
@@ -33,7 +31,6 @@ using OrdinaryDiffEqBDF
 using KiteUtils
 
 using Dates
-using SymbolicAWEModels
 
 # =============================================================================
 # Configuration
