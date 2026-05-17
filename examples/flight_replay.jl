@@ -63,8 +63,7 @@ AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
 POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
 SAVE_FIGS = true
-FIGURES_DIR = joinpath(@__DIR__, "..", "..",
-    "T26-BART", "figures")
+FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
 WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
 
@@ -679,14 +678,14 @@ function create_replay_plots(;
         traj_fname = "trajectory_2d$(suffix).pdf"
         panels_fname = "panels_2d$(suffix).pdf"
         @info "Saving $traj_fname"
-        save(traj_fname, traj_2d)
+        save(joinpath(figures_dir, traj_fname), traj_2d)
         fig_traj = joinpath(figures_dir, replace(
             traj_fname,
             ".pdf" => "$(dist_suffix).pdf"))
         @info "Saving $fig_traj"
         save(fig_traj, traj_2d)
         @info "Saving $panels_fname"
-        save(panels_fname, panels_2d)
+        save(joinpath(figures_dir, panels_fname), panels_2d)
         fig_panels = joinpath(figures_dir, replace(
             panels_fname,
             ".pdf" => "$(dist_suffix).pdf"))
@@ -757,7 +756,7 @@ function create_replay_plots(;
                 "$(config_suffix).pdf"
             if save_figs
                 @info "Saving $fname"
-                save(fname, bf)
+                save(joinpath(figures_dir, fname), bf)
                 fig_fname = replace(fname,
                     ".pdf" => "$(dist_suffix).pdf")
                 save(joinpath(figures_dir, fig_fname), bf)
@@ -779,7 +778,7 @@ function create_replay_plots(;
             "$(config_suffix).pdf"
         if save_figs
             @info "Saving $twist_fname"
-            save(twist_fname, twist_fig)
+            save(joinpath(figures_dir, twist_fname), twist_fig)
             fig_twist = replace(twist_fname,
                 ".pdf" => "$(dist_suffix).pdf")
             save(joinpath(figures_dir, fig_twist),
