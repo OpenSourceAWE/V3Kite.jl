@@ -976,7 +976,6 @@ segments:
       idx,
       point_i,
       point_j,
-      type,
       l0,
       diameter_mm,
       unit_stiffness,
@@ -988,60 +987,60 @@ segments:
     # Wing structural elements - leading edge tubes (hardcoded stiffness, not dyneema)
     # =2e6 for stiffness tubular frame
     # =5e5 stiffness wires
-    - [1, 2, 4, POWER_LINE, 0.984642, 1.0, 1e6, 2e3, 1]
-    - [2, 4, 6, POWER_LINE, 1.327663, 1.0, 1e6, 2e3, 1]
-    - [3, 6, 8, POWER_LINE, 1.326240, 1.0, 1e6, 2e3, 1]
-    - [4, 8, 10, POWER_LINE, 1.323655, 1.0, 1e6, 2e3, 1]
-    - [5, 10, 12, POWER_LINE, 1.347595, 1.0, 1e6, 2e3, 1]
-    - [6, 12, 14, POWER_LINE, 1.323655, 1.0, 1e6, 2e3, 1]
-    - [7, 14, 16, POWER_LINE, 1.326240, 1.0, 1e6, 2e3, 1]
-    - [8, 16, 18, POWER_LINE, 1.327663, 1.0, 1e6, 2e3, 1]
-    - [9, 18, 20, POWER_LINE, 0.984642, 1.0, 1e6, 2e3, 1]
+    - [1, 2, 4, 0.984642, 1.0, 1e6, 2e3, 1]
+    - [2, 4, 6, 1.327663, 1.0, 1e6, 2e3, 1]
+    - [3, 6, 8, 1.326240, 1.0, 1e6, 2e3, 1]
+    - [4, 8, 10, 1.323655, 1.0, 1e6, 2e3, 1]
+    - [5, 10, 12, 1.347595, 1.0, 1e6, 2e3, 1]
+    - [6, 12, 14, 1.323655, 1.0, 1e6, 2e3, 1]
+    - [7, 14, 16, 1.326240, 1.0, 1e6, 2e3, 1]
+    - [8, 16, 18, 1.327663, 1.0, 1e6, 2e3, 1]
+    - [9, 18, 20, 0.984642, 1.0, 1e6, 2e3, 1]
 
     #TODO: stiffness
     # Wing structural elements - struts (chords, hardcoded stiffness)
-    - [10, 2, 3, POWER_LINE, 1.074728, 1.0, 1e6, 2e3, 1]
-    - [11, 4, 5, POWER_LINE, 1.511911, 1.0, 1e6, 2e3, 1]
-    - [12, 6, 7, POWER_LINE, 1.960560, 1.0, 1e6, 2e3, 1]
-    - [13, 8, 9, POWER_LINE, 2.154185, 1.0, 1e6, 2e3, 1]
-    - [14, 10, 11, POWER_LINE, 2.265501, 1.0, 1e6, 2e3, 1]
-    - [15, 12, 13, POWER_LINE, 2.265501, 1.0, 1e6, 2e3, 1]
-    - [16, 14, 15, POWER_LINE, 2.154185, 1.0, 1e6, 2e3, 1]
-    - [17, 16, 17, POWER_LINE, 1.960560, 1.0, 1e6, 2e3, 1]
-    - [18, 18, 19, POWER_LINE, 1.511911, 1.0, 1e6, 2e3, 1]
-    - [19, 20, 21, POWER_LINE, 1.074728, 1.0, 1e6, 2e3, 1]
+    - [10, 2, 3, 1.074728, 1.0, 1e6, 2e3, 1]
+    - [11, 4, 5, 1.511911, 1.0, 1e6, 2e3, 1]
+    - [12, 6, 7, 1.960560, 1.0, 1e6, 2e3, 1]
+    - [13, 8, 9, 2.154185, 1.0, 1e6, 2e3, 1]
+    - [14, 10, 11, 2.265501, 1.0, 1e6, 2e3, 1]
+    - [15, 12, 13, 2.265501, 1.0, 1e6, 2e3, 1]
+    - [16, 14, 15, 2.154185, 1.0, 1e6, 2e3, 1]
+    - [17, 16, 17, 1.960560, 1.0, 1e6, 2e3, 1]
+    - [18, 18, 19, 1.511911, 1.0, 1e6, 2e3, 1]
+    - [19, 20, 21, 1.074728, 1.0, 1e6, 2e3, 1]
 
     #TODO: stiffness ratio between LE+struts & wires is crucial for stability
     # Wing structural elements - trailing edge wires (hardcoded stiffness)
-    - [20, 3, 5, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100]
-    - [21, 5, 7, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100]
-    - [22, 7, 9, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100]
-    - [23, 9, 11, POWER_LINE, 1.3505, 1.0, 5e5, 5e5, 0.100]
-    - [24, 11, 13, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100]
-    - [25, 13, 15, POWER_LINE, 1.3211, 1.0, 5e5, 5e5, 0.100]
-    - [26, 15, 17, POWER_LINE, 1.3506, 1.0, 5e5, 5e5, 0.100]
-    - [27, 17, 19, POWER_LINE, 1.3511, 1.0, 5e5, 5e5, 0.100]
-    - [28, 19, 21, POWER_LINE, 0.9039, 1.0, 5e5, 5e5, 0.100]
+    - [20, 3, 5, 0.9039, 1.0, 5e5, 5e5, 0.100]
+    - [21, 5, 7, 1.3511, 1.0, 5e5, 5e5, 0.100]
+    - [22, 7, 9, 1.3506, 1.0, 5e5, 5e5, 0.100]
+    - [23, 9, 11, 1.3505, 1.0, 5e5, 5e5, 0.100]
+    - [24, 11, 13, 1.3211, 1.0, 5e5, 5e5, 0.100]
+    - [25, 13, 15, 1.3211, 1.0, 5e5, 5e5, 0.100]
+    - [26, 15, 17, 1.3506, 1.0, 5e5, 5e5, 0.100]
+    - [27, 17, 19, 1.3511, 1.0, 5e5, 5e5, 0.100]
+    - [28, 19, 21, 0.9039, 1.0, 5e5, 5e5, 0.100]
 
     # Wing structural elements - diagonal springs (hardcoded stiffness)
-    - [29, 2, 5, POWER_LINE, 1.3604, 1.0, 5e5, 5e5, 0.100]
-    - [30, 3, 4, POWER_LINE, 1.78, 1.0, 5e5, 5e5, 0.100]
-    - [31, 4, 7, POWER_LINE, 2.1081, 1.0, 5e5, 5e5, 0.100]
-    - [32, 5, 6, POWER_LINE, 2.2515, 1.0, 5e5, 5e5, 0.100]
-    - [33, 6, 9, POWER_LINE, 2.4492, 1.0, 5e5, 5e5, 0.100]
-    - [34, 7, 8, POWER_LINE, 2.4555, 1.0, 5e5, 5e5, 0.100]
-    - [35, 8, 11, POWER_LINE, 2.601, 1.0, 5e5, 5e5, 0.100]
-    - [36, 9, 10, POWER_LINE, 2.5631, 1.0, 5e5, 5e5, 0.100]
-    - [37, 10, 13, POWER_LINE, 2.6292, 1.0, 5e5, 5e5, 0.100]
-    - [38, 11, 12, POWER_LINE, 2.6292, 1.0, 5e5, 5e5, 0.100]
-    - [39, 12, 15, POWER_LINE, 2.5631, 1.0, 5e5, 5e5, 0.100]
-    - [40, 13, 14, POWER_LINE, 2.601, 1.0, 5e5, 5e5, 0.100]
-    - [41, 14, 17, POWER_LINE, 2.4555, 1.0, 5e5, 5e5, 0.100]
-    - [42, 15, 16, POWER_LINE, 2.4492, 1.0, 5e5, 5e5, 0.100]
-    - [43, 16, 19, POWER_LINE, 2.2515, 1.0, 5e5, 5e5, 0.100]
-    - [44, 17, 18, POWER_LINE, 2.1081, 1.0, 5e5, 5e5, 0.100]
-    - [45, 18, 21, POWER_LINE, 1.78, 1.0, 5e5, 5e5, 0.100]
-    - [46, 19, 20, POWER_LINE, 1.3604, 1.0, 5e5, 5e5, 0.100]
+    - [29, 2, 5, 1.3604, 1.0, 5e5, 5e5, 0.100]
+    - [30, 3, 4, 1.78, 1.0, 5e5, 5e5, 0.100]
+    - [31, 4, 7, 2.1081, 1.0, 5e5, 5e5, 0.100]
+    - [32, 5, 6, 2.2515, 1.0, 5e5, 5e5, 0.100]
+    - [33, 6, 9, 2.4492, 1.0, 5e5, 5e5, 0.100]
+    - [34, 7, 8, 2.4555, 1.0, 5e5, 5e5, 0.100]
+    - [35, 8, 11, 2.601, 1.0, 5e5, 5e5, 0.100]
+    - [36, 9, 10, 2.5631, 1.0, 5e5, 5e5, 0.100]
+    - [37, 10, 13, 2.6292, 1.0, 5e5, 5e5, 0.100]
+    - [38, 11, 12, 2.6292, 1.0, 5e5, 5e5, 0.100]
+    - [39, 12, 15, 2.5631, 1.0, 5e5, 5e5, 0.100]
+    - [40, 13, 14, 2.601, 1.0, 5e5, 5e5, 0.100]
+    - [41, 14, 17, 2.4555, 1.0, 5e5, 5e5, 0.100]
+    - [42, 15, 16, 2.4492, 1.0, 5e5, 5e5, 0.100]
+    - [43, 16, 19, 2.2515, 1.0, 5e5, 5e5, 0.100]
+    - [44, 17, 18, 2.1081, 1.0, 5e5, 5e5, 0.100]
+    - [45, 18, 21, 1.78, 1.0, 5e5, 5e5, 0.100]
+    - [46, 19, 20, 1.3604, 1.0, 5e5, 5e5, 0.100]
 
     # Bridle segments - left front lines (non-compressive, using dyneema material)
 
@@ -1049,114 +1048,114 @@ segments:
     # AIII/Br,main,2 + a5,e * 2 + a5
     # 11420 + 2*115 + 278 = 11928 mm total, but pulley
     # 11928 / 2 = 5964 mm per half
-    - [47, 2, 45, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01] # AIII/Br,main,2 or a6 first half (pulley)
-    - [48, 45, 46, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [49, 46, 26, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [50, 2, 47, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01] # AIII/Br,main,2 or a6 second half (pulley)
-    - [51, 47, 48, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [52, 48, 34, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [47, 2, 45, 1.988, 2.0, dyneema, nothing, 0.01] # AIII/Br,main,2 or a6 first half (pulley)
+    - [48, 45, 46, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [49, 46, 26, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [50, 2, 47, 1.988, 2.0, dyneema, nothing, 0.01] # AIII/Br,main,2 or a6 second half (pulley)
+    - [51, 47, 48, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [52, 48, 34, 1.988, 2.0, dyneema, nothing, 0.01]
 
     # A4  TODO: estimation
     # direct laser measurement --> 2910 mm
     # indirect --> A4 + 0.5* a4/b4 = 2877+0.5*220 = 2987.0
-    - [53, 4, 49, BRIDLE, 1.4935, 3.0, dyneema, nothing, 0.01] # A4 or A5
-    - [54, 49, 22, BRIDLE, 1.4935, 3.0, dyneema, nothing, 0.01]
+    - [53, 4, 49, 1.4935, 3.0, dyneema, nothing, 0.01] # A4 or A5
+    - [54, 49, 22, 1.4935, 3.0, dyneema, nothing, 0.01]
 
     # A3 TODO: estimation
     # direct laser measurement -->3450 mm
     # indirect --> A3 + 0.54 *ab3/cd3 + 0.5*a3/b3 = 1791 + 0.54*3076 + 0.5*325 = 3614.54
-    - [55, 6, 50, BRIDLE, 1.80727, 3.0, dyneema, nothing, 0.01] # A3
-    - [56, 50, 22, BRIDLE, 1.80727, 3.0, dyneema, nothing, 0.01]
+    - [55, 6, 50, 1.80727, 3.0, dyneema, nothing, 0.01] # A3
+    - [56, 50, 22, 1.80727, 3.0, dyneema, nothing, 0.01]
 
     # A2 #TODO: estimation
     # direct laser measurement --> 3550 mm
     # indirect --> A2 + 0.54*ab2/cd2 +0.5 *a2/b2 = 1798 + 0.54*3180+0.5*260 = 3645.2
-    - [57, 8, 51, BRIDLE, 1.8226, 3.0, dyneema, nothing, 0.01] # A2
-    - [58, 51, 23, BRIDLE, 1.8226, 3.0, dyneema, nothing, 0.01]
+    - [57, 8, 51, 1.8226, 3.0, dyneema, nothing, 0.01] # A2
+    - [58, 51, 23, 1.8226, 3.0, dyneema, nothing, 0.01]
 
     # A1 #TODO: laser measurement
     # direct laser measurement --> 3710 mm
     # indirect -->  A1 +0.54*ab1/cd1 +0.5*a1/b1 = 1860 +0.54*3261+0.5*330 = 3785.94
-    - [59, 10, 52, BRIDLE, 1.89297, 3.0, dyneema, nothing, 0.01] # A1
-    - [60, 52, 23, BRIDLE, 1.89297, 3.0, dyneema, nothing, 0.01]
+    - [59, 10, 52, 1.89297, 3.0, dyneema, nothing, 0.01] # A1
+    - [60, 52, 23, 1.89297, 3.0, dyneema, nothing, 0.01]
 
     # Bridle segments - left rear lines (mirror, non-compressive, using dyneema)
-    - [61, 12, 53, BRIDLE, 1.89297, 3.0, dyneema, nothing, 0.01] # A1
-    - [62, 53, 24, BRIDLE, 1.89297, 3.0, dyneema, nothing, 0.01]
-    - [63, 14, 54, BRIDLE, 1.8226, 3.0, dyneema, nothing, 0.01] # A2
-    - [64, 54, 24, BRIDLE, 1.8226, 3.0, dyneema, nothing, 0.01]
-    - [65, 16, 55, BRIDLE, 1.80727, 3.0, dyneema, nothing, 0.01] # A3
-    - [66, 55, 25, BRIDLE, 1.80727, 3.0, dyneema, nothing, 0.01]
-    - [67, 18, 56, BRIDLE, 1.4935, 3.0, dyneema, nothing, 0.01] # A4 or A5- original 2.782
-    - [68, 56, 25, BRIDLE, 1.4935, 3.0, dyneema, nothing, 0.01]
-    - [69, 27, 57, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01] # a6 first half (pulley)
-    - [70, 57, 58, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [71, 58, 20, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [72, 20, 59, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01] # a6 second half (pulley)
-    - [73, 59, 60, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
-    - [74, 60, 36, BRIDLE, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [61, 12, 53, 1.89297, 3.0, dyneema, nothing, 0.01] # A1
+    - [62, 53, 24, 1.89297, 3.0, dyneema, nothing, 0.01]
+    - [63, 14, 54, 1.8226, 3.0, dyneema, nothing, 0.01] # A2
+    - [64, 54, 24, 1.8226, 3.0, dyneema, nothing, 0.01]
+    - [65, 16, 55, 1.80727, 3.0, dyneema, nothing, 0.01] # A3
+    - [66, 55, 25, 1.80727, 3.0, dyneema, nothing, 0.01]
+    - [67, 18, 56, 1.4935, 3.0, dyneema, nothing, 0.01] # A4 or A5- original 2.782
+    - [68, 56, 25, 1.4935, 3.0, dyneema, nothing, 0.01]
+    - [69, 27, 57, 1.988, 2.0, dyneema, nothing, 0.01] # a6 first half (pulley)
+    - [70, 57, 58, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [71, 58, 20, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [72, 20, 59, 1.988, 2.0, dyneema, nothing, 0.01] # a6 second half (pulley)
+    - [73, 59, 60, 1.988, 2.0, dyneema, nothing, 0.01]
+    - [74, 60, 36, 1.988, 2.0, dyneema, nothing, 0.01]
 
     # Bridle convergence - left side (non-compressive, using dyneema)
-    - [75, 22, 61, BRIDLE, 1.68, 5.0, dyneema, nothing, 0.01] # AII outer
-    - [76, 61, 26, BRIDLE, 1.68, 5.0, dyneema, nothing, 0.01]
-    - [77, 23, 62, BRIDLE, 1.835, 5.0, dyneema, nothing, 0.01] # AI inner
-    - [78, 62, 26, BRIDLE, 1.835, 5.0, dyneema, nothing, 0.01]
-    - [79, 24, 63, BRIDLE, 1.835, 5.0, dyneema, nothing, 0.01] # AI inner
-    - [80, 63, 27, BRIDLE, 1.835, 5.0, dyneema, nothing, 0.01]
-    - [81, 25, 64, BRIDLE, 1.68, 5.0, dyneema, nothing, 0.01] # AII outer
-    - [82, 64, 27, BRIDLE, 1.68, 5.0, dyneema, nothing, 0.01]
+    - [75, 22, 61, 1.68, 5.0, dyneema, nothing, 0.01] # AII outer
+    - [76, 61, 26, 1.68, 5.0, dyneema, nothing, 0.01]
+    - [77, 23, 62, 1.835, 5.0, dyneema, nothing, 0.01] # AI inner
+    - [78, 62, 26, 1.835, 5.0, dyneema, nothing, 0.01]
+    - [79, 24, 63, 1.835, 5.0, dyneema, nothing, 0.01] # AI inner
+    - [80, 63, 27, 1.835, 5.0, dyneema, nothing, 0.01]
+    - [81, 25, 64, 1.68, 5.0, dyneema, nothing, 0.01] # AII outer
+    - [82, 64, 27, 1.68, 5.0, dyneema, nothing, 0.01]
 
     # Main power lines to KCU (non-compressive, using dyneema)
-    - [83, 26, 65, BRIDLE, 1.9515, 6.0, dyneema, nothing, 0.01] # amain
-    - [84, 65, 1, BRIDLE, 1.9515, 6.0, dyneema, nothing, 0.01]
-    - [85, 27, 66, BRIDLE, 1.9515, 6.0, dyneema, nothing, 0.01] # amain
-    - [86, 66, 1, BRIDLE, 1.9515, 6.0, dyneema, nothing, 0.01]
+    - [83, 26, 65, 1.9515, 6.0, dyneema, nothing, 0.01] # amain
+    - [84, 65, 1, 1.9515, 6.0, dyneema, nothing, 0.01]
+    - [85, 27, 66, 1.9515, 6.0, dyneema, nothing, 0.01] # amain
+    - [86, 66, 1, 1.9515, 6.0, dyneema, nothing, 0.01]
 
     # Bridle segments - right front lines (non-compressive, using dyneema)
 
     # Br,5 (or br6)
     # Br,5 + 2* br5,e + br5 = 12168 + 2*115+1420 = 13818 mm total, but pulley
     # 13818 / 2 = 6909 mm per half
-    - [87, 34, 67, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01] # Br,5 or br6 first half (pulley)
-    - [88, 67, 68, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [89, 68, 3, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [90, 3, 69, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01] # Br,5 or br6 second half (pulley)
-    - [91, 69, 70, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [92, 70, 37, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [93, 5, 71, BRIDLE, 1.775, 2.0, dyneema, nothing, 0.01] # br,4 or br5
-    - [94, 71, 28, BRIDLE, 1.775, 2.0, dyneema, nothing, 0.01]
-    - [95, 7, 72, BRIDLE, 2.047, 2.0, dyneema, nothing, 0.01] # br,3
-    - [96, 72, 28, BRIDLE, 2.047, 2.0, dyneema, nothing, 0.01]
-    - [97, 9, 73, BRIDLE, 2.09, 2.0, dyneema, nothing, 0.01] # br,2
-    - [98, 73, 29, BRIDLE, 2.09, 2.0, dyneema, nothing, 0.01]
-    - [99, 11, 74, BRIDLE, 2.2035, 2.0, dyneema, nothing, 0.01] # br,1
-    - [100, 74, 29, BRIDLE, 2.2035, 2.0, dyneema, nothing, 0.01]
+    - [87, 34, 67, 2.303, 4.0, dyneema, nothing, 0.01] # Br,5 or br6 first half (pulley)
+    - [88, 67, 68, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [89, 68, 3, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [90, 3, 69, 2.303, 4.0, dyneema, nothing, 0.01] # Br,5 or br6 second half (pulley)
+    - [91, 69, 70, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [92, 70, 37, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [93, 5, 71, 1.775, 2.0, dyneema, nothing, 0.01] # br,4 or br5
+    - [94, 71, 28, 1.775, 2.0, dyneema, nothing, 0.01]
+    - [95, 7, 72, 2.047, 2.0, dyneema, nothing, 0.01] # br,3
+    - [96, 72, 28, 2.047, 2.0, dyneema, nothing, 0.01]
+    - [97, 9, 73, 2.09, 2.0, dyneema, nothing, 0.01] # br,2
+    - [98, 73, 29, 2.09, 2.0, dyneema, nothing, 0.01]
+    - [99, 11, 74, 2.2035, 2.0, dyneema, nothing, 0.01] # br,1
+    - [100, 74, 29, 2.2035, 2.0, dyneema, nothing, 0.01]
 
     # Bridle segments - right rear lines (mirror, non-compressive, using dyneema)
-    - [101, 13, 75, BRIDLE, 2.2035, 2.0, dyneema, nothing, 0.01] # br,1
-    - [102, 75, 30, BRIDLE, 2.2035, 2.0, dyneema, nothing, 0.01]
-    - [103, 15, 76, BRIDLE, 2.09, 2.0, dyneema, nothing, 0.01] # br,2
-    - [104, 76, 30, BRIDLE, 2.09, 2.0, dyneema, nothing, 0.01]
-    - [105, 17, 77, BRIDLE, 2.047, 2.0, dyneema, nothing, 0.01] # br,3
-    - [106, 77, 31, BRIDLE, 2.047, 2.0, dyneema, nothing, 0.01]
-    - [107, 19, 78, BRIDLE, 1.775, 2.0, dyneema, nothing, 0.01] # br,4 or br5
-    - [108, 78, 31, BRIDLE, 1.775, 2.0, dyneema, nothing, 0.01]
-    - [109, 36, 79, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01] # br6 first half (pulley)
-    - [110, 79, 80, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [111, 80, 21, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [112, 21, 81, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01] # br6 second half (pulley)
-    - [113, 81, 82, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
-    - [114, 82, 38, BRIDLE, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [101, 13, 75, 2.2035, 2.0, dyneema, nothing, 0.01] # br,1
+    - [102, 75, 30, 2.2035, 2.0, dyneema, nothing, 0.01]
+    - [103, 15, 76, 2.09, 2.0, dyneema, nothing, 0.01] # br,2
+    - [104, 76, 30, 2.09, 2.0, dyneema, nothing, 0.01]
+    - [105, 17, 77, 2.047, 2.0, dyneema, nothing, 0.01] # br,3
+    - [106, 77, 31, 2.047, 2.0, dyneema, nothing, 0.01]
+    - [107, 19, 78, 1.775, 2.0, dyneema, nothing, 0.01] # br,4 or br5
+    - [108, 78, 31, 1.775, 2.0, dyneema, nothing, 0.01]
+    - [109, 36, 79, 2.303, 4.0, dyneema, nothing, 0.01] # br6 first half (pulley)
+    - [110, 79, 80, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [111, 80, 21, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [112, 21, 81, 2.303, 4.0, dyneema, nothing, 0.01] # br6 second half (pulley)
+    - [113, 81, 82, 2.303, 4.0, dyneema, nothing, 0.01]
+    - [114, 82, 38, 2.303, 4.0, dyneema, nothing, 0.01]
 
     # Bridle convergence - right side (non-compressive, using dyneema)
-    - [115, 28, 32, BRIDLE, 2.045, 2.0, dyneema, nothing, 0.01] # BRII (inner)
-    - [116, 29, 32, BRIDLE, 2.333, 2.0, dyneema, nothing, 0.01] # BRI (outer)
-    - [117, 30, 33, BRIDLE, 2.333, 2.0, dyneema, nothing, 0.01] # BRI (outer)
-    - [118, 31, 33, BRIDLE, 2.045, 2.0, dyneema, nothing, 0.01] # BRII (inner)
+    - [115, 28, 32, 2.045, 2.0, dyneema, nothing, 0.01] # BRII (inner)
+    - [116, 29, 32, 2.333, 2.0, dyneema, nothing, 0.01] # BRI (outer)
+    - [117, 30, 33, 2.333, 2.0, dyneema, nothing, 0.01] # BRI (outer)
+    - [118, 31, 33, 2.045, 2.0, dyneema, nothing, 0.01] # BRII (inner)
 
     # Right main lines (non-compressive, using dyneema)
-    - [119, 32, 34, BRIDLE, 0.61, 2.0, dyneema, nothing, 0.01] # BR-main-1
-    - [120, 33, 36, BRIDLE, 0.61, 2.0, dyneema, nothing, 0.01] # BR-main-1
+    - [119, 32, 34, 0.61, 2.0, dyneema, nothing, 0.01] # BR-main-1
+    - [120, 33, 36, 0.61, 2.0, dyneema, nothing, 0.01] # BR-main-1
 
     # Central pulley system - M-line (non-compressive, using dyneema)
     # because Br,main,e is not modelled. Some additional length should be added to the M-line.
@@ -1164,26 +1163,26 @@ segments:
     # 0deg would mean the addition was 2x70mm
     # at 80deg we get, 70/cos(10deg) = 71mm --> addition of 2x71mm = 0.142m
     # that gives us M = 4856+0.142 = 4.998m --> 2499mm per
-    - [121, 37, 34, BRIDLE, 2.499, 4.0, dyneema, nothing, 0.01] # M-line first half (pulley)
-    - [122, 34, 35, BRIDLE, 2.499, 4.0, dyneema, nothing, 0.01] # M-line second half (pulley)
-    - [123, 35, 36, BRIDLE, 2.499, 4.0, dyneema, nothing, 0.01] # M-line first half (pulley)
-    - [124, 36, 38, BRIDLE, 2.499, 4.0, dyneema, nothing, 0.01] # M-line second half (pulley)
+    - [121, 37, 34, 2.499, 4.0, dyneema, nothing, 0.01] # M-line first half (pulley)
+    - [122, 34, 35, 2.499, 4.0, dyneema, nothing, 0.01] # M-line second half (pulley)
+    - [123, 35, 36, 2.499, 4.0, dyneema, nothing, 0.01] # M-line first half (pulley)
+    - [124, 36, 38, 2.499, 4.0, dyneema, nothing, 0.01] # M-line second half (pulley)
 
     # Final attachment to KCU/tethers (non-compressive, using dyneema)
     # In reality theses are 12mmx1.5mm, we use the equilavelent diameter ~ 4.8mm so we take 5mm
-    - [125, 37, 1, BRIDLE, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
-    - [126, 35, 1, BRIDLE, 2.2, 5.0, dyneema, nothing, 0.01] # Power Tape
-    - [127, 38, 1, BRIDLE, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
+    - [125, 37, 1, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
+    - [126, 35, 1, 2.2, 5.0, dyneema, nothing, 0.01] # Power Tape
+    - [127, 38, 1, 1.6, 5.0, dyneema, nothing, 0.01] # Steering Tape
 
-    - [128, 1, 39, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [129, 39, 40, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [130, 40, 41, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [131, 41, 42, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [132, 42, 43, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
-    - [133, 43, 44, BRIDLE, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [128, 1, 39, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [129, 39, 40, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [130, 40, 41, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [131, 41, 42, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [132, 42, 43, 45.0, 13.5, dyneema, nothing, 0.01]
+    - [133, 43, 44, 45.0, 13.5, dyneema, nothing, 0.01]
 
-    # - [96, 2, 6, POWER_LINE, 0.0, 1.0, 1e6, 10.0, 1.0]
-    # - [97, 16, 20, POWER_LINE, 0.0, 1.0, 1e6, 10.0, 1.0]
+    # - [96, 2, 6, 0.0, 1.0, 1e6, 10.0, 1.0]
+    # - [97, 16, 20, 0.0, 1.0, 1e6, 10.0, 1.0]
 
 ###########################
 ## Pulleys ################
@@ -1224,9 +1223,9 @@ groups:
 # This is typically handled by the simulation setup rather than structure definition
 
 tethers:
-  headers: [idx, segment_idxs, winch_point_idx]
+  headers: [idx, segment_idxs, init_unstretched_length]
   data:
-    - [1, [128, 129, 130, 131, 132, 133], 44]
+    - [1, [128, 129, 130, 131, 132, 133], 270.0]
 
 ###########################
 ## Winches ################
@@ -1235,9 +1234,9 @@ tethers:
 # headers: [id, tether_ids]
 
 winches:
-  headers: [idx, tether_idxs]
+  headers: [idx, tether_idxs, winch_point]
   data:
-    - [1, [1]]
+    - [1, [1], 44]
 
 ###########################
 ## Wings ##################
