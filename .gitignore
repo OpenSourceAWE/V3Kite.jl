@@ -25,6 +25,8 @@ test/data/kite.obj
 test/data/settings.yaml
 test/data/system.yaml
 .vscode/settings.json
+install_version*.txt
+output/
 statprof/
 docs/src/winch.png
 data/settings_v9.yaml
