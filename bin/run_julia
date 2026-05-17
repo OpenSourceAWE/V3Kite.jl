@@ -6,8 +6,6 @@ fi
 
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
-# . ./bin/setup_env
-
 if [[ $# -gt 0 ]]; then
     JULIA_ARGS=("$@")
 else
