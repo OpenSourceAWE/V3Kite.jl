@@ -291,10 +291,11 @@ function run_physics_replay(csv_path;
         end
     end
 
-    sam = SymbolicAWEModel(set, sys_struct)
+    sam = SymbolicAWEModel(sys_struct.set, sys_struct)
     init!(sam)
 
-    csv_sam = SymbolicAWEModel(set, deepcopy(sam.sys_struct))
+    csv_sys_struct = deepcopy(sam.sys_struct)
+    csv_sam = SymbolicAWEModel(csv_sys_struct.set, csv_sys_struct)
     init!(csv_sam)
 
     n_steps = length(csv_data.time)
