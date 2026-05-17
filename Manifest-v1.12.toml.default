@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "c881b0e9014517d7d6968325001c62b0096fa87b"
+project_hash = "87cb63eacc94eadc6ca8e2e09d7654498cb3efc7"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -2319,8 +2319,6 @@ version = "0.1.0"
 [[deps.VortexStepMethod]]
 deps = ["Colors", "DefaultApplication", "DelimitedFiles", "DifferentiationInterface", "FiniteDiff", "ForwardDiff", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "Measures", "NonlinearSolve", "Parameters", "Pkg", "PreallocationTools", "PrecompileTools", "RecursiveArrayTools", "SciMLBase", "Serialization", "StaticArrays", "Statistics", "StructMapping", "Timers", "Xfoil", "YAML"]
 git-tree-sha1 = "75e3fe14d19cd7f1a029493bfb04bfe4b7260e8d"
-repo-rev = "main"
-repo-url = "https://github.com/OpenSourceAWE/VortexStepMethod.jl.git"
 uuid = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 version = "3.3.1"
 
