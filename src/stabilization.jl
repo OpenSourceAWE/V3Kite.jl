@@ -298,7 +298,7 @@ function _run_zero_g_settling!(config::V3SettleConfig;
         log_state!(logger, sys_state, sam, t)
 
         if show_progress && step % 20 == 0
-            @info "Step $step/$(config.num_steps)" damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+            @info "Step $step/$(config.num_steps)" damping=round.(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
         end
     end
 
