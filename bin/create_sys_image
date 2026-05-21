@@ -1,0 +1,122 @@
+#!/bin/bash -eu
+# SPDX-FileCopyrightText: 2025 Uwe Fechner
+# SPDX-License-Identifier: MIT
+
+# This script creates a precompiled system image for faster startup of the examples.
+# It is useful only when V3Kite.jl is checked out as a git repository
+# (i.e., used in development mode, not installed as a regular package).
+# It includes most of the dependencies of the examples, but not V3Kite.jl itself.
+# This means you can still use Revise for the main package while benefiting from
+# faster startup of the examples.
+
+# --- 1. Argument Parsing & Version Setup ---
+update=false
+julia_channel_arg=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --update)
+      update=true
+      shift
+      ;;
+    --version)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --version requires a version argument." >&2
+        exit 1
+      fi
+      julia_channel_arg="+$2"
+      shift 2
+      ;;
+    +*)
+      julia_channel_arg="$1"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+# Determine the Julia major version from the argument or the default installation
+if [[ -n "$julia_channel_arg" ]]; then
+    julia_major="${julia_channel_arg#+}"
+else
+    julia_major=$(julia --version | cut -d' ' -f3 | cut -d'.' -f1,2)
+fi
+
+# Construct the Julia command
+JULIA_CMD="julia"
+if [[ -n "$julia_channel_arg" ]]; then
+    JULIA_CMD="julia $julia_channel_arg"
+fi
+echo "--- Targeting Julia v${julia_major} ---"
+
+# --- 2. Prepare Environment ---
+if [[ $(basename "$(pwd)") == "bin" ]]; then
+    cd ..
+fi
+
+# Check for juliaup
+if ! command -v juliaup &> /dev/null; then
+    echo "Error: Please install the Julia installer 'juliaup'!"
+    echo "See: https://github.com/JuliaLang/juliaup"
+    exit 1
+fi
+
+# Check available memory to set thread count for compilation
+totalmem=$(grep MemTotal /proc/meminfo | awk '{printf "%i", $2 / 1024}')
+if [[ $totalmem -lt 27000 ]]; then
+    echo "Warning: Less than 27GB of memory detected. Using only one thread for sysimage compilation."
+    export JULIA_IMAGE_THREADS=1
+fi
+
+# --- 3. Update or Instantiate Packages ---
+if [ "$update" = true ]; then
+    echo "--- Updating packages via ./bin/install --update ---"
+    if [[ -n "$julia_channel_arg" ]]; then
+        ./bin/install "$julia_channel_arg" --update
+    else
+        ./bin/install --update
+    fi
+else
+    echo "--- Instantiating packages from default manifest ---"
+    MANIFEST_DEFAULT="Manifest-v${julia_major}.toml.default"
+    if [ ! -f "$MANIFEST_DEFAULT" ]; then
+        echo "Error: Default manifest '$MANIFEST_DEFAULT' not found!"
+        echo "Please run with '--update' first to create it."
+        exit 1
+    fi
+    cp "$MANIFEST_DEFAULT" "Manifest-v${julia_major}.toml"
+    echo "Using $MANIFEST_DEFAULT..."
+    # shellcheck disable=SC2086
+    $JULIA_CMD --startup-file=no --project -e "using Pkg; Pkg.instantiate();"
+fi
+
+# --- 4. Create System Image ---
+echo "--- Creating system image ---"
+
+# Run the Julia script that builds the system image
+# shellcheck disable=SC2086
+$JULIA_CMD --startup-file=no --project=test -e "include(\"test/create_sys_image.jl\");"
+
+# Determine final system image path
+SOFILE="bin/kps-image-${julia_major}.so"
+if compgen -G "bin/kps-image-${julia_major}-*.so" > /dev/null; then
+    rm -f bin/kps-image-"${julia_major}"-*.so
+fi
+
+# Move the newly created image to its final destination
+mv -f kps-image_tmp.so "$SOFILE"
+echo "System image created at $SOFILE"
+
+# --- 5. Precompile Project with New Image ---
+echo "--- Precompiling project with new system image ---"
+if [ -d src ]; then
+    touch src/*.jl
+fi
+# shellcheck disable=SC2086
+$JULIA_CMD --startup-file=no --project -J "$SOFILE" -e '
+    using V3Kite
+'
+
+echo "✅ System image creation and precompilation complete!"
