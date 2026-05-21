@@ -27,9 +27,6 @@ const V3_DEPOWER_L0_BASE = 0.2
 const V3_DEPOWER_GAIN = 5.0
 
 # V3 Kite segment indices
-"""Tether point indices in the V3 kite model"""
-const V3_TETHER_POINT_IDXS = 39:44
-
 """Left steering tape segment index"""
 const V3_STEERING_LEFT_IDX = 89
 
