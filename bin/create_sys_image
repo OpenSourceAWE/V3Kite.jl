@@ -93,6 +93,10 @@ else
 fi
 
 # --- 4. Create System Image ---
+echo "--- Instantiating test project ---"
+# shellcheck disable=SC2086
+$JULIA_CMD --startup-file=no --project=test -e "using Pkg; Pkg.instantiate();"
+
 echo "--- Creating system image ---"
 
 # Run the Julia script that builds the system image
