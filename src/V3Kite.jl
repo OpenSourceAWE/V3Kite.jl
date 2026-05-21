@@ -62,8 +62,8 @@ export get_depower, set_depower!
 
 # Model setup exports
 export V3GeomAdjustConfig, apply_geom_adjustments!
-export adjust_elevation!
 export distribute_wing_drag!, distribute_wing_mass!
+export set_v3_body_damping!
 export generate_drag_adjusted_polars
 export segment_stretch_stats
 

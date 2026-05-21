@@ -19,15 +19,13 @@ using REPL.TerminalMenus
 
 options = [
     "v3kite = include(\"v3kite.jl\")",
-    "settle_wing = include(\"settle_wing.jl\")",
     "open_loop = include(\"open_loop.jl\")",
     "realtime = include(\"realtime.jl\")",
     "load_and_plot = include(\"load_and_plot.jl\")",
     "flight_replay = include(\"flight_replay.jl\")",
-    "csv_replay_equilibrium = include(\"csv_replay_equilibrium.jl\")",
     "batch_load_circles = include(\"batch_load_circles.jl\")",
     "batch_load_zenith = include(\"batch_load_zenith.jl\")",
-    "batch_run_zenith_than_circles = include(\"batch_run_zenith_than_circles.jl\")",
+    "batch_run_zenith_then_circles = include(\"batch_run_zenith_then_circles.jl\")",
     "photogrammetry_aoa = include(\"photogrammetry_aoa.jl\")",
     "plot_wind_sources = include(\"plot_wind_sources.jl\")",
     "quit",

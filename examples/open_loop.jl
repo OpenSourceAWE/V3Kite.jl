@@ -4,8 +4,8 @@
 """
 V3 Kite: Open-Loop Circular Flight
 
-Single-phase simulation with ramped steering and depower using settled
-geometry. Winch brake engaged (constant tether length).
+Power-zone settling followed by ramped open-loop steering and
+depower. Winch brake engaged (constant tether length).
 
 Usage:
     julia --project=examples examples/open_loop.jl
@@ -28,24 +28,15 @@ using Dates
 # Configuration
 # =============================================================================
 
-TETHER_LENGTH = 262
-ELEVATION = 20.0            # degrees
+TETHER_LENGTH = 262.0
+ELEVATION = 20.0       # degrees
+AZIMUTH = 0.0          # degrees
 
-# Geometry config
-gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
-    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
-    gc.tip_reduction, gc.te_frac)
-
-# Control
-US = 0.1                   # Steering percentage [-100, 100]
-UP = 0.42                   # Depower percentage [0, 100] (old fraction)
 V_WIND = 7.6
-DAMPING_PATTERN = [0.0, 0.0, 20.0]
+US = 0.1               # Steering fraction [-1, 1]
+UP = 0.42              # Depower fraction [0, 1]
 
 # Ramp timing
-RAMP_START_UP = 0.1
-RAMP_END_UP = 1.5
 RAMP_START_US = 3.0
 RAMP_END_US = 5.0
 
@@ -53,34 +44,39 @@ SIM_TIME = 60.0
 FPS = 120
 
 # =============================================================================
-# Model setup
+# Settling setup (matches flight_replay)
 # =============================================================================
 
-config = V3SimConfig(
-    struc_yaml_path = "struc_geometry_$(GEOM_SUFFIX).yaml",
-    aero_yaml_path = "aero_geometry_$(GEOM_SUFFIX).yaml",
-    vsm_settings_path = "CORRECT_vsm_settings.yaml",
-    sim_time = SIM_TIME,
-    fps = FPS,
+el_rad = deg2rad(ELEVATION)
+az_rad = deg2rad(AZIMUTH)
+position = [
+    cos(el_rad) * cos(az_rad) * TETHER_LENGTH,
+    cos(el_rad) * sin(az_rad) * TETHER_LENGTH,
+    sin(el_rad) * TETHER_LENGTH,
+]
+velocity = [0.0, 0.0, 0.0]
+heading = 0.0
+wind_vec = [V_WIND, 0.0, 0.0]
+
+settle_config = V3SettleConfig(
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    up = UP * 100,        # Convert old 0-1 fraction to percentage
-    us = US * 100,        # Convert old 0-1 fraction to percentage
-    ramp_start_time_up = RAMP_START_UP,
-    ramp_end_time_up = RAMP_END_UP,
-    ramp_start_time_us = RAMP_START_US,
-    ramp_end_time_us = RAMP_END_US,
-    wing_type = REFINE,
-    brake = true,
-    damping_pattern = DAMPING_PATTERN,
-    elevation = ELEVATION,
+    dt = 0.001,
+    num_steps = 400,
+    num_substeps = 5,
+    body_damping = [0.0, 0.0, 40.0],
+    start_depower = UP * 100.0 + 10.0,
+    course_correction_gain = 0.05,
+    geom = V3GeomAdjustConfig(),
 )
+gc = settle_config.geom
 
-@info "Creating V3 model..."
-sam, sys = create_v3_model(config)
-
-@info "Initializing model..."
-init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
+@info "Settling V3 model..."
+sam, settle_log, settle_failed = settle_wing(settle_config;
+    position, velocity, heading,
+    steering = 0.0, depower = UP, wind_vec)
+settle_failed && error("Settling failed")
+sys = sam.sys_struct
 sys.winches[1].brake = true
 
 # Logger
@@ -108,18 +104,14 @@ sim_start_time = time()
 for step in 1:n_steps
     t = step * dt
 
-    # Ramp steering
     rf_us = ramp_factor(t, RAMP_START_US, RAMP_END_US)
     set_steering!(sys, rf_us * US, gc)
-
-    # Instant depower
     set_depower!(sys, UP, 0.0, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
     push!(tape_depower_pct, UP * 100)
 
-    # Step
     if !sim_step!(sam; set_values=[0.0], dt, vsm_interval=1)
         @error "Simulation failed" step
         break
@@ -127,7 +119,6 @@ for step in 1:n_steps
 
     log_state!(logger, sys_state, sam, t)
 
-    # Stretch stats after t > 1.0
     if t > 1.0
         ms, ms_mean, ms_idx = SymbolicAWEModels.segment_stretch_stats(
             sam.sys_struct)
@@ -144,7 +135,6 @@ end
 
 report_performance(SIM_TIME, time() - sim_start_time)
 
-# Report stretch stats
 if !isempty(max_stretch_samples)
     @info "Segment stretch (t > 1.0)" max_pct=round(maximum(max_stretch_samples) * 100, digits=4) mean_pct=round(mean(mean_stretch_samples) * 100, digits=4) worst_seg=max_idx_samples[argmax(max_stretch_samples)]
 end
@@ -159,7 +149,6 @@ save_log(logger, log_name)
 syslog = load_log(log_name)
 
 fig = plot(sam.sys_struct, syslog)
-
 scene = replay(syslog, sam.sys_struct, show_panes=false)
 
 display(fig)

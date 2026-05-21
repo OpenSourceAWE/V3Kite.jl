@@ -99,6 +99,21 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
 end
 
 """
+    set_v3_body_damping!(sys, body_damping, point_37_38_damping)
+
+Apply the V3 two-region body-frame damping pattern: `body_damping`
+on points 1:38 and the `point_37_38_damping` override on 37:38.
+"""
+function set_v3_body_damping!(sys, body_damping,
+                              point_37_38_damping)
+    SymbolicAWEModels.set_body_frame_damping(
+        sys, body_damping, 1:38)
+    SymbolicAWEModels.set_body_frame_damping(
+        sys, point_37_38_damping, 37:38)
+    return nothing
+end
+
+"""
     generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
 
 Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
@@ -120,22 +135,3 @@ function generate_drag_adjusted_polars(drag_factor;
     return nothing
 end
 
-"""
-    adjust_elevation!(sam::SymbolicAWEModel, elevation_deg)
-
-Update the transform elevation to the specified value in degrees.
-
-# Arguments
-- `sam`: SymbolicAWEModel to modify
-- `elevation_deg`: Target elevation angle in degrees
-"""
-function adjust_elevation!(sam::SymbolicAWEModel, elevation_deg)
-    sys = sam.sys_struct
-
-    if !isempty(sys.transforms)
-        transform = sys.transforms[1]
-        transform.elevation = deg2rad(elevation_deg)
-        SymbolicAWEModels.reinit!([transform], sys)
-    end
-    return nothing
-end
