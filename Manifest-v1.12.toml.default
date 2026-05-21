@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "2d7f18c8c30c2def89416cfe2c6c964f28830f2d"
+project_hash = "f5a759269ffe8829f542e47c6fe656465fbc1e5a"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -962,6 +962,12 @@ version = "9.28.0"
     Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
     KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
     OrdinaryDiffEqCore = "bbf590c4-e513-4bbe-9b18-05decba2e5d8"
+
+[[deps.KitePodModels]]
+deps = ["DocStringExtensions", "KiteUtils", "Reexport"]
+git-tree-sha1 = "57f6f71a75d2d26f199a64c03a03796139c540f4"
+uuid = "9de5dc81-f971-414a-927b-652b2f41c539"
+version = "0.4.0"
 
 [[deps.KiteUtils]]
 deps = ["Arrow", "CSV", "DocStringExtensions", "LinearAlgebra", "OrderedCollections", "Parameters", "Parsers", "Pkg", "PrecompileTools", "RecursiveArrayTools", "ReferenceFrameRotations", "Rotations", "StaticArrays", "StructArrays", "StructTypes", "YAML"]
@@ -2306,7 +2312,7 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 version = "1.11.0"
 
 [[deps.V3Kite]]
-deps = ["CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "PrecompileTools", "Rotations", "Serialization", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod"]
+deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "Parameters", "PrecompileTools", "Rotations", "Serialization", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod"]
 path = "."
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
 version = "0.1.0"
