@@ -16,6 +16,7 @@ using V3Kite
 using V3Kite.KitePodModels
 using VortexStepMethod
 using LinearAlgebra
+using ControlPlots
 toc("Loaded packages")
 
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
