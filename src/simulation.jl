@@ -109,13 +109,13 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     # Initialize damping
     SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)
 
-    # Create symbolic model
     sam = SymbolicAWEModel(set, sys)
 
-    # Adjust tether length
-    adjust_tether_length!(sam, config.tether_length)
+    if !isempty(sys.tethers)
+        sys.tethers[1].init_unstretched_len = config.tether_length
+        sys.tethers[1].init_stretched_len = config.tether_length
+    end
 
-    # Adjust elevation if provided
     if config.elevation !== nothing
         adjust_elevation!(sam, config.elevation)
     end

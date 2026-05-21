@@ -99,56 +99,6 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
 end
 
 """
-    adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw; tether_point_idxs=V3_TETHER_POINT_IDXS)
-
-Update the winch rest length, reposition tether points in CAD/body frames,
-and reapply the main transform so the wing stays at the requested tether radius.
-
-# Arguments
-- `sam`: SymbolicAWEModel to modify
-- `tether_length_raw`: Target tether length in meters
-- `tether_point_idxs`: Indices of tether points (default: V3_TETHER_POINT_IDXS = 39:44)
-"""
-function adjust_tether_length!(sam::SymbolicAWEModel, tether_length_raw;
-                               tether_point_idxs=V3_TETHER_POINT_IDXS)
-    tether_length = float(tether_length_raw)
-    sys = sam.sys_struct
-    set = sam.set
-
-    if !isempty(set.l_tethers)
-        set.l_tethers[1] = tether_length
-    end
-
-    n_points = length(tether_point_idxs)
-    for (n, p_idx) in enumerate(tether_point_idxs)
-        pos = (0.0, 0.0, -n * tether_length / n_points)
-        sys.points[p_idx].pos_cad .= pos
-        sys.points[p_idx].pos_b .= pos
-    end
-
-    if !isempty(sys.transforms)
-        transform = sys.transforms[1]
-        if !isempty(sys.wings) && norm(sys.wings[1].pos_w) > 0
-            target_pos = normalize(sys.wings[1].pos_w) * tether_length
-            transform.elevation = KiteUtils.calc_elevation(target_pos)
-            transform.azimuth = KiteUtils.azimuth_east(target_pos)
-        end
-        SymbolicAWEModels.reinit!([transform], sys)
-    end
-
-    if !isempty(sys.tethers)
-        sys.tethers[1].len = tether_length
-        sys.tethers[1].stretched_len = tether_length
-    end
-    if !isempty(sys.winches)
-        winch = sys.winches[1]
-        winch.vel = 0.0
-        winch.brake = true
-    end
-    return nothing
-end
-
-"""
     generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
 
 Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
