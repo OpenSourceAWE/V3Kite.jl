@@ -332,19 +332,12 @@ function update_sys_struct_from_data!(sys, row;
 
     sys.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
 
-    # calc target heading from data
     data_pos = [row.x, row.y, row.z]
-    quat = euler_to_quaternion(
-        row.roll, row.pitch, row.yaw)
-    data_heading = wrap_to_pi(calc_heading(
-        SymbolicAWEModels.quaternion_to_rotation_matrix(
-            quat), data_pos) + π)
     R_b_w = calc_R_b_w(sys)
 
-    # calc needed transform
     transform.elevation = KiteUtils.calc_elevation(data_pos)
     transform.azimuth = KiteUtils.azimuth_east(data_pos)
-    transform.heading = data_heading
+    transform.heading = row.heading
     SymbolicAWEModels.reinit!([transform], sys)
 
     # apply vel with optional extra velocity in body x
