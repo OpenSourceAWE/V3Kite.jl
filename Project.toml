@@ -4,11 +4,13 @@ version = "0.1.0"
 authors = ["Jelle Poland", "Bart van de Lint"]
 
 [deps]
+AtmosphericModels = "c59cac55-771d-4f45-b14d-1c681463a295"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DiscretePIDs = "c1363496-6848-4723-8758-079b737f6baf"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+KitePodModels = "9de5dc81-f971-414a-927b-652b2f41c539"
 KiteUtils = "90980105-b163-44e5-ba9f-8b1c83bb0533"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -28,7 +30,9 @@ GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 V3KiteMakieExt = "GLMakie"
 
 [compat]
+AtmosphericModels = "0.3.4"
 HDF5 = "0.17.2"
+KitePodModels = "0.4.0"
 LaTeXStrings = "1.4.0"
 SymbolicAWEModels = "0.9.0"
 VortexStepMethod = "3.3.2"
