@@ -206,15 +206,21 @@ function run_physics_replay(h5_path;
             R_b_w, kite_vel, wind_vec)
         wing_aoa = kite_aoa + deg2rad(
             AOA_OFFSET_A * dp * 100 + AOA_OFFSET_B)
+        kite_pos = [raw.ekf_kite_position_x,
+                    raw.ekf_kite_position_y,
+                    raw.ekf_kite_position_z]
         return (
             time = raw.time,
             video_frame = round(Int, raw.video_frame),
             roll = raw.ekf_kite_roll,
             pitch = raw.ekf_kite_pitch,
             yaw = raw.ekf_kite_yaw, # TODO: try using kin
-            x = raw.ekf_kite_position_x,
-            y = raw.ekf_kite_position_y,
-            z = raw.ekf_kite_position_z,
+            heading = calc_csv_heading(
+                raw.ekf_kite_roll, raw.ekf_kite_pitch,
+                raw.ekf_kite_yaw, kite_pos),
+            x = kite_pos[1],
+            y = kite_pos[2],
+            z = kite_pos[3],
             vx = raw.ekf_kite_velocity_x,
             vy = raw.ekf_kite_velocity_y,
             vz = raw.ekf_kite_velocity_z,
@@ -303,8 +309,7 @@ function run_physics_replay(h5_path;
     settle_failed = false
     if SETTLE
         sam, settle_log, settle_failed =
-            settle_wing(settle_config;
-                init_row=row1, remake=false)
+            settle_wing(settle_config, row1; remake=false)
         if settle_failed
             @warn "Settling failed — skipping sim"
             base_name = build_replay_name(h5_path,
@@ -359,10 +364,7 @@ function run_physics_replay(h5_path;
     last_report_time = replay_start
     last_report_sim = 0.0
     sys = sam.sys_struct
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, BODY_DAMPING, 1:38)
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, POINT_37_38_DAMPING, 37:38)
+    set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
     distribute_wing_mass!(sys, 11.0; dist=0.5)
 
     heading_pid = create_heading_pid(;

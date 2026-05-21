@@ -36,6 +36,8 @@ Base.@kwdef mutable struct V3SettleConfig
     # Flight condition
     v_wind::Float64 = 10.72
     tether_length::Float64 = 240.0
+    g_earth::Float64 = 9.81
+    kcu_mass::Union{Nothing,Float64} = nothing
 
     # Geometry modifications
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig(
@@ -47,18 +49,22 @@ Base.@kwdef mutable struct V3SettleConfig
     end_depower::Union{Nothing,Float64} = nothing
 
     course_correction_gain::Float64 = 0.3
+    # :course tracks flight-data course (needs nonzero velocity);
+    # :heading tracks the init_row's heading (use when settling
+    # from rest, e.g. zenith hold).
+    course_correction_mode::Symbol = :course
 
     # Model options
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
 """
+    settle_wing(config::V3SettleConfig, init_row;
+                data_path=nothing,
+                show_progress=true, remake=false)
     settle_wing(config::V3SettleConfig;
-                init_row=nothing,
-                position=nothing, velocity=nothing,
-                attitude=nothing,
-                steering=nothing, depower=nothing,
-                wind_vec=nothing,
+                position, velocity, attitude,
+                steering, depower, wind_vec,
                 data_path=nothing,
                 show_progress=true, remake=false)
     -> (sam, syslog, settle_failed)
@@ -66,13 +72,10 @@ end
 Run power-zone settling with gravity to find equilibrium wing
 geometry matching the given flight state.
 
-Either pass `init_row` (a NamedTuple with `x, y, z, vx, vy, vz,
-roll, pitch, yaw, steering, depower, wind_vec`), or pass the
-manual inputs `position`, `velocity`, `attitude`, `steering`,
-`depower`, `wind_vec` and let the function build the row.
-
-`position` is `[x, y, z]` (m, ENU), `velocity` is `[vx, vy, vz]`
-(m/s, ENU), `attitude` is `[roll, pitch, yaw]` (rad).
+First form takes a prebuilt `init_row` NamedTuple with `x, y, z,
+vx, vy, vz, roll, pitch, yaw, steering, depower, wind_vec`.
+Second form builds it from explicit ENU vectors (`position`,
+`velocity` in m / m·s⁻¹, `attitude` is `[roll, pitch, yaw]` rad).
 
 Always returns a fresh model loaded from the settled binary, so
 the caller gets clean settings (no settling damping). When
@@ -81,32 +84,22 @@ simulation is skipped and the settled geometry is loaded from
 file.
 """
 function settle_wing(config::V3SettleConfig;
-                     init_row=nothing,
-                     position=nothing,
-                     velocity=nothing,
-                     attitude=nothing,
-                     steering=nothing,
-                     depower=nothing,
-                     wind_vec=nothing,
+                     position, velocity, heading,
+                     steering, depower, wind_vec,
+                     kwargs...)
+    init_row = (
+        x=position[1], y=position[2], z=position[3],
+        vx=velocity[1], vy=velocity[2], vz=velocity[3],
+        heading=heading,
+        steering=steering, depower=depower,
+        wind_vec=wind_vec)
+    return settle_wing(config, init_row; kwargs...)
+end
+
+function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      show_progress=true,
                      remake=false)
-    if isnothing(init_row)
-        all_provided = !isnothing(position) &&
-            !isnothing(velocity) && !isnothing(attitude) &&
-            !isnothing(steering) && !isnothing(depower) &&
-            !isnothing(wind_vec)
-        all_provided || error(
-            "Pass either init_row or all of position, " *
-            "velocity, attitude, steering, depower, wind_vec")
-        init_row = (
-            x=position[1], y=position[2], z=position[3],
-            vx=velocity[1], vy=velocity[2], vz=velocity[3],
-            roll=attitude[1], pitch=attitude[2], yaw=attitude[3],
-            steering=steering, depower=depower,
-            wind_vec=wind_vec)
-    end
-
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -132,7 +125,11 @@ function settle_wing(config::V3SettleConfig;
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
-        "_lt$(Int(round(config.tether_length)))"
+        "_lt$(Int(round(config.tether_length)))" *
+        "_g$(Int(round(config.g_earth * 10)))"
+    if !isnothing(config.kcu_mass)
+        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+    end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
     source_struc = joinpath(
@@ -175,6 +172,7 @@ function settle_wing(config::V3SettleConfig;
     set = Settings("system.yaml")
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
+    set.g_earth = config.g_earth
     set.profile_law = 0
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
@@ -211,11 +209,11 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function _setup_settling_model(config::V3SettleConfig;
-        g_earth, data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
     set = Settings("system.yaml")
-    set.g_earth = g_earth
+    set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.profile_law = 0
@@ -228,6 +226,10 @@ function _setup_settling_model(config::V3SettleConfig;
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
         wing_type=SymbolicAWEModels.REFINE, vsm_set)
+
+    if !isnothing(config.kcu_mass)
+        sys.points[1].extra_mass = config.kcu_mass
+    end
 
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_damping)
@@ -261,7 +263,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         dest_struc,
         init_row)
     sam, sys, gc = _setup_settling_model(config;
-        g_earth=9.81, data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
@@ -271,6 +273,10 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     target_course = atan(
         data_vel ⋅ R_t_to_w[:, 2],
         data_vel ⋅ R_t_to_w[:, 1])
+    target_heading = sys.transforms[1].heading
+    config.course_correction_mode in (:course, :heading) ||
+        error("course_correction_mode must be :course or " *
+              ":heading, got $(config.course_correction_mode)")
 
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
@@ -338,16 +344,23 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
                 log_state!(logger, sys_state, sam, t)
 
-                if show_progress && global_step % 20 == 0
+                if show_progress &&
+                   should_report(global_step, total_steps)
                     @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break
 
-            course_diff = wrap_to_pi(
-                target_course - wing.course)
+            if config.course_correction_mode === :course
+                target = target_course
+                current = wing.course
+            else
+                target = target_heading
+                current = wing.heading
+            end
+            diff = wrap_to_pi(target - current)
             delta_heading =
-                config.course_correction_gain * course_diff
+                config.course_correction_gain * diff
             old_heading = sys.transforms[1].heading
             sys.transforms[1].heading = wrap_to_pi(
                 old_heading + delta_heading)
@@ -367,8 +380,10 @@ function _run_power_zone_settling!(config::V3SettleConfig;
                         point.vel_w, k, delta_heading)
             end
 
-            if show_progress && step % 4 == 0
-                @info "Course correction step $step" target_course=round(rad2deg(target_course), digits=2) wing_course=round(rad2deg(wing.course), digits=2) course_diff=round(rad2deg(course_diff), digits=2) old_heading=round(rad2deg(old_heading), digits=2) new_heading=round(rad2deg(sys.transforms[1].heading), digits=2)
+            if show_progress &&
+               should_report(step, config.num_steps) &&
+               config.course_correction_mode === :course
+                @info "Course correction step $step" target_course=round(rad2deg(target), digits=2) wing_course=round(rad2deg(current), digits=2) course_diff=round(rad2deg(diff), digits=2) old_heading=round(rad2deg(old_heading), digits=2) new_heading=round(rad2deg(sys.transforms[1].heading), digits=2)
             end
         end
     catch err

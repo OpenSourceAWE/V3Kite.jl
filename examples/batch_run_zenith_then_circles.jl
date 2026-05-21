@@ -22,6 +22,7 @@ using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
 using SymbolicAWEModels
+using KiteUtils: wind_vec_from_angles
 using GLMakie
 using LinearAlgebra
 using DiscretePIDs
@@ -40,11 +41,9 @@ followed by circular flight.
 function run_zenith_circles(;
     sim_time_zenith=10.0, fps_zenith=1,
     sim_time_circles=0.0, fps_circles=1,
-    damping_pattern=[0.0, 0.0, 20.0],
-    startup_damping_pattern=nothing,
-    startup_decay_time=2.0,
-    up=0.4, ramp_time_up=25.0,
-    start_ramp_time=0.0,
+    body_damping=[0.0, 0.0, 20.0],
+    point_37_38_damping=[0.0, 20.0, 20.0],
+    up=0.4,
     ramp_time_us=25.0,
     max_us_zenith=0.1, us=0.1,
     v_wind=15.4, v_wind_base=15.0,
@@ -52,59 +51,61 @@ function run_zenith_circles(;
     winch_p=1000.0, winch_i=100.0, winch_d=50.0,
     target_azimuth=0.0,
     tether_length=150.0, elevation=nothing,
-    g_earth=nothing,
+    g_earth=9.81,
     kcu_mass=nothing,
     save_subdir="", run_tag="")
 
-    startup_pattern = isnothing(startup_damping_pattern) ?
-                      damping_pattern : startup_damping_pattern
-    damping_profile = function (t)
-        if t < start_ramp_time
-            return startup_pattern
-        end
-        if startup_decay_time <= 0
-            return damping_pattern
-        end
-        mix = clamp((t - start_ramp_time) / startup_decay_time, 0.0, 1.0)
-        return startup_pattern .+
-               (damping_pattern .- startup_pattern) .* mix
-    end
+    global sam, _settle_log
 
-    config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",#"struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
+    elev_deg = isnothing(elevation) ? 70.0 : float(elevation)
+    elev_rad = deg2rad(elev_deg)
+    position = [tether_length * cos(elev_rad), 0.0,
+                tether_length * sin(elev_rad)]
+    wind_vec = wind_vec_from_angles(
+        v_wind, deg2rad(-90.0), 0.0)
+
+    settle_config = V3SettleConfig(
+        source_struc_path="struc_geometry.yaml",
+        source_aero_path="aero_geometry.yaml",
         vsm_settings_path="vsm_settings.yaml",
         v_wind=v_wind,
-        upwind_dir=-90.0,
         tether_length=tether_length,
-        elevation=elevation,
-        damping_pattern=damping_profile(0.0),
-        wing_type=REFINE,
+        g_earth=g_earth,
+        kcu_mass=kcu_mass,
+        body_damping=body_damping .* 2.0,
+        body_damping_overrides=[
+            (37:38, point_37_38_damping .* 2.0)],
+        geom=V3GeomAdjustConfig(
+            reduce_te=true, tether_length=tether_length),
+        num_steps=400, num_substeps=5, dt=0.001,
+        start_depower=40.0,
+        course_correction_gain=0.0,
+        course_correction_mode=:heading,
+        world_damping=0.0, min_damping=0.0,
     )
-    sam, sys = create_v3_model(config)
-    apply_geom_adjustments!(sys, V3GeomAdjustConfig(
-        reduce_te=true))
-    if kcu_mass !== nothing
-        sys.points[1].extra_mass = float(kcu_mass)
-    end
+    sam, _settle_log, settle_failed = settle_wing(
+        settle_config;
+        position=position,
+        velocity=[0.0, 0.0, 0.0],
+        heading=0.0,
+        steering=0.0, depower=up,
+        wind_vec=wind_vec,
+        remake=false)
+    settle_failed && error(
+        "settle_wing failed for elevation=$elev_deg, " *
+        "v_wind=$v_wind, lt=$tether_length")
+    sys = sam.sys_struct
+
+    set_v3_body_damping!(sys, body_damping,
+                         point_37_38_damping)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
         ws.use_prior_polar = true
     end
-
-    if g_earth !== nothing
-        sam.set.g_earth = g_earth
-    end
-
-    init!(sam; remake=false,
-        ignore_l0=false, remake_vsm=true)
-
     for wing in sys.wings
         wing.vsm_wing.use_prior_polar = true
     end
-    @assert all(ws.use_prior_polar for ws in sys.vsm_set.wings) "use_prior_polar not enabled in sys.vsm_set"
-    @assert all(wing.vsm_wing.use_prior_polar for wing in sys.wings) "use_prior_polar not enabled in runtime vsm_wing"
 
     # Logger for both phases; zenith phase is truly optional
     n_z = (sim_time_zenith > 0 && fps_zenith > 0) ?
@@ -120,9 +121,6 @@ function run_zenith_circles(;
     # Nominal segment lengths
     nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
-    nom_dep = sys.segments[V3_DEPOWER_IDX].l0
-    power_tape_change =
-        ((200 + 5000 * up) / 1000) - nom_dep
 
     azimuth_setpoint = Float64[target_azimuth]
 
@@ -153,26 +151,11 @@ function run_zenith_circles(;
         for step in 1:n_z
             t = step * dt_z
 
-            active_damping_pattern = damping_profile(t)
-            SymbolicAWEModels.set_body_frame_damping(
-                sys, active_damping_pattern)
-
             # Azimuth PID
             azimuth = sys.wings[1].azimuth
             steer_ctrl = azimuth_pid(
                 target_azimuth, azimuth, 0.0)
             push!(azimuth_setpoint, target_azimuth)
-
-            # Power ramp
-            if t >= start_ramp_time
-                rf = min(
-                    (t - start_ramp_time) / ramp_time_up, 1.0)
-                power_ctrl = power_tape_change * rf
-            else
-                power_ctrl = 0.0
-            end
-            sys.segments[V3_DEPOWER_IDX].l0 =
-                nom_dep + power_ctrl
 
             # Steering
             sys.segments[V3_STEERING_LEFT_IDX].l0 =
@@ -200,18 +183,14 @@ function run_zenith_circles(;
     # Phase 2: Circular flight
     if n_c > 0
         @info "Circular phase" n_c dt_c
-        SymbolicAWEModels.set_body_frame_damping(
-            sys, damping_profile(sim_time_zenith))
 
         sys.winches[1].brake = true
         sys.winches[1].set_value = 0.0
 
         steer_change = V3_STEERING_GAIN * us
         vw_change = v_wind - v_wind_base
-        power_target = nom_dep + power_tape_change
         steer_target_left = nom_left + steer_change
         steer_target_right = nom_right - steer_change
-        power_start = sys.segments[V3_DEPOWER_IDX].l0
         steer_start_left =
             sys.segments[V3_STEERING_LEFT_IDX].l0
         steer_start_right =
@@ -221,14 +200,8 @@ function run_zenith_circles(;
             t = sim_time_zenith + step * dt_c
             pt = step * dt_c
 
-            SymbolicAWEModels.set_body_frame_damping(
-                sys, damping_profile(t))
-
             rf = ramp_factor(pt, 0.0, ramp_time_us)
 
-            sys.segments[V3_DEPOWER_IDX].l0 =
-                power_start +
-                (power_target - power_start) * rf
             sys.segments[V3_STEERING_LEFT_IDX].l0 =
                 steer_start_left +
                 (steer_target_left - steer_start_left) * rf
@@ -307,18 +280,12 @@ isdir(batch_dir) || mkpath(batch_dir)
 
 sim_time_zenith = 2
 sim_time_circles = 200
-start_ramp_time = 0.1
-ramp_time_up = 2
 ramp_time_us = 2
 
-# How to get the simulation stable?
-#   high fps helps
-#   high startup damping helps, then decay toward the nominal damping pattern
 fps_zenith = 360
 fps_circles = 360
-startup_decay_time = 4.0
-startup_damping_pattern = [100.0, 500.0, 1000.0]
-damping_pattern = [0.0, 0.0, 20.0]
+body_damping = [0.0, 0.0, 20.0]
+point_37_38_damping = [0.0, 20.0, 20.0]
 
 failed_runs = NamedTuple[]
 
@@ -334,9 +301,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             elevation=elev, g_earth=g,
             kcu_mass=kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            start_ramp_time, ramp_time_up,
-            startup_damping_pattern, damping_pattern,
-            startup_decay_time,
+            body_damping, point_37_38_damping,
             max_us_zenith, target_azimuth=0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us=us,
