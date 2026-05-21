@@ -36,6 +36,8 @@ Base.@kwdef mutable struct V3SettleConfig
     # Flight condition
     v_wind::Float64 = 10.72
     tether_length::Float64 = 240.0
+    g_earth::Float64 = 9.81
+    kcu_mass::Union{Nothing,Float64} = nothing
 
     # Geometry modifications
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig(
@@ -57,12 +59,12 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
+    settle_wing(config::V3SettleConfig, init_row;
+                data_path=nothing,
+                show_progress=true, remake=false)
     settle_wing(config::V3SettleConfig;
-                init_row=nothing,
-                position=nothing, velocity=nothing,
-                attitude=nothing,
-                steering=nothing, depower=nothing,
-                wind_vec=nothing,
+                position, velocity, attitude,
+                steering, depower, wind_vec,
                 data_path=nothing,
                 show_progress=true, remake=false)
     -> (sam, syslog, settle_failed)
@@ -70,13 +72,10 @@ end
 Run power-zone settling with gravity to find equilibrium wing
 geometry matching the given flight state.
 
-Either pass `init_row` (a NamedTuple with `x, y, z, vx, vy, vz,
-roll, pitch, yaw, steering, depower, wind_vec`), or pass the
-manual inputs `position`, `velocity`, `attitude`, `steering`,
-`depower`, `wind_vec` and let the function build the row.
-
-`position` is `[x, y, z]` (m, ENU), `velocity` is `[vx, vy, vz]`
-(m/s, ENU), `attitude` is `[roll, pitch, yaw]` (rad).
+First form takes a prebuilt `init_row` NamedTuple with `x, y, z,
+vx, vy, vz, roll, pitch, yaw, steering, depower, wind_vec`.
+Second form builds it from explicit ENU vectors (`position`,
+`velocity` in m / m·s⁻¹, `attitude` is `[roll, pitch, yaw]` rad).
 
 Always returns a fresh model loaded from the settled binary, so
 the caller gets clean settings (no settling damping). When
@@ -85,32 +84,22 @@ simulation is skipped and the settled geometry is loaded from
 file.
 """
 function settle_wing(config::V3SettleConfig;
-                     init_row=nothing,
-                     position=nothing,
-                     velocity=nothing,
-                     attitude=nothing,
-                     steering=nothing,
-                     depower=nothing,
-                     wind_vec=nothing,
+                     position, velocity, heading,
+                     steering, depower, wind_vec,
+                     kwargs...)
+    init_row = (
+        x=position[1], y=position[2], z=position[3],
+        vx=velocity[1], vy=velocity[2], vz=velocity[3],
+        heading=heading,
+        steering=steering, depower=depower,
+        wind_vec=wind_vec)
+    return settle_wing(config, init_row; kwargs...)
+end
+
+function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      show_progress=true,
                      remake=false)
-    if isnothing(init_row)
-        all_provided = !isnothing(position) &&
-            !isnothing(velocity) && !isnothing(attitude) &&
-            !isnothing(steering) && !isnothing(depower) &&
-            !isnothing(wind_vec)
-        all_provided || error(
-            "Pass either init_row or all of position, " *
-            "velocity, attitude, steering, depower, wind_vec")
-        init_row = (
-            x=position[1], y=position[2], z=position[3],
-            vx=velocity[1], vy=velocity[2], vz=velocity[3],
-            roll=attitude[1], pitch=attitude[2], yaw=attitude[3],
-            steering=steering, depower=depower,
-            wind_vec=wind_vec)
-    end
-
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -136,7 +125,11 @@ function settle_wing(config::V3SettleConfig;
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
-        "_lt$(Int(round(config.tether_length)))"
+        "_lt$(Int(round(config.tether_length)))" *
+        "_g$(Int(round(config.g_earth * 10)))"
+    if !isnothing(config.kcu_mass)
+        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+    end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
     source_struc = joinpath(
@@ -353,7 +346,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break
