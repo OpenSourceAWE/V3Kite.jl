@@ -38,10 +38,10 @@ export V3KITE
     set::Settings
     "Reference to the KCU model (Kite Control Unit as implemented in the package KitePodModels"
     kcu::KCU
+    sam::SymbolicAWEModel
     "Reference to the atmospheric model as implemented in the package AtmosphericModels"
     am::AtmosphericModel = AtmosphericModel(set)
-
-
+    
 end
 
 # Include submodules (model_setup before calibration: calibration uses V3GeomAdjustConfig)
