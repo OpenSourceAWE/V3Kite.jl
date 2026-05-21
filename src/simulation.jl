@@ -116,8 +116,8 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
         sys.tethers[1].init_stretched_len = config.tether_length
     end
 
-    if config.elevation !== nothing
-        adjust_elevation!(sam, config.elevation)
+    if config.elevation !== nothing && !isempty(sys.transforms)
+        sys.transforms[1].elevation = deg2rad(config.elevation)
     end
 
     return sam, sys
@@ -219,7 +219,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         log_state!(logger, sys_state, sam, t)
 
         # Progress updates
-        if show_progress && (step % max(1, div(n_steps, 10)) == 0 || step == n_steps)
+        if show_progress && should_report(step, n_steps)
             elapsed = time() - sim_start_time
             times_realtime = t / elapsed
             @info "  Step $step/$n_steps (t = $(round(t, digits=2)) s)" times_realtime=round(times_realtime, digits=2)
