@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "f5a759269ffe8829f542e47c6fe656465fbc1e5a"
+project_hash = "e499187e86f31fd04abbbf631aced6d6a2e404c8"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -718,7 +718,9 @@ version = "1.16.0"
 [[deps.FindFirstFunctions]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "563bb87e9902f3adffe2568e2af6317d6675dbcd"
+git-tree-sha1 = "563bb87e9902f3adffe2568e2af6317d6675dbcd"
 uuid = "64ca27bc-2ba2-4a57-88aa-44e436879224"
+version = "2.1.0"
 version = "2.1.0"
 
 [[deps.FiniteDiff]]
@@ -768,9 +770,9 @@ version = "1.1.3"
 
 [[deps.FunctionWrappersWrappers]]
 deps = ["FunctionWrappers", "PrecompileTools", "TruncatedStacktraces"]
-git-tree-sha1 = "b28fca87e487d18ba462317e4a95d7253ae51929"
+git-tree-sha1 = "1ccaffbe23a2b91084ff6af8e67ab24ad8937dee"
 uuid = "77dc65aa-8811-40c2-897b-53d922fa7daf"
-version = "1.9.1"
+version = "1.9.0"
 
     [deps.FunctionWrappersWrappers.extensions]
     FunctionWrappersWrappersEnzymeExt = ["Enzyme", "EnzymeCore"]
@@ -2007,7 +2009,9 @@ version = "0.3.0"
 [[deps.StateSelection]]
 deps = ["BipartiteGraphs", "DocStringExtensions", "FindFirstFunctions", "Graphs", "LinearAlgebra", "OrderedCollections", "Setfield", "SparseArrays"]
 git-tree-sha1 = "77ed45e89623c8e468677f7dfec5b51abb5c311a"
+git-tree-sha1 = "77ed45e89623c8e468677f7dfec5b51abb5c311a"
 uuid = "64909d44-ed92-46a8-bbd9-f047dfbdc84b"
+version = "1.9.3"
 version = "1.9.3"
 
     [deps.StateSelection.extensions]
@@ -2167,7 +2171,9 @@ version = "1.1.0"
 [[deps.SymbolicUtils]]
 deps = ["AbstractTrees", "ArrayInterface", "Combinatorics", "ConstructionBase", "DataStructures", "Dictionaries", "DocStringExtensions", "DynamicPolynomials", "EnumX", "ExproniconLite", "Graphs", "LinearAlgebra", "MacroTools", "Moshi", "MultivariatePolynomials", "MutableArithmetics", "NaNMath", "PrecompileTools", "ReadOnlyArrays", "Setfield", "SparseArrays", "SpecialFunctions", "StaticArraysCore", "SymbolicIndexingInterface", "TaskLocalValues", "TermInterface", "WeakCacheSets"]
 git-tree-sha1 = "418f4d81ddcd262a89da8fb9f3524a29166c5403"
+git-tree-sha1 = "418f4d81ddcd262a89da8fb9f3524a29166c5403"
 uuid = "d1185830-fcd6-423d-90d6-eec64667417b"
+version = "4.31.0"
 version = "4.31.0"
 
     [deps.SymbolicUtils.extensions]
@@ -2330,7 +2336,9 @@ version = "0.1.0"
 [[deps.VortexStepMethod]]
 deps = ["Colors", "DefaultApplication", "DelimitedFiles", "DifferentiationInterface", "FiniteDiff", "ForwardDiff", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "Measures", "NonlinearSolve", "Parameters", "Pkg", "PreallocationTools", "PrecompileTools", "RecursiveArrayTools", "SciMLBase", "Serialization", "StaticArrays", "Statistics", "StructMapping", "Timers", "Xfoil", "YAML"]
 git-tree-sha1 = "eceecd89f236a0c15e5e82e753ad2e8fc0be6589"
+git-tree-sha1 = "eceecd89f236a0c15e5e82e753ad2e8fc0be6589"
 uuid = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
+version = "3.3.3"
 version = "3.3.3"
 
     [deps.VortexStepMethod.extensions]
