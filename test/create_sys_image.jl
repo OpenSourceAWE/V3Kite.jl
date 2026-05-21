@@ -15,7 +15,7 @@ using StaticArrays, Rotations, NonlinearSolve, OrdinaryDiffEqBDF,
 using CSV, DataFrames, HDF5, Parameters, UnPack, DiscretePIDs
 
 # --- Visualization ---
-using GLMakie, CairoMakie, Colors, LaTeXStrings
+using GLMakie, Colors, LaTeXStrings
 
 # --- Open Source AWE Packages ---
 using AtmosphericModels, KiteUtils, KitePodModels, VortexStepMethod,
@@ -63,7 +63,7 @@ PackageCompiler.create_sysimage(
      :OrdinaryDiffEqCore, :OrdinaryDiffEqNonlinearSolve, :SteadyStateDiffEq,
      :ModelingToolkit, :ControlSystemsBase, :SymbolicIndexingInterface,
      :CSV, :DataFrames, :HDF5, :Parameters, :UnPack, :DiscretePIDs,
-     :GLMakie, :CairoMakie, :Colors, :LaTeXStrings,
+     :GLMakie, :Colors, :LaTeXStrings,
      :AtmosphericModels, :KiteUtils, :KitePodModels, :VortexStepMethod,
      :SymbolicAWEModels];
     sysimage_path="kps-image_tmp.so",
