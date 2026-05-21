@@ -33,6 +33,17 @@ export Settings
 export SymbolicAWEModels
 export record, replay
 
+@with_kw mutable struct V3Kite <: AbstractKiteModel
+    "Reference to the settings struct"
+    set::Settings
+    "Reference to the KCU model (Kite Control Unit as implemented in the package KitePodModels"
+    kcu::KCU
+    "Reference to the atmospheric model as implemented in the package AtmosphericModels"
+    am::AtmosphericModel = AtmosphericModel(set)
+
+
+end
+
 # Include submodules (model_setup before calibration: calibration uses V3GeomAdjustConfig)
 include("model_setup.jl")
 include("calibration.jl")
