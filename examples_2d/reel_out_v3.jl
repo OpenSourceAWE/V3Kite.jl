@@ -34,6 +34,23 @@ set.wind_vec = [V_WIND, 0.0, 0.0]
 set.l_tether = TETHER_LENGTH
 set.profile_law = 0
 
+# the following values can be changed to match your interest
+dt::Float64 = 0.05
+STEPS = 600
+const PLOT = true
+FRONT_VIEW = false
+ZOOM = true
+PRINT = false
+STATISTIC = false
+ALPHA_ZERO = 8.8 
+# end of user parameter section #
+
+set.alpha_zero = ALPHA_ZERO
+
+v_time = zeros(STEPS)
+v_speed = zeros(STEPS)
+v_force = zeros(STEPS)
+
 kcu::KCU = KCU(set)
 
 source_struc = joinpath(data_path, "struc_geometry.yaml")
