@@ -49,7 +49,6 @@ export V3_STEERING_L0_BASE, V3_DEPOWER_L0_BASE
 # Gains
 export V3_STEERING_GAIN, V3_DEPOWER_GAIN
 # Segment indices
-export V3_TETHER_POINT_IDXS
 export V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 export V3_DEPOWER_IDX
 # Conversion functions
@@ -63,7 +62,7 @@ export get_depower, set_depower!
 
 # Model setup exports
 export V3GeomAdjustConfig, apply_geom_adjustments!
-export adjust_tether_length!, adjust_elevation!
+export adjust_elevation!
 export distribute_wing_drag!, distribute_wing_mass!
 export generate_drag_adjusted_polars
 export segment_stretch_stats

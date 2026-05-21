@@ -35,22 +35,14 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Flight condition
     v_wind::Float64 = 10.72
-    elevation::Float64 = 70.0
-    azimuth::Float64 = 0.0
-    heading::Float64 = 0.0
     tether_length::Float64 = 240.0
-
-    # Control
-    heading_setpoint::Float64 = -1.562
-    heading_kp::Float64 = 0.5
-    heading_tau_i::Union{Float64,Bool} = false
 
     # Geometry modifications
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig(
         reduce_tip=true, reduce_te=true,
         tether_length=240.0)
 
-    # Depower ramp (power-zone settling only)
+    # Depower ramp
     start_depower::Union{Nothing,Float64} = nothing
     end_depower::Union{Nothing,Float64} = nothing
 
@@ -61,33 +53,60 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
-    settle_wing(config::V3SettleConfig; data_path=nothing,
-                show_progress=true, remake=false,
+    settle_wing(config::V3SettleConfig;
                 init_row=nothing,
-                power_zone=false) -> (sam, syslog)
+                position=nothing, velocity=nothing,
+                attitude=nothing,
+                steering=nothing, depower=nothing,
+                wind_vec=nothing,
+                data_path=nothing,
+                show_progress=true, remake=false)
+    -> (sam, syslog, settle_failed)
 
-Run a damped settling simulation to find equilibrium wing
-geometry.
+Run power-zone settling with gravity to find equilibrium wing
+geometry matching the given flight state.
 
-Always returns a fresh model loaded from the settled YAML, so
-the caller gets clean settings (normal gravity, no settling
-damping).
+Either pass `init_row` (a NamedTuple with `x, y, z, vx, vy, vz,
+roll, pitch, yaw, steering, depower, wind_vec`), or pass the
+manual inputs `position`, `velocity`, `attitude`, `steering`,
+`depower`, `wind_vec` and let the function build the row.
 
-When `remake=false` and the destination YAML already exists,
-the simulation is skipped and the settled geometry is loaded
-from file.
+`position` is `[x, y, z]` (m, ENU), `velocity` is `[vx, vy, vz]`
+(m/s, ENU), `attitude` is `[roll, pitch, yaw]` (rad).
 
-When `power_zone=true`, runs power-zone settling with gravity
-using `init_row` for position/orientation/controls. When
-`power_zone=false`, runs zero-gravity geometry settling; pass
-`init_row` to set steering/depower from flight data.
+Always returns a fresh model loaded from the settled binary, so
+the caller gets clean settings (no settling damping). When
+`remake=false` and the destination file already exists, the
+simulation is skipped and the settled geometry is loaded from
+file.
 """
 function settle_wing(config::V3SettleConfig;
+                     init_row=nothing,
+                     position=nothing,
+                     velocity=nothing,
+                     attitude=nothing,
+                     steering=nothing,
+                     depower=nothing,
+                     wind_vec=nothing,
                      data_path=nothing,
                      show_progress=true,
-                     remake=false,
-                     init_row=nothing,
-                     power_zone::Bool=false)
+                     remake=false)
+    if isnothing(init_row)
+        all_provided = !isnothing(position) &&
+            !isnothing(velocity) && !isnothing(attitude) &&
+            !isnothing(steering) && !isnothing(depower) &&
+            !isnothing(wind_vec)
+        all_provided || error(
+            "Pass either init_row or all of position, " *
+            "velocity, attitude, steering, depower, wind_vec")
+        init_row = (
+            x=position[1], y=position[2], z=position[3],
+            vx=velocity[1], vy=velocity[2], vz=velocity[3],
+            roll=attitude[1], pitch=attitude[2], yaw=attitude[3],
+            steering=steering, depower=depower,
+            wind_vec=wind_vec)
+    end
+
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -99,14 +118,9 @@ function settle_wing(config::V3SettleConfig;
         gc.depower_reduction : 0.0
     st_reduction = gc.reduce_steering ?
         gc.steering_reduction : 0.0
-    dp_norm = if !isnothing(config.end_depower)
-        config.end_depower / 100.0
-    elseif !isnothing(init_row)
-        init_row.depower
-    else
-        0.0
-    end
-    st_norm = isnothing(init_row) ? 0.0 : init_row.steering
+    dp_norm = isnothing(config.end_depower) ?
+        init_row.depower : config.end_depower / 100.0
+    st_norm = init_row.steering
     depower_tape = depower_percentage_to_length(
         dp_norm * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
@@ -119,9 +133,6 @@ function settle_wing(config::V3SettleConfig;
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))"
-    if power_zone
-        suffix *= "_pz"
-    end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
     source_struc = joinpath(
@@ -134,17 +145,10 @@ function settle_wing(config::V3SettleConfig;
     settle_failed = false
     if remake || !isfile(dest_struc)
         try
-            if power_zone
-                syslog = _run_power_zone_settling!(
-                    config; data_path, show_progress,
-                    source_struc, source_aero,
-                    dest_struc, init_row)
-            else
-                syslog = _run_zero_g_settling!(
-                    config; data_path, show_progress,
-                    source_struc, source_aero,
-                    dest_struc, init_row)
-            end
+            syslog = _run_power_zone_settling!(
+                config; data_path, show_progress,
+                source_struc, source_aero,
+                dest_struc, init_row)
         catch err
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
@@ -172,9 +176,7 @@ function settle_wing(config::V3SettleConfig;
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.profile_law = 0
-    if power_zone && hasproperty(init_row, :wind_vec)
-        set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
-    end
+    set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled geometry" dest_struc
@@ -250,85 +252,6 @@ function _setup_settling_model(config::V3SettleConfig;
     end
 
     return sam, sys, gc
-end
-
-"""Run zero-gravity settling to find equilibrium geometry."""
-function _run_zero_g_settling!(config::V3SettleConfig;
-        data_path, show_progress,
-        source_struc, source_aero,
-        dest_struc,
-        init_row=nothing)
-    sam, sys, gc = _setup_settling_model(config;
-        g_earth=0.0, data_path, source_struc, source_aero)
-
-    # Set initial transform from config
-    sys.transforms[1].elevation = deg2rad(config.elevation)
-    sys.transforms[1].azimuth = deg2rad(config.azimuth)
-    sys.transforms[1].heading = deg2rad(config.heading)
-
-    # Set control from init_row if provided
-    if !isnothing(init_row)
-        set_steering!(sys, init_row.steering, gc)
-        set_depower!(sys, init_row.depower, 0.0, gc)
-    end
-
-    logger, sys_state = create_logger(sam, config.num_steps)
-
-    # Save original transform values
-    saved_el = sys.transforms[1].elevation
-    saved_az = sys.transforms[1].azimuth
-    saved_hd = sys.transforms[1].heading
-
-    @info "Starting zero-g settling..."
-    wing = sys.wings[1]
-    for step in 1:config.num_steps
-        t = step * config.dt
-
-        damping = max(config.world_damping *
-            (1.0 - step / config.decay_steps),
-            config.min_damping)
-        SymbolicAWEModels.set_world_frame_damping(
-            sys, damping)
-
-        if !sim_step!(sam; dt=config.dt, vsm_interval=1)
-            @error "Simulation failed" step t
-            break
-        end
-
-        log_state!(logger, sys_state, sam, t)
-
-        if show_progress && step % 20 == 0
-            @info "Step $step/$(config.num_steps)" damping=round.(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
-        end
-    end
-
-    # Reset transform to saved values
-    sys.transforms[1].elevation = saved_el
-    sys.transforms[1].azimuth = saved_az
-    sys.transforms[1].heading = saved_hd
-    SymbolicAWEModels.reinit!(
-        sys.transforms, sys; update_vel=false)
-
-    # Copy settled world positions into CAD slots so
-    # that copy_cad_to_world! during init! restores
-    # the settled state exactly.
-    for point in sys.points
-        point.pos_cad .= point.pos_w
-    end
-    for wing in sys.wings
-        wing.pos_cad .= wing.pos_w
-        wing.R_b_to_c .=
-            SymbolicAWEModels.quaternion_to_rotation_matrix(
-                wing.Q_b_to_w)
-    end
-
-    @info "Serializing settled sys_struct..."
-    serialize(dest_struc, sys)
-
-    syslog = save_and_load_log(
-        logger, "settle_refine_wing")
-    @info "Settling complete" dest_struc
-    return syslog
 end
 
 """Run power-zone settling initialized from flight data."""
