@@ -31,8 +31,9 @@ export REFINE, QUATERNION, WING
 export Settings
 export SymbolicAWEModels
 export record, replay
+export V3KITE
 
-@with_kw mutable struct V3Kite <: AbstractKiteModel
+@with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
     set::Settings
     "Reference to the KCU model (Kite Control Unit as implemented in the package KitePodModels"
