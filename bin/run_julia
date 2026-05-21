@@ -6,6 +6,10 @@ if [[ $(basename $(pwd)) == "bin" ]]; then
     cd ..
 fi
 
+# Clear any stale PythonCall/CondaPkg env vars so LocalPreferences.toml
+# (written by install_controlplots) takes effect unconditionally.
+unset JULIA_PYTHONCALL_EXE JULIA_CONDAPKG_BACKEND
+
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
 julia_version=$(julia --version | awk '{print($3)}')
