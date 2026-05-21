@@ -13,6 +13,7 @@ end
 using Timers
 tic()
 using V3Kite
+using V3Kite.KitePodModels
 using VortexStepMethod
 using LinearAlgebra
 toc("Loaded packages")
@@ -32,6 +33,8 @@ set.wind_vec = [V_WIND, 0.0, 0.0]
 set.l_tether = TETHER_LENGTH
 set.profile_law = 0
 
+kcu::KCU = KCU(set)
+
 source_struc = joinpath(data_path, "struc_geometry.yaml")
 source_aero = joinpath(data_path, "aero_geometry.yaml")
 vsm_path = joinpath(data_path, "vsm_settings.yaml")
@@ -46,3 +49,6 @@ toc("Created system structure")
 sam = SymbolicAWEModel(set, sys)
 toc("Created symbolic model")
 
+# create an instance of the V3KITE struct
+v3kite = V3KITE(set=set, kcu=kcu, sam=sam)
+toc("Created V3KITE instance")
