@@ -23,6 +23,7 @@ using LinearAlgebra
 using Statistics
 using Dates
 using StaticArrays
+using REPL.TerminalMenus
 
 WINDOW_SEC = 100.0
 
@@ -518,12 +519,36 @@ function write_csv(path, rows)
     end
 end
 
+function last_timestamp_token(name::AbstractString)
+    token = ""
+    for m in eachmatch(
+        r"[0-9]{4}(?:_[0-9]{2}){5}", name)
+        token = m.match
+    end
+    return token
+end
+
+function select_batch_interactively(root)
+    isdir(root) || error("Not found: $root")
+    dirs = filter(name -> isdir(joinpath(root, name)),
+        readdir(root))
+    isempty(dirs) &&
+        error("No batch directories found in $root")
+    dirs_sorted = sort(dirs;
+        by=name -> (last_timestamp_token(name), name),
+        rev=true)
+    menu = RadioMenu(dirs_sorted, pagesize=15)
+    choice = request(
+        "Select batch directory (newest first):", menu)
+    choice == -1 && error("Selection cancelled")
+    return dirs_sorted[choice]
+end
+
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    # batch_name = "circular_2025_batch_2026_01_11_11_29_19"
     if isempty(batch_name)
-        print("Enter batch folder name: ")
-        batch_name = strip(readline())
+        batch_name = select_batch_interactively(
+            "processed_data")
     end
     isempty(batch_name) && error("Batch name required.")
 

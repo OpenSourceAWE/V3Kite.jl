@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-V3 Kite: Batch Run for Zenith Hold + Circular Flight
+V3 Kite: Batch Run for Circular Flight
 
-Runs multiple parameter combinations for the two-phase
-v3 kite simulation (zenith azimuth hold, then circular
-flight). Each run saves a permanent log with parameter
-tags in the filename.
+Runs multiple parameter combinations for the v3 kite
+circular-flight simulation. Each run saves a permanent log
+with parameter tags in the filename. Initial equilibrium is
+established by `settle_wing`.
 
 Usage:
-    julia --project=examples examples/batch_run_zenith_than_circles.jl
+    julia --project=examples examples/batch_run_circles.jl
 """
 
 using Pkg
@@ -25,30 +25,28 @@ using SymbolicAWEModels
 using KiteUtils: wind_vec_from_angles
 using GLMakie
 using LinearAlgebra
-using DiscretePIDs
 using Dates
 
 # =============================================================================
-# Two-phase simulation function
+# Circular flight simulation function
 # =============================================================================
 
 """
-    run_zenith_circles(; kwargs...) -> (syslog, sam, azimuth_setpoint)
+    run_circles(; kwargs...) -> (syslog, sam)
 
-Run a two-phase v3 kite simulation: zenith azimuth hold
-followed by circular flight.
+Run a v3 kite circular-flight simulation. The starting
+state is produced by `settle_wing`; winch brake is engaged
+and steering is ramped from the settled trim toward the
+circular-flight target.
 """
-function run_zenith_circles(;
-    sim_time_zenith=10.0, fps_zenith=1,
+function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
     body_damping=[0.0, 0.0, 20.0],
     point_37_38_damping=[0.0, 20.0, 20.0],
     up=0.4,
     ramp_time_us=25.0,
-    max_us_zenith=0.1, us=0.1,
+    us=0.1,
     v_wind=15.4, v_wind_base=15.0,
-    heading_p=0.0, heading_i=0.1, heading_d=0.0,
-    target_azimuth=0.0,
     tether_length=150.0, elevation=nothing,
     g_earth=9.81,
     kcu_mass=nothing,
@@ -106,122 +104,65 @@ function run_zenith_circles(;
         wing.vsm_wing.use_prior_polar = true
     end
 
-    # Logger for both phases; zenith phase is truly optional
-    n_z = (sim_time_zenith > 0 && fps_zenith > 0) ?
-          max(1, Int(round(fps_zenith * sim_time_zenith))) : 0
-    dt_z = n_z > 0 ? sim_time_zenith / n_z : 0.0
     n_c = (sim_time_circles > 0 && fps_circles > 0) ?
           max(1, Int(round(fps_circles * sim_time_circles))) : 0
     dt_c = n_c > 0 ? sim_time_circles / n_c : 0.0
-    (n_z + n_c) > 0 || throw(ArgumentError(
-        "Both phases are disabled. Set positive sim_time/fps for zenith or circles."))
-    logger, sys_state = create_logger(sam, n_z + n_c)
+    n_c > 0 || throw(ArgumentError(
+        "Circular phase disabled. Set positive sim_time_circles and fps_circles."))
+    logger, sys_state = create_logger(sam, n_c)
 
-    # Nominal segment lengths
     nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
 
-    azimuth_setpoint = Float64[target_azimuth]
-
-    # Phase 1: Zenith hold
     sim_start = time()
 
-    if n_z > 0
-        @info "Zenith phase" n_z dt_z
+    @info "Circular phase" n_c dt_c
 
-        sys.winches[1].brake = true
+    sys.winches[1].brake = true
+    sys.winches[1].set_value = 0.0
 
-        # Azimuth PID
-        max_steering = max_us_zenith * V3_STEERING_GAIN
-        azimuth_pid = create_heading_pid(;
-            K=heading_p > 0 ? heading_p : 1.0,
-            Ti=heading_i > 0 ? 1.0 / heading_i : false,
-            Td=heading_d > 0 ? heading_d : false,
-            dt=dt_z, umin=-abs(max_steering),
-            umax=abs(max_steering))
+    steer_change = V3_STEERING_GAIN * us
+    vw_change = v_wind - v_wind_base
+    steer_target_left = nom_left + steer_change
+    steer_target_right = nom_right - steer_change
+    steer_start_left =
+        sys.segments[V3_STEERING_LEFT_IDX].l0
+    steer_start_right =
+        sys.segments[V3_STEERING_RIGHT_IDX].l0
 
-        for step in 1:n_z
-            t = step * dt_z
+    for step in 1:n_c
+        t = step * dt_c
 
-            azimuth = sys.wings[1].azimuth
-            steer_ctrl = azimuth_pid(
-                target_azimuth, azimuth, 0.0)
-            push!(azimuth_setpoint, target_azimuth)
+        rf = ramp_factor(t, 0.0, ramp_time_us)
 
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
-                nom_left + steer_ctrl
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-                nom_right - steer_ctrl
+        sys.segments[V3_STEERING_LEFT_IDX].l0 =
+            steer_start_left +
+            (steer_target_left - steer_start_left) * rf
+        sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+            steer_start_right +
+            (steer_target_right - steer_start_right) * rf
 
-            if !sim_step!(sam;
-                set_values=[0.0], dt=dt_z, vsm_interval=1)
-                @error "Zenith phase failed" step
-                break
-            end
-            log_state!(logger, sys_state, sam, t)
+        sys.set.v_wind = v_wind_base + vw_change * rf
 
-            if should_report(step, n_z)
-                @info "Zenith step $step/$n_z" t=round(t, digits=2) azimuth=round(rad2deg(azimuth), digits=2) steer_ctrl=round(steer_ctrl, digits=4)
-            end
+        if !sim_step!(sam;
+            set_values=[0.0], dt=dt_c, vsm_interval=1)
+            @error "Circular phase failed" step
+            break
         end
-    else
-        @info "Zenith phase skipped" sim_time_zenith fps_zenith
+        log_state!(logger, sys_state, sam, t)
+
+        if should_report(step, n_c)
+            @info "Circular step $step/$n_c" t=round(t, digits=2) v_wind=round(sys.set.v_wind, digits=2) rf=round(rf, digits=3)
+        end
     end
 
-    # Phase 2: Circular flight
-    if n_c > 0
-        @info "Circular phase" n_c dt_c
+    report_performance(sim_time_circles, time() - sim_start)
 
-        sys.winches[1].brake = true
-        sys.winches[1].set_value = 0.0
-
-        steer_change = V3_STEERING_GAIN * us
-        vw_change = v_wind - v_wind_base
-        steer_target_left = nom_left + steer_change
-        steer_target_right = nom_right - steer_change
-        steer_start_left =
-            sys.segments[V3_STEERING_LEFT_IDX].l0
-        steer_start_right =
-            sys.segments[V3_STEERING_RIGHT_IDX].l0
-
-        for step in 1:n_c
-            t = sim_time_zenith + step * dt_c
-            pt = step * dt_c
-
-            rf = ramp_factor(pt, 0.0, ramp_time_us)
-
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
-                steer_start_left +
-                (steer_target_left - steer_start_left) * rf
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-                steer_start_right +
-                (steer_target_right - steer_start_right) * rf
-
-            sys.set.v_wind = v_wind_base + vw_change * rf
-
-            if !sim_step!(sam;
-                set_values=[0.0], dt=dt_c, vsm_interval=1)
-                @error "Circular phase failed" step
-                break
-            end
-            log_state!(logger, sys_state, sam, t)
-
-            if should_report(step, n_c)
-                @info "Circular step $step/$n_c" t=round(t, digits=2) v_wind=round(sys.set.v_wind, digits=2) rf=round(rf, digits=3)
-            end
-        end
-    else
-        @info "Circular phase skipped" sim_time_circles fps_circles
-    end
-
-    # Performance
-    total_sim = sim_time_zenith + sim_time_circles
-    report_performance(total_sim, time() - sim_start)
-
-    # Save
     lt_tag = Int(round(tether_length))
-    save_log(logger, "tmp_run_refine_lt_$(lt_tag)")
-    syslog = load_log("tmp_run_refine_lt_$(lt_tag)")
+    tmp_name = "tmp_run_refine_lt_$(lt_tag)"
+    @info "Saving temporary log" name=tmp_name
+    save_log(logger, tmp_name)
+    syslog = load_log(tmp_name)
 
     save_root = "processed_data"
     save_dir = isempty(save_subdir) ? save_root :
@@ -235,18 +176,17 @@ function run_zenith_circles(;
            Int(round(elevation)) : "yaml"
     g_t = g_earth !== nothing ?
           Int(round(g_earth * 10)) : "yaml"
-    run_prefix = n_c > 0 ?
-                 "hold_at_zenith_then_circles" : "zenith_circle"
-    ln = "$(run_prefix)__up_$(up_t)_us_$(us_t)" *
+    ln = "circles__up_$(up_t)_us_$(us_t)" *
          "_vw_$(vw_t)_lt_$(lt_tag)" *
          "_el_$(el_t)_g_$(g_t)"
     if !isempty(run_tag)
         ln *= "_" * run_tag
     end
     ln *= "_date_" * ts
+    @info "Saving run log" name=ln path=save_dir
     save_log(logger, ln; path=save_dir)
 
-    return syslog, sam, azimuth_setpoint
+    return syslog, sam
 end
 
 # =============================================================================
@@ -264,17 +204,15 @@ lt_vals = [268]
 kcu_mass_2019 = 22.0
 kcu_mass_2025 = 23.3
 kcu_mass_vals = [kcu_mass_2019]
-max_us_zenith = 0.02 # maximum allowed steering to keep it on zenith
-batch_tag = "zenith_2019_batch_" *
+batch_tag = "circles_2019_batch_" *
             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
 batch_dir = joinpath("processed_data", batch_tag)
 isdir(batch_dir) || mkpath(batch_dir)
+@info "Batch output directory" batch_dir
 
-sim_time_zenith = 2
 sim_time_circles = 200
 ramp_time_us = 2
 
-fps_zenith = 200
 fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
@@ -287,14 +225,12 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
     run_tag = "run_" * lpad(string(run_id), 3, '0')
     @info "Starting run" run_id elevation = elev g_earth = g us up vw lt kcu_mass = kcu_mass_val
     try
-        run_zenith_circles(;
+        run_circles(;
             v_wind=vw, v_wind_base=vw,
             up=up, tether_length=lt,
             elevation=elev, g_earth=g,
             kcu_mass=kcu_mass_val,
-            sim_time_zenith, fps_zenith,
             body_damping, point_37_38_damping,
-            max_us_zenith, target_azimuth=0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us=us,
             save_subdir=batch_tag,
@@ -343,10 +279,9 @@ n_total = length(collect(Iterators.product(
 # vw_vals = [7.8, 19.7]
 # lt_vals = [262]
 
-# batch_tag = "zenith_2025_batch_" *
+# batch_tag = "circles_2025_batch_" *
 #             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
 
-# sim_time_zenith = 200.0
 # failed_runs = NamedTuple[]
 
 # for (run_id, (elev, g, us, up, vw, lt)) in enumerate(
@@ -355,15 +290,10 @@ n_total = length(collect(Iterators.product(
 #     run_tag = "run_" * lpad(string(run_id), 3, '0')
 #     @info "Starting run" run_id elevation = elev g_earth = g us up vw lt
 #     try
-#         run_zenith_circles(;
+#         run_circles(;
 #             v_wind=vw, v_wind_base=vw,
 #             up=up, tether_length=lt,
 #             elevation=elev, g_earth=g,
-#             sim_time_zenith, fps_zenith,
-#             start_ramp_time, ramp_time_up,
-#             startup_damping_pattern, damping_pattern,
-#             startup_decay_time,
-#             max_us_zenith, target_azimuth=0.0,
 #             sim_time_circles, fps_circles,
 #             ramp_time_us, us=us,
 #             save_subdir=batch_tag, run_tag)

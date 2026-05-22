@@ -23,6 +23,7 @@ using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
 using GLMakie
 using LinearAlgebra
 using Statistics
+using REPL.TerminalMenus
 
 # =============================================================================
 # Configuration
@@ -687,33 +688,38 @@ end
 # Main execution
 # =============================================================================
 
-# Set to "" to auto-select the latest dated directory and log file.
+# Set to a non-empty path to skip the menu and load directly.
 log_name = ""
 # log_name =
-#     "zenith_2019_batch_2026_02_23_15_09_48/" *
-#     "hold_at_zenith_then_circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
+#     "circles_2019_batch_2026_02_23_15_09_48/" *
+#     "circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
 
-# add an if log is empty, use dir name that has the last date.
-# then inside that dir, use the file_name with the last date
-if isempty(strip(log_name))
-    function last_timestamp_token(name::AbstractString)
-        token = ""
-        for m in eachmatch(
-            r"[0-9]{4}(?:_[0-9]{2}){5}",
-            name)
-            token = m.match
-        end
-        return token
+function last_timestamp_token(name::AbstractString)
+    token = ""
+    for m in eachmatch(
+        r"[0-9]{4}(?:_[0-9]{2}){5}",
+        name)
+        token = m.match
     end
+    return token
+end
 
-    dirs = filter(name -> isdir(joinpath(DATA_DIR, name)),
-        readdir(DATA_DIR))
+function select_log_interactively(data_dir)
+    dirs = filter(name -> isdir(joinpath(data_dir, name)),
+        readdir(data_dir))
     isempty(dirs) &&
-        error("No log directories found in $DATA_DIR")
-    latest_dir = last(sort(dirs; by=name ->
-        (last_timestamp_token(name), name)))
+        error("No log directories found in $data_dir")
+    dirs_sorted = sort(dirs;
+        by=name -> (last_timestamp_token(name), name),
+        rev=true)
 
-    log_dir = joinpath(DATA_DIR, latest_dir)
+    dir_menu = RadioMenu(dirs_sorted, pagesize=15)
+    dir_choice = request(
+        "Select log directory (newest first):", dir_menu)
+    dir_choice == -1 && error("Selection cancelled")
+    chosen_dir = dirs_sorted[dir_choice]
+
+    log_dir = joinpath(data_dir, chosen_dir)
     files = filter(name -> isfile(joinpath(log_dir, name)),
         readdir(log_dir))
     arrow_files = filter(name -> endswith(name, ".arrow"),
@@ -721,11 +727,22 @@ if isempty(strip(log_name))
     candidates = isempty(arrow_files) ? files : arrow_files
     isempty(candidates) &&
         error("No log files found in $log_dir")
+    files_sorted = sort(candidates;
+        by=name -> (last_timestamp_token(name), name),
+        rev=true)
 
-    latest_file = last(sort(candidates; by=name ->
-        (last_timestamp_token(name), name)))
-    log_name = joinpath(latest_dir, splitext(latest_file)[1])
-    @info "Using latest log_name" log_name
+    file_menu = RadioMenu(files_sorted, pagesize=15)
+    file_choice = request(
+        "Select log file (newest first):", file_menu)
+    file_choice == -1 && error("Selection cancelled")
+    chosen_file = files_sorted[file_choice]
+
+    return joinpath(chosen_dir, splitext(chosen_file)[1])
+end
+
+if isempty(strip(log_name))
+    log_name = select_log_interactively(DATA_DIR)
+    @info "Selected log_name" log_name
 end
 
 lg, sam, up, us, v_wind, lt =
