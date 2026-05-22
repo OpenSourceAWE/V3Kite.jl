@@ -20,7 +20,6 @@ using REPL.TerminalMenus
 options = [
     "v3kite = include(\"v3kite.jl\")",
     "reel_out_v3 = include(\"../examples_2d/reel_out_v3.jl\")",
-    "settle_wing = include(\"settle_wing.jl\")",
     "open_loop = include(\"open_loop.jl\")",
     "realtime = include(\"realtime.jl\")",
     "load_and_plot = include(\"load_and_plot.jl\")",
