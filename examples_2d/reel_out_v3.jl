@@ -35,7 +35,7 @@ set.l_tether = TETHER_LENGTH
 set.profile_law = 0
 
 # the following values can be changed to match your interest
-dt::Float64 = 0.05
+dt = 0.05
 STEPS = 600
 const PLOT = true
 FRONT_VIEW = false
@@ -63,9 +63,7 @@ vsm_set.wings[1].geometry_file = source_aero
 sys = load_sys_struct_from_yaml(source_struc;
     system_name=V3_MODEL_NAME, set,
     wing_type=REFINE, vsm_set)
-toc("Created system structure")
 sam = SymbolicAWEModel(set, sys)
-toc("Created symbolic model")
 
 # create an instance of the V3KITE struct
 v3kite = V3KITE(set=set, kcu=kcu, sam=sam)
