@@ -48,7 +48,6 @@ function run_zenith_circles(;
     max_us_zenith=0.1, us=0.1,
     v_wind=15.4, v_wind_base=15.0,
     heading_p=0.0, heading_i=0.1, heading_d=0.0,
-    winch_p=1000.0, winch_i=100.0, winch_d=50.0,
     target_azimuth=0.0,
     tether_length=150.0, elevation=nothing,
     g_earth=9.81,
@@ -130,6 +129,8 @@ function run_zenith_circles(;
     if n_z > 0
         @info "Zenith phase" n_z dt_z
 
+        sys.winches[1].brake = true
+
         # Azimuth PID
         max_steering = max_us_zenith * V3_STEERING_GAIN
         azimuth_pid = create_heading_pid(;
@@ -139,42 +140,29 @@ function run_zenith_circles(;
             dt=dt_z, umin=-abs(max_steering),
             umax=abs(max_steering))
 
-        # Winch PID
-        nominal_tether_length = sys.tethers[1].len
-        init_winch_torque!(sys)
-        winch_pid = create_winch_pid(;
-            K=winch_p,
-            Ti=winch_i > 0 ? winch_p / winch_i : false,
-            Td=winch_d > 0 ? winch_d / winch_p : false,
-            dt=dt_z)
-
         for step in 1:n_z
             t = step * dt_z
 
-            # Azimuth PID
             azimuth = sys.wings[1].azimuth
             steer_ctrl = azimuth_pid(
                 target_azimuth, azimuth, 0.0)
             push!(azimuth_setpoint, target_azimuth)
 
-            # Steering
             sys.segments[V3_STEERING_LEFT_IDX].l0 =
                 nom_left + steer_ctrl
             sys.segments[V3_STEERING_RIGHT_IDX].l0 =
                 nom_right - steer_ctrl
 
-            # Winch PID
-            tl = sys.tethers[1].len
-            wf = winch_pid(nominal_tether_length, tl, 0.0)
-            wt = force_to_torque(wf, sys)
-            sys.winches[1].set_value = -wt
-
             if !sim_step!(sam;
-                set_values=[-wt], dt=dt_z, vsm_interval=1)
+                set_values=[0.0], dt=dt_z, vsm_interval=1)
                 @error "Zenith phase failed" step
                 break
             end
             log_state!(logger, sys_state, sam, t)
+
+            if should_report(step, n_z)
+                @info "Zenith step $step/$n_z" t=round(t, digits=2) azimuth=round(rad2deg(azimuth), digits=2) steer_ctrl=round(steer_ctrl, digits=4)
+            end
         end
     else
         @info "Zenith phase skipped" sim_time_zenith fps_zenith
@@ -217,6 +205,10 @@ function run_zenith_circles(;
                 break
             end
             log_state!(logger, sys_state, sam, t)
+
+            if should_report(step, n_c)
+                @info "Circular step $step/$n_c" t=round(t, digits=2) v_wind=round(sys.set.v_wind, digits=2) rf=round(rf, digits=3)
+            end
         end
     else
         @info "Circular phase skipped" sim_time_circles fps_circles
@@ -263,9 +255,9 @@ end
 
 # elevation_vals = [20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
 elevation_vals = [70]
-g_earth_vals = [0.0]
-us_vals = [0.1] #, 0.1, 0.15, 0.2]
-up_vals = [0.18]
+g_earth_vals = [0.0, 9.81]
+us_vals = [0.1, 0.15, 0.2]
+up_vals = [0.2, 0.3, 0.4]
 # vw_vals = [8.6, 19.8]
 vw_vals = [8.6]
 lt_vals = [268]
@@ -282,8 +274,8 @@ sim_time_zenith = 2
 sim_time_circles = 200
 ramp_time_us = 2
 
-fps_zenith = 360
-fps_circles = 360
+fps_zenith = 200
+fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
 
