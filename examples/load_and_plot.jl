@@ -7,9 +7,6 @@ Load and Plot V3 Kite Log Data
 Post-processing script that loads saved simulation logs,
 reconstructs the system model, and produces time series plots,
 3D replay, wing node body-frame plots, and line stretch analysis.
-
-Usage:
-    julia --project=examples examples/load_and_plot.jl
 """
 
 using Pkg

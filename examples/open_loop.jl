@@ -6,9 +6,6 @@ V3 Kite: Open-Loop Circular Flight
 
 Power-zone settling followed by ramped open-loop steering and
 depower. Winch brake engaged (constant tether length).
-
-Usage:
-    julia --project=examples examples/open_loop.jl
 """
 
 using Pkg

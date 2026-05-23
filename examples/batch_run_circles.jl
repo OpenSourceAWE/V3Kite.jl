@@ -8,9 +8,6 @@ Runs multiple parameter combinations for the v3 kite
 circular-flight simulation. Each run saves a permanent log
 with parameter tags in the filename. Initial equilibrium is
 established by `settle_wing`.
-
-Usage:
-    julia --project=examples examples/batch_run_circles.jl
 """
 
 using Pkg
