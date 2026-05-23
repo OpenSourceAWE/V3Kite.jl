@@ -29,12 +29,12 @@ using Dates
 # =============================================================================
 
 TETHER_LENGTH = 262.0
-ELEVATION = 20.0       # degrees
+ELEVATION = 70.0       # degrees
 AZIMUTH = 0.0          # degrees
 
 V_WIND = 7.6
 US = 0.1               # Steering fraction [-1, 1]
-UP = 0.42              # Depower fraction [0, 1]
+UP = 0.25             # Depower fraction [0, 1]
 
 # Ramp timing
 RAMP_START_US = 3.0
@@ -66,6 +66,7 @@ settle_config = V3SettleConfig(
     num_substeps = 5,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = UP * 100.0 + 10.0,
+    course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
 )
@@ -74,7 +75,7 @@ gc = settle_config.geom
 @info "Settling V3 model..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = UP, wind_vec)
+    steering = 0.0, depower = UP, wind_vec, remake=false)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 sys.winches[1].brake = true
