@@ -31,6 +31,44 @@ using Dates
 # Circular flight simulation function
 # =============================================================================
 
+function _unwrap_step(prev_uw, raw)
+    delta = raw - mod(prev_uw, 2pi)
+    if delta > pi
+        delta -= 2pi
+    elseif delta < -pi
+        delta += 2pi
+    end
+    return prev_uw + delta
+end
+
+function course_rate_converged(course_uw, azimuth_uw, elevation,
+        time_buf, n; window_sec, rel_tol, dt)
+    t_end = time_buf[n]
+    i_lo = n
+    while i_lo > 1 && time_buf[i_lo-1] >= t_end - window_sec
+        i_lo -= 1
+    end
+    (n - i_lo) < 2 && return false
+    sum_abs = 0.0
+    minv = Inf
+    maxv = -Inf
+    cnt = 0
+    @inbounds for k in (i_lo+1):n
+        r = (course_uw[k] - course_uw[k-1]) / dt -
+            ((azimuth_uw[k] - azimuth_uw[k-1]) / dt) *
+            sin(elevation[k])
+        a = abs(r)
+        sum_abs += a
+        minv = min(minv, a)
+        maxv = max(maxv, a)
+        cnt += 1
+    end
+    cnt == 0 && return false
+    mean_abs = sum_abs / cnt
+    mean_abs <= 0 && return false
+    return (maxv - minv) / mean_abs < rel_tol
+end
+
 """
     run_circles(; kwargs...) -> (syslog, sam)
 
@@ -50,6 +88,10 @@ function run_circles(;
     tether_length=150.0, elevation=nothing,
     g_earth=9.81,
     kcu_mass=nothing,
+    stop_window_sec=COURSE_RATE_WINDOW_SEC,
+    stop_rel_tol=0.03,
+    stop_check_every=nothing,
+    early_stop=true,
     save_subdir="", run_tag="")
 
     global sam, _settle_log
@@ -111,6 +153,14 @@ function run_circles(;
         "Circular phase disabled. Set positive sim_time_circles and fps_circles."))
     logger, sys_state = create_logger(sam, n_c)
 
+    course_uw = Vector{Float64}(undef, n_c)
+    azimuth_uw = Vector{Float64}(undef, n_c)
+    elevation_v = Vector{Float64}(undef, n_c)
+    time_buf = Vector{Float64}(undef, n_c)
+    n_logged = 0
+    check_every = something(stop_check_every,
+        max(1, fps_circles))
+
     nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
     nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
 
@@ -151,8 +201,31 @@ function run_circles(;
         end
         log_state!(logger, sys_state, sam, t)
 
-        if should_report(step, n_c)
-            @info "Circular step $step/$n_c" t=round(t, digits=2) v_wind=round(sys.set.v_wind, digits=2) rf=round(rf, digits=3)
+        n_logged += 1
+        c_raw = sys_state.course
+        az_raw = sys_state.azimuth
+        if n_logged == 1
+            course_uw[1] = c_raw
+            azimuth_uw[1] = az_raw
+        else
+            course_uw[n_logged] = _unwrap_step(
+                course_uw[n_logged-1], c_raw)
+            azimuth_uw[n_logged] = _unwrap_step(
+                azimuth_uw[n_logged-1], az_raw)
+        end
+        elevation_v[n_logged] = sys_state.elevation
+        time_buf[n_logged] = t
+
+        if early_stop && n_logged > 1 &&
+           t >= stop_window_sec &&
+           (step % check_every == 0)
+            if course_rate_converged(course_uw, azimuth_uw,
+                    elevation_v, time_buf, n_logged;
+                    window_sec=stop_window_sec,
+                    rel_tol=stop_rel_tol, dt=dt_c)
+                @info "Course rate converged - stopping early" t=round(t, digits=2) step n_c
+                break
+            end
         end
     end
 
@@ -193,17 +266,52 @@ end
 # Batch sweep 1: 2019 kite parameters
 # =============================================================================
 
-# elevation_vals = [20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
-elevation_vals = [70]
-g_earth_vals = [0.0, 9.81]
-us_vals = [0.1, 0.15, 0.2]
-up_vals = [0.2, 0.3, 0.4]
-# vw_vals = [8.6, 19.8]
-vw_vals = [8.6]
-lt_vals = [268]
-kcu_mass_2019 = 22.0
-kcu_mass_2025 = 23.3
-kcu_mass_vals = [kcu_mass_2019]
+function generate_run_combos(defaults::NamedTuple,
+        sweeps=nothing, combine_all=nothing)
+    sw = sweeps === nothing ? NamedTuple() : sweeps
+    ca = combine_all === nothing ? NamedTuple() : combine_all
+    variants = NamedTuple[defaults]
+    for param in keys(sw)
+        for v in sw[param]
+            cand = merge(defaults,
+                NamedTuple{(param,)}((v,)))
+            cand == defaults && continue
+            cand in variants && continue
+            push!(variants, cand)
+        end
+    end
+    isempty(ca) && return variants
+    ca_keys = keys(ca)
+    ca_iter = Iterators.product(
+        (ca[k] for k in ca_keys)...)
+    combos = NamedTuple[]
+    for cav in ca_iter
+        ca_nt = NamedTuple{ca_keys}(cav)
+        for var in variants
+            push!(combos, merge(var, ca_nt))
+        end
+    end
+    return combos
+end
+
+defaults = (
+    elevation=70, g_earth=0.0,
+    us=0.15, up=0.33, vw=8.6, lt=200, kcu_mass=22.0,
+)
+
+sweeps = (
+    us=0.05:0.05:1.0,
+    up=0.05:0.05:1.0,
+    vw=8.0:1.0:20.0,
+    lt=50:50:300,
+    kcu_mass=10:10:40
+)
+
+combine_all = nothing
+# combine_all = (
+    # kcu_mass=[22.0, 44.0],
+# )
+
 batch_tag = "circles_2019_batch_" *
             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
 batch_dir = joinpath("processed_data", batch_tag)
@@ -217,31 +325,30 @@ fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
 
+combos = generate_run_combos(defaults, sweeps, combine_all)
+@info "Batch combos generated" n=length(combos)
+
 failed_runs = NamedTuple[]
 
-for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
-    Iterators.product(elevation_vals, g_earth_vals,
-        us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals))
+for (run_id, p) in enumerate(combos)
     run_tag = "run_" * lpad(string(run_id), 3, '0')
-    @info "Starting run" run_id elevation = elev g_earth = g us up vw lt kcu_mass = kcu_mass_val
+    @info "Starting run" run_id elevation=p.elevation g_earth=p.g_earth us=p.us up=p.up vw=p.vw lt=p.lt kcu_mass=p.kcu_mass
     try
         run_circles(;
-            v_wind=vw, v_wind_base=vw,
-            up=up, tether_length=lt,
-            elevation=elev, g_earth=g,
-            kcu_mass=kcu_mass_val,
+            v_wind=p.vw, v_wind_base=p.vw,
+            up=p.up, tether_length=p.lt,
+            elevation=p.elevation, g_earth=p.g_earth,
+            kcu_mass=p.kcu_mass,
             body_damping, point_37_38_damping,
             sim_time_circles, fps_circles,
-            ramp_time_us, us=us,
+            ramp_time_us, us=p.us,
             save_subdir=batch_tag,
             run_tag)
         @info "Completed" run_id
     catch err
         @error "Failed" run_id err
-        push!(failed_runs, (run_id=run_id,
-            elevation=elev, g_earth=g,
-            us=us, up=up, vw=vw, lt=lt,
-            kcu_mass=kcu_mass_val, error=err))
+        push!(failed_runs, merge((run_id=run_id,), p,
+            (error=err,)))
     end
     GC.gc()
 end
@@ -261,10 +368,7 @@ if !isempty(failed_runs)
     @info "Wrote failure list" path = fp
 end
 
-n_total = length(collect(Iterators.product(
-    elevation_vals, g_earth_vals,
-    us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals)))
-@info "Batch 1 completed" total = n_total failed = length(failed_runs)
+@info "Batch 1 completed" total=length(combos) failed=length(failed_runs)
 
 #TODO: check updates from above to complete the below when you start using it
 # # =============================================================================
