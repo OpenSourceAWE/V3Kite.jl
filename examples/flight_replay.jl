@@ -45,6 +45,7 @@ SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
+EXTRA_WING_DRAG_COEFF = 0.0
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
@@ -72,6 +73,8 @@ else
     h5_path = joinpath(v3_data_path(),
         "flight_data", "ekf_awe_2019-10-08.h5")
 end
+depower_offset_pct = YEAR == 2019 ?
+    DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025
 SECTION = "$(SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
@@ -177,9 +180,7 @@ function run_physics_replay(h5_path;
     function make_row(raw)
         dp = raw.kcu_actual_depower
         if is_2019
-            # u_dp_2025 = 0.2564 - 0.0768 * u_p_2019
             dp = 0.2564 - 0.0768 * dp / 100.0
-            dp += DEPOWER_OFFSET_2019 / 100.0
         else
             dp = dp / 100.0
         end
@@ -283,7 +284,7 @@ function run_physics_replay(h5_path;
             reduce_steering=REDUCE_STEERING,
             steering_reduction=STEERING_REDUCTION,
             tip_reduction=TIP_REDUCTION,
-            depower_offset=DEPOWER_OFFSET_2025 / 100.0),
+            depower_offset=depower_offset_pct / 100.0),
         fix_sphere_idxs=[])
     settle_log = nothing
     sam = nothing
@@ -309,7 +310,7 @@ function run_physics_replay(h5_path;
     settle_failed = false
     if SETTLE
         sam, settle_log, settle_failed =
-            settle_wing(settle_config, row1; remake=false)
+            settle_wing(settle_config, row1; remake=true)
         if settle_failed
             @warn "Settling failed — skipping sim"
             base_name = build_replay_name(h5_path,
@@ -366,6 +367,9 @@ function run_physics_replay(h5_path;
     sys = sam.sys_struct
     set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
     distribute_wing_mass!(sys, 11.0; dist=0.5)
+    distribute_wing_drag!(sys,
+        sys.wings[1].vsm_aero.projected_area,
+        EXTRA_WING_DRAG_COEFF)
 
     heading_pid = create_heading_pid(;
         K=HEADING_KP, Ti=HEADING_TI, dt)
@@ -841,7 +845,7 @@ geom_config = V3GeomAdjustConfig(
     reduce_steering=REDUCE_STEERING,
     steering_reduction=STEERING_REDUCTION,
     tip_reduction=TIP_REDUCTION,
-    depower_offset=DEPOWER_OFFSET_2025 / 100.0)
+    depower_offset=depower_offset_pct / 100.0)
 
 if LOAD_FROM_DISK
     full_data = load_flight_data(h5_path)
@@ -850,8 +854,7 @@ if LOAD_FROM_DISK
     is_2019 = occursin("2019", basename(h5_path))
     raw_dp = limited_data.kcu_actual_depower[1]
     row1_depower = is_2019 ?
-        (0.2564 - 0.0768 * raw_dp / 100.0) +
-            DEPOWER_OFFSET_2019 / 100.0 :
+        (0.2564 - 0.0768 * raw_dp / 100.0) :
         raw_dp / 100.0
     row1_steering = limited_data.kcu_actual_steering[1] /
         100.0
@@ -891,6 +894,6 @@ if !isnothing(syslog)
         frame_csvs, geom=geom_config,
         section=SECTION,
         distance_based_steering=DISTANCE_BASED_STEERING,
-        depower_offset_pct=DEPOWER_OFFSET_2025,
+        depower_offset_pct=depower_offset_pct,
         figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
 end

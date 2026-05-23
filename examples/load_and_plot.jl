@@ -120,69 +120,6 @@ function print_and_plot_wing(lg, sam; is_print=false)
         p.idx for p in sam.sys_struct.points
         if p.type == WING]
 
-    if is_print
-        println("\n# Wing node positions (world frame):")
-        for idx in wing_point_idxs
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            println("- [$idx, [$(Float64(pos_w[1])), " *
-                    "$(Float64(pos_w[2])), " *
-                    "$(Float64(pos_w[3]))], " *
-                    "WING, 1, 1, 0.0, 10.0, 0.0]")
-        end
-
-        println("\n# Wing node positions (body frame):")
-        for idx in wing_point_idxs
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            pos_b = R_b_w' * (pos_w .- origin_w)
-            println("- [$idx, [$(Float64(pos_b[1])), " *
-                    "$(Float64(pos_b[2])), " *
-                    "$(Float64(pos_b[3]))], " *
-                    "WING, 1, 1, 0.0, 10.0, 0.0]")
-        end
-
-        bridle_pairs = [
-            (22, 25), (23, 24), (26, 27), (28, 31),
-            (29, 30), (32, 33), (34, 36), (37, 38)]
-        bridle_center = [35]
-
-        println("\n# Bridle node positions (body frame):")
-        for (idx_pos, idx_neg) in bridle_pairs
-            pos_w_pos = [lg_last.X[idx_pos],
-                lg_last.Y[idx_pos], lg_last.Z[idx_pos]]
-            pos_b_pos = R_b_w' * (pos_w_pos .- origin_w)
-            pos_w_neg = [lg_last.X[idx_neg],
-                lg_last.Y[idx_neg], lg_last.Z[idx_neg]]
-            pos_b_neg = R_b_w' * (pos_w_neg .- origin_w)
-            y_c = (pos_b_pos[2] + pos_b_neg[2]) / 2.0
-            y_off = (pos_b_pos[2] - pos_b_neg[2]) / 2.0
-            println("- [$idx_pos, " *
-                    "[$(Float64(pos_b_pos[1])), " *
-                    "$(Float64(y_c + y_off)), " *
-                    "$(Float64(pos_b_pos[3]))], " *
-                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-            println("- [$idx_neg, " *
-                    "[$(Float64(pos_b_neg[1])), " *
-                    "$(Float64(y_c - y_off)), " *
-                    "$(Float64(pos_b_neg[3]))], " *
-                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-        end
-        for idx in bridle_center
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            pos_b = R_b_w' * (pos_w .- origin_w)
-            println("- [$idx, " *
-                    "[$(Float64(pos_b[1])), " *
-                    "$(Float64(pos_b[2])), " *
-                    "$(Float64(pos_b[3]))], " *
-                    "DYNAMIC, 1, 1, 0.1, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-        end
-    end
-
     # 2D scatter plots of wing nodes in body frame
     xs_b, ys_b, zs_b = Float64[], Float64[], Float64[]
     for idx in wing_point_idxs

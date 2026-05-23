@@ -71,6 +71,7 @@ export segment_stretch_stats
 export wrap_to_pi, euler_to_quaternion
 export calc_heading, calc_csv_heading
 export calc_R_b_w, calc_turn_rate
+export COURSE_RATE_WINDOW_SEC
 
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds

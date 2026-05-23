@@ -24,8 +24,7 @@ using Statistics
 using Dates
 using StaticArrays
 using REPL.TerminalMenus
-
-WINDOW_SEC = 100.0
+using GLMakie
 
 # =============================================================================
 # Tag parsing
@@ -219,16 +218,8 @@ function compute_turn_radius(sl_in, sys;
             continue
         end
         icr = cross(v, omega) / (on^2)
-        R = SymbolicAWEModels.quaternion_to_rotation_matrix(
-            sl.orient[k])
-        ex = SVector{3}(R[:, 1])
-        det = ex[1] * icr[2] - ex[2] * icr[1]
-        if !isfinite(det) || abs(det) <= eps
-            radius[k] = NaN
-        else
-            radius[k] = -(det < 0 ? -1.0 : 1.0) *
-                        norm(icr)
-        end
+        r = norm(icr)
+        radius[k] = isfinite(r) ? r : NaN
     end
     return radius, sl.time
 end
@@ -370,7 +361,7 @@ function gk_paper_series(sl, sys)
 end
 
 function mean_last_window(values, times;
-    window_sec=WINDOW_SEC)
+    window_sec=COURSE_RATE_WINDOW_SEC)
     @assert length(values) == length(times)
     t_end = times[end]
     mask = times .>= (t_end - window_sec)
@@ -395,7 +386,7 @@ end
 # Log analysis
 # =============================================================================
 
-function analyze_log(lg, sys; window_sec=WINDOW_SEC)
+function analyze_log(lg, sys; window_sec=COURSE_RATE_WINDOW_SEC)
     sl = lg.syslog
     length(sl.time) < 2 && return (
         aero_force=NaN, v_app=NaN,
@@ -440,11 +431,20 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
     cs = abs(mean_last_window(cs_v, cs_t; window_sec))
     tr_res = compute_turn_radius(sl, sys)
     turn_radius = tr_res === nothing ? NaN :
-                  abs(mean_last_window(tr_res[1], tr_res[2];
-        window_sec))
+                  mean_last_window(tr_res[1], tr_res[2];
+        window_sec)
 
     us_cmd = steering_command(sl, sys)
     usva = us_cmd .* sl.v_app
+    usva_mean = mean_last_window(
+        abs.(usva), sl.time; window_sec)
+    dt_sample = length(sl.time) > 1 ?
+                mean(diff(sl.time)) : 0.01
+    course_rate = calc_turn_rate(lg;
+        source=:course, dt=dt_sample)
+    course_rate_mean = mean_last_window(
+        abs.(course_rate), sl.time[2:end]; window_sec)
+
     usva_at = Dict{Int,Float64}()
     yaw_rate_at = Dict{Int,Float64}()
     for t_sec in 3:10
@@ -459,6 +459,7 @@ function analyze_log(lg, sys; window_sec=WINDOW_SEC)
         gk=gk, gk_paper=gk_paper, kite_vel=kite_vel,
         aoa=aoa, elevation=elevation, azimuth=azimuth,
         cs=cs, turn_radius=turn_radius,
+        usva=usva_mean, course_rate=course_rate_mean,
         usva_at=usva_at, yaw_rate_at=yaw_rate_at)
 end
 
@@ -528,6 +529,120 @@ function last_timestamp_token(name::AbstractString)
     return token
 end
 
+function classify_swept(rows; params=(:up, :us, :vw, :lt))
+    defaults = Dict{Symbol,Any}()
+    for p in params
+        counts = Dict{Any,Int}()
+        for r in rows
+            v = getproperty(r, p)
+            counts[v] = get(counts, v, 0) + 1
+        end
+        defaults[p] = argmax(counts)
+    end
+    labels = Symbol[]
+    for r in rows
+        diffs = Symbol[]
+        for p in params
+            getproperty(r, p) == defaults[p] || push!(diffs, p)
+        end
+        if isempty(diffs)
+            push!(labels, :defaults)
+        elseif length(diffs) == 1
+            push!(labels, diffs[1])
+        else
+            push!(labels, :combo)
+        end
+    end
+    return labels, defaults
+end
+
+function plot_usva_vs_course_rate(rows;
+    window_sec=COURSE_RATE_WINDOW_SEC)
+    finite_rows = [r for r in rows
+                   if isfinite(r.usva) &&
+                      isfinite(r.course_rate)]
+
+    fig = Figure(size=(600, 400))
+    ax = Axis(fig[1, 1];
+        xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
+        ylabel=L"|\dot{\chi}| \; [rad/s]",
+        xlabelsize=18, ylabelsize=18,
+        title="last $(window_sec)s mean, one dot per run")
+
+    isempty(finite_rows) && return fig
+
+    labels, defaults = classify_swept(finite_rows)
+    palette = Makie.wong_colors()
+    group_order = Symbol[]
+    for g in labels
+        g in group_order || push!(group_order, g)
+    end
+    sort!(group_order;
+        by=g -> (g === :defaults ? 0 :
+                 g === :combo ? 99 : 1, string(g)))
+    group_color = Dict(g => palette[mod1(i, length(palette))]
+                       for (i, g) in enumerate(group_order))
+
+    fmt_v(v) = v isa AbstractFloat ?
+               string(round(v; digits=3)) : string(v)
+    sweep_params = (:up, :us, :vw, :lt)
+
+    all_x = Float64[]
+    all_y = Float64[]
+    for g in group_order
+        idxs = findall(==(g), labels)
+        xs = Float64[finite_rows[i].usva for i in idxs]
+        ys = Float64[finite_rows[i].course_rate for i in idxs]
+        lbl = if g === :defaults
+            "defaults"
+        elseif g === :combo
+            "combo"
+        else
+            "sweep $(g)"
+        end
+        scatter!(ax, xs, ys; markersize=12,
+            color=group_color[g],
+            label=lbl)
+        append!(all_x, xs)
+        append!(all_y, ys)
+
+        txts = String[]
+        for i in idxs
+            r = finite_rows[i]
+            if g === :defaults
+                push!(txts, "default")
+            elseif g === :combo
+                diffs = String[]
+                for p in sweep_params
+                    getproperty(r, p) == defaults[p] && continue
+                    push!(diffs,
+                        "$(p)=$(fmt_v(getproperty(r, p)))")
+                end
+                push!(txts, join(diffs, ","))
+            else
+                push!(txts, fmt_v(getproperty(r, g)))
+            end
+        end
+        text!(ax, xs, ys; text=txts, fontsize=9,
+            offset=(6, 6))
+    end
+
+    default_idx = findfirst(==(:defaults), labels)
+    if default_idx !== nothing && !isempty(all_x)
+        dx = finite_rows[default_idx].usva
+        dy = finite_rows[default_idx].course_rate
+        if dx > 0
+            gk = dy / dx
+            x_fit = range(0, maximum(all_x); length=50)
+            lines!(ax, collect(x_fit), gk .* collect(x_fit);
+                color=:black, linewidth=2,
+                label="gk=$(round(gk; digits=3)) (defaults)")
+        end
+    end
+    axislegend(ax; position=:lt)
+    return fig
+end
+
 function select_batch_interactively(root)
     isdir(root) || error("Not found: $root")
     dirs = filter(name -> isdir(joinpath(root, name)),
@@ -579,6 +694,7 @@ function main()
             kite_vel=m.kite_vel, aoa=m.aoa,
             elevation=m.elevation, azimuth=m.azimuth,
             cs=m.cs, turn_radius=m.turn_radius,
+            usva=m.usva, course_rate=m.course_rate,
             usva_at=m.usva_at,
             yaw_rate_at=m.yaw_rate_at))
     end
@@ -589,6 +705,13 @@ function main()
         "circles_batch_analysis.csv")
     write_csv(out_path, rows)
     @info "Wrote CSV" path = out_path rows = length(rows)
+
+    fig = plot_usva_vs_course_rate(rows)
+    plot_path = joinpath(batch_dir,
+        "circles_batch_usva_vs_course_rate.png")
+    @info "Saving plot" path=plot_path
+    save(plot_path, fig)
+    display(fig)
 end
 
 main()
