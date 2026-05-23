@@ -327,9 +327,11 @@ display(combined)
 CairoMakie.activate!()
 combined_pdf = build_combined(sorted_frames,
     frame_results)
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
 fname = "chord_ref_incidence_combined.pdf"
 @info "Saving $fname"
-save(fname, combined_pdf)
+save(joinpath(OUTPUT_DIR, fname), combined_pdf)
 save(joinpath(FIGURES_DIR, fname), combined_pdf)
 GLMakie.activate!()
 
