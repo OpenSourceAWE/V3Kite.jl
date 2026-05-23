@@ -6,9 +6,6 @@ V3 Kite Simulation Example
 
 Heading PID control with sinusoidal setpoint, winch PID
 control for constant tether length, and 3D visualization.
-
-Usage:
-    julia --project=examples examples/v3kite.jl
 """
 
 using Pkg
