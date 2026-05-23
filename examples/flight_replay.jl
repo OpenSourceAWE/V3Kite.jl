@@ -304,7 +304,6 @@ function run_physics_replay(h5_path;
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
 
-    settle_failed = false
     if SETTLE
         sam, settle_log, settle_failed =
             settle_wing(settle_config, row1; remake=false)
@@ -336,7 +335,6 @@ function run_physics_replay(h5_path;
             remake_vsm=true)
         settle_log = nothing
     end
-    sys_struct = sam.sys_struct
     set = sam.set
     set.l_tether = tether_len
 
