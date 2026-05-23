@@ -644,11 +644,16 @@ function plot_usva_vs_course_rate(rows;
 end
 
 function select_batch_interactively(root)
-    isdir(root) || error("Not found: $root")
+    isdir(root) || error(
+        "$root does not exist. " *
+        "Run examples/batch_run_circles.jl first " *
+        "to generate logs.")
     dirs = filter(name -> isdir(joinpath(root, name)),
         readdir(root))
-    isempty(dirs) &&
-        error("No batch directories found in $root")
+    isempty(dirs) && error(
+        "No batch directories found in $root. " *
+        "Run examples/batch_run_circles.jl first " *
+        "to generate logs.")
     dirs_sorted = sort(dirs;
         by=name -> (last_timestamp_token(name), name),
         rev=true)
