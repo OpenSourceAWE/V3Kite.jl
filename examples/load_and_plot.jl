@@ -642,10 +642,16 @@ function last_timestamp_token(name::AbstractString)
 end
 
 function select_log_interactively(data_dir)
+    isdir(data_dir) || error(
+        "$data_dir does not exist. " *
+        "Run examples/batch_run_circles.jl first " *
+        "to generate logs.")
     dirs = filter(name -> isdir(joinpath(data_dir, name)),
         readdir(data_dir))
-    isempty(dirs) &&
-        error("No log directories found in $data_dir")
+    isempty(dirs) && error(
+        "No log directories found in $data_dir. " *
+        "Run examples/batch_run_circles.jl first " *
+        "to generate logs.")
     dirs_sorted = sort(dirs;
         by=name -> (last_timestamp_token(name), name),
         rev=true)
