@@ -6,9 +6,6 @@ Photogrammetry Kite AoA
 
 Computes the geometric angle between the chord reference direction
 and the tether vector from photogrammetry data for each frame CSV.
-
-Usage:
-    julia --project=examples examples/photogrammetry_aoa.jl
 """
 
 using V3Kite, LinearAlgebra, GLMakie, CairoMakie

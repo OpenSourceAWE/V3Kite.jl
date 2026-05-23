@@ -7,9 +7,6 @@ Flight Data Replay Example
 Reads flight test data from HDF5 and replays steering inputs
 through the SymbolicAWEModel simulator. The kite is initialized
 to steady state, then recorded steering commands are applied.
-
-Usage:
-    julia --project=examples examples/flight_replay.jl
 """
 
 using Pkg

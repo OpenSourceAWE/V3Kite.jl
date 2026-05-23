@@ -13,9 +13,6 @@ Controls:
   Down Arrow:  Power
   Up Arrow:    Depower
   ESC:         Stop
-
-Usage:
-    julia --project=examples examples/realtime.jl
 """
 
 using Pkg
