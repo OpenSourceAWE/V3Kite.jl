@@ -7,9 +7,6 @@ V3 Kite: Batch Analysis for Circular Flight Runs
 Loads saved circular batch logs, computes steady-state
 metrics (yaw rate, gk, Cs, turn radius), and writes a
 summary CSV.
-
-Usage:
-    julia --project=examples examples/batch_load_circles.jl
 """
 
 using Pkg
