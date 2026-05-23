@@ -33,26 +33,15 @@ using Printf
 # Configuration
 # =============================================================================
 
-TETHER_LENGTH = 262
-ELEVATION = 20.0
+TETHER_LENGTH = 262.0
+ELEVATION = 70.0       # degrees
+AZIMUTH = 0.0          # degrees
 
-# Geometry config
-gc = V3GeomAdjustConfig()
-GEOM_SUFFIX = build_geom_suffix(V3_DEPOWER_L0_BASE,
-    V3_STEERING_L0_BASE, V3_STEERING_L0_BASE,
-    gc.tip_reduction, gc.te_frac)
-
-# Base control values
-UP = 0.42                  # Depower fraction (old 0-1)
 V_WIND = 7.6
-DAMPING_PATTERN = [0.0, 10.0, 20.0]
-
-# Ramp timing (depower only)
-RAMP_START_UP = 0.1
-RAMP_END_UP = 1.5
+UP = 0.25              # Depower fraction [0, 1]
 
 # Steering targets (keyboard-driven)
-STEERING_TARGET = 10.0     # Target % when key held
+STEERING_TARGET = 15.0     # Target % when key held
 STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 
 SIM_TIME = 60.0
@@ -70,39 +59,44 @@ output_filename = joinpath(
     v3_data_path(), "v3_realtime.mp4")
 
 # =============================================================================
-# Model setup
+# Settling setup (matches open_loop / flight_replay)
 # =============================================================================
 
-config = V3SimConfig(
-    struc_yaml_path =
-        "struc_geometry_$(GEOM_SUFFIX).yaml",
-    aero_yaml_path =
-        "aero_geometry_$(GEOM_SUFFIX).yaml",
-    vsm_settings_path = "CORRECT_vsm_settings.yaml",
-    sim_time = SIM_TIME,
-    fps = FPS,
+el_rad = deg2rad(ELEVATION)
+az_rad = deg2rad(AZIMUTH)
+position = [
+    cos(el_rad) * cos(az_rad) * TETHER_LENGTH,
+    cos(el_rad) * sin(az_rad) * TETHER_LENGTH,
+    sin(el_rad) * TETHER_LENGTH,
+]
+velocity = [0.0, 0.0, 0.0]
+heading = 0.0
+wind_vec = [V_WIND, 0.0, 0.0]
+
+settle_config = V3SettleConfig(
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    elevation = ELEVATION,
-    wing_type = REFINE,
-    brake = true,
-    damping_pattern = DAMPING_PATTERN,
+    dt = 0.001,
+    num_steps = 400,
+    num_substeps = 5,
+    body_damping = [0.0, 0.0, 40.0],
+    start_depower = UP * 100.0 + 10.0,
+    course_correction_mode = :heading,
+    course_correction_gain = 0.05,
+    geom = V3GeomAdjustConfig(),
 )
+gc = settle_config.geom
 
-@info "Creating V3 model..."
-sam, sys = create_v3_model(config)
-
-@info "Initializing model..."
-init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+@info "Settling V3 model..."
+sam, _settle_log, settle_failed = settle_wing(settle_config;
+    position, velocity, heading,
+    steering = 0.0, depower = UP, wind_vec)
+settle_failed && error("Settling failed")
+sys = sam.sys_struct
 sys.winches[1].brake = true
-sys.points[1].extra_mass = 2.0
-sys.points[1].area = 0.2
 
 dt = 1.0 / FPS
 display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
-
-# Get nominal depower for ramping
-nominal_depower = get_depower(sys, gc)
 
 # =============================================================================
 # Create visualization
@@ -206,17 +200,11 @@ try
         diff = steering_target[] - steering_pct[]
         steering_pct[] += clamp(diff, -max_delta, max_delta)
 
-        # Apply steering
         set_steering!(sys, steering_pct[] / 100.0, gc)
 
-        # Ramp depower
-        rf_up = ramp_factor(t, RAMP_START_UP, RAMP_END_UP)
-        up_target = UP + depower_pct_delta[] / 100.0
-        depower_val = nominal_depower +
-            rf_up * (up_target - nominal_depower)
+        depower_val = UP + depower_pct_delta[] / 100.0
         set_depower!(sys, depower_val, 0.0, gc)
 
-        # Step simulation
         step_start = time()
         if !sim_step!(sam;
                 set_values=[0.0], dt, vsm_interval=1)
@@ -230,7 +218,6 @@ try
             log_state!(logger, sys_state, sam, t)
         end
 
-        # Update visualization
         if step % display_interval == 0
             plot!(sys; vector_scale)
             progress_text[] = @sprintf("t = %.1fs", t)
@@ -241,19 +228,17 @@ try
             sleep(0.001)
         end
 
-        # Real-time pacing
         target_elapsed = t
         actual_elapsed = time() - start_time
         sleep(max(0.0, target_elapsed - actual_elapsed))
 
-        # Status every 5 seconds
         if step % (FPS * 5) == 0
             avg_pos = mean(
                 [p.pos_w for p in wing_points])
             @printf(
                 "  t=%.1fs z=%.1fm st=%.1f%% dp=%.1f%%\n",
                 t, avg_pos[3], steering_pct[],
-                up_target * 100)
+                depower_val * 100)
         end
     end
 catch e

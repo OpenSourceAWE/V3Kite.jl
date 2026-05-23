@@ -23,6 +23,7 @@ using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
 using GLMakie
 using LinearAlgebra
 using Statistics
+using REPL.TerminalMenus
 
 # =============================================================================
 # Configuration
@@ -118,69 +119,6 @@ function print_and_plot_wing(lg, sam; is_print=false)
     wing_point_idxs = [
         p.idx for p in sam.sys_struct.points
         if p.type == WING]
-
-    if is_print
-        println("\n# Wing node positions (world frame):")
-        for idx in wing_point_idxs
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            println("- [$idx, [$(Float64(pos_w[1])), " *
-                    "$(Float64(pos_w[2])), " *
-                    "$(Float64(pos_w[3]))], " *
-                    "WING, 1, 1, 0.0, 10.0, 0.0]")
-        end
-
-        println("\n# Wing node positions (body frame):")
-        for idx in wing_point_idxs
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            pos_b = R_b_w' * (pos_w .- origin_w)
-            println("- [$idx, [$(Float64(pos_b[1])), " *
-                    "$(Float64(pos_b[2])), " *
-                    "$(Float64(pos_b[3]))], " *
-                    "WING, 1, 1, 0.0, 10.0, 0.0]")
-        end
-
-        bridle_pairs = [
-            (22, 25), (23, 24), (26, 27), (28, 31),
-            (29, 30), (32, 33), (34, 36), (37, 38)]
-        bridle_center = [35]
-
-        println("\n# Bridle node positions (body frame):")
-        for (idx_pos, idx_neg) in bridle_pairs
-            pos_w_pos = [lg_last.X[idx_pos],
-                lg_last.Y[idx_pos], lg_last.Z[idx_pos]]
-            pos_b_pos = R_b_w' * (pos_w_pos .- origin_w)
-            pos_w_neg = [lg_last.X[idx_neg],
-                lg_last.Y[idx_neg], lg_last.Z[idx_neg]]
-            pos_b_neg = R_b_w' * (pos_w_neg .- origin_w)
-            y_c = (pos_b_pos[2] + pos_b_neg[2]) / 2.0
-            y_off = (pos_b_pos[2] - pos_b_neg[2]) / 2.0
-            println("- [$idx_pos, " *
-                    "[$(Float64(pos_b_pos[1])), " *
-                    "$(Float64(y_c + y_off)), " *
-                    "$(Float64(pos_b_pos[3]))], " *
-                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-            println("- [$idx_neg, " *
-                    "[$(Float64(pos_b_neg[1])), " *
-                    "$(Float64(y_c - y_off)), " *
-                    "$(Float64(pos_b_neg[3]))], " *
-                    "DYNAMIC, 1, 1, 0.0, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-        end
-        for idx in bridle_center
-            pos_w = [lg_last.X[idx], lg_last.Y[idx],
-                lg_last.Z[idx]]
-            pos_b = R_b_w' * (pos_w .- origin_w)
-            println("- [$idx, " *
-                    "[$(Float64(pos_b[1])), " *
-                    "$(Float64(pos_b[2])), " *
-                    "$(Float64(pos_b[3]))], " *
-                    "DYNAMIC, 1, 1, 0.1, 30.000, 0.0, " *
-                    "0.0, 0.0]")
-        end
-    end
 
     # 2D scatter plots of wing nodes in body frame
     xs_b, ys_b, zs_b = Float64[], Float64[], Float64[]
@@ -687,33 +625,38 @@ end
 # Main execution
 # =============================================================================
 
-# Set to "" to auto-select the latest dated directory and log file.
+# Set to a non-empty path to skip the menu and load directly.
 log_name = ""
 # log_name =
-#     "zenith_2019_batch_2026_02_23_15_09_48/" *
-#     "hold_at_zenith_then_circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
+#     "circles_2019_batch_2026_02_23_15_09_48/" *
+#     "circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
 
-# add an if log is empty, use dir name that has the last date.
-# then inside that dir, use the file_name with the last date
-if isempty(strip(log_name))
-    function last_timestamp_token(name::AbstractString)
-        token = ""
-        for m in eachmatch(
-            r"[0-9]{4}(?:_[0-9]{2}){5}",
-            name)
-            token = m.match
-        end
-        return token
+function last_timestamp_token(name::AbstractString)
+    token = ""
+    for m in eachmatch(
+        r"[0-9]{4}(?:_[0-9]{2}){5}",
+        name)
+        token = m.match
     end
+    return token
+end
 
-    dirs = filter(name -> isdir(joinpath(DATA_DIR, name)),
-        readdir(DATA_DIR))
+function select_log_interactively(data_dir)
+    dirs = filter(name -> isdir(joinpath(data_dir, name)),
+        readdir(data_dir))
     isempty(dirs) &&
-        error("No log directories found in $DATA_DIR")
-    latest_dir = last(sort(dirs; by=name ->
-        (last_timestamp_token(name), name)))
+        error("No log directories found in $data_dir")
+    dirs_sorted = sort(dirs;
+        by=name -> (last_timestamp_token(name), name),
+        rev=true)
 
-    log_dir = joinpath(DATA_DIR, latest_dir)
+    dir_menu = RadioMenu(dirs_sorted, pagesize=15)
+    dir_choice = request(
+        "Select log directory (newest first):", dir_menu)
+    dir_choice == -1 && error("Selection cancelled")
+    chosen_dir = dirs_sorted[dir_choice]
+
+    log_dir = joinpath(data_dir, chosen_dir)
     files = filter(name -> isfile(joinpath(log_dir, name)),
         readdir(log_dir))
     arrow_files = filter(name -> endswith(name, ".arrow"),
@@ -721,11 +664,22 @@ if isempty(strip(log_name))
     candidates = isempty(arrow_files) ? files : arrow_files
     isempty(candidates) &&
         error("No log files found in $log_dir")
+    files_sorted = sort(candidates;
+        by=name -> (last_timestamp_token(name), name),
+        rev=true)
 
-    latest_file = last(sort(candidates; by=name ->
-        (last_timestamp_token(name), name)))
-    log_name = joinpath(latest_dir, splitext(latest_file)[1])
-    @info "Using latest log_name" log_name
+    file_menu = RadioMenu(files_sorted, pagesize=15)
+    file_choice = request(
+        "Select log file (newest first):", file_menu)
+    file_choice == -1 && error("Selection cancelled")
+    chosen_file = files_sorted[file_choice]
+
+    return joinpath(chosen_dir, splitext(chosen_file)[1])
+end
+
+if isempty(strip(log_name))
+    log_name = select_log_interactively(DATA_DIR)
+    @info "Selected log_name" log_name
 end
 
 lg, sam, up, us, v_wind, lt =

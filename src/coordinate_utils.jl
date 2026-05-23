@@ -5,6 +5,8 @@
 Coordinate transformation and heading calculation utilities for the V3 kite.
 """
 
+const COURSE_RATE_WINDOW_SEC = 10.0
+
 """
     wrap_to_pi(angle)
 
