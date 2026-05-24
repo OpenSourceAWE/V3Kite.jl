@@ -54,6 +54,7 @@ set.alpha_zero = ALPHA_ZERO
 v_time = zeros(STEPS)
 v_speed = zeros(STEPS)
 v_force = zeros(STEPS)
+v_elevation = zeros(STEPS)
 
 kcu::KCU = KCU(set)
 
@@ -93,6 +94,7 @@ function simulate(integrator, steps, plot=false)
         v_time[i] = integrator.t
         v_speed[i] = winch.vel
         v_force[i] = force
+        v_elevation[i] = rad2deg(KiteUtils.calc_elevation(v3kite.sys.wings[1].pos_w))
         sim_step!(v3kite.sam; set_values=[set_torque], dt, vsm_interval=1)
         iter += 1
 
@@ -127,8 +129,8 @@ simulate(integrator, STEPS, true)
 
 if PLOT
     local p
-    p = plotx(v_time, v_speed, v_force; 
-    ylabels=["v_reelout  [m/s]","tether_force [N]"], fig="winch")
+    p = plotx(v_time, v_speed, v_force, v_elevation; 
+    ylabels=["v_reelout  [m/s]","tether_force [N]","elevation [deg]"], fig="winch")
     display(p)
 end
 nothing
