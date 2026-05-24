@@ -17,6 +17,7 @@ using V3Kite.KitePodModels
 using VortexStepMethod
 using LinearAlgebra
 using ControlPlots
+using Printf
 toc("Loaded packages")
 
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
@@ -40,7 +41,7 @@ STEPS = 600
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = true
-PRINT = false
+PRINT = true
 STATISTIC = false
 ALPHA_ZERO = 8.8 
 # end of user parameter section #
@@ -66,5 +67,49 @@ sys = load_sys_struct_from_yaml(source_struc;
 sam = SymbolicAWEModel(set, sys)
 
 # create an instance of the V3KITE struct
-v3kite = V3KITE(set=set, kcu=kcu, sam=sam)
+v3kite = V3KITE(set=set, kcu=kcu, sam=sam, sys=sys)
 toc("Created V3KITE instance")
+
+function simulate(integrator, steps, plot=false)
+    iter = 0
+    for i in 1:steps
+        if PRINT
+            lift, drag = lift_drag(v3kite)
+            @printf "%.2f: " round(integrator.t, digits=2)
+            println("lift, drag  [N]: $(round(lift, digits=2)), $(round(drag, digits=2))")
+        end
+    #     dforce = 0.0
+    #     if kps4.t_0 > 15.0
+    #         dforce = +4.5
+    #     end
+    #     force = norm(kps4.forces[1])
+    #     r = set.drum_radius
+    #     n = set.gear_ratio
+    #     set_torque = -r/n * force + dforce
+    #     v_time[i] = kps4.t_0
+    #     v_speed[i] = kps4.v_reel_out
+    #     v_force[i] = winch_force(kps4)
+    #     next_step!(kps4, integrator; set_torque, dt)
+    #     iter += kps4.iter
+        
+    #     if plot
+    #         reltime = i*dt-dt
+    #         if mod(i, 5) == 1
+    #             if FRONT_VIEW
+    #                 plot2d(kps4.pos, reltime; zoom=ZOOM, front=true,
+    #                                         segments=set.segments, fig="front_view")
+    #             else
+    #                 plot2d(kps4.pos, reltime; zoom=ZOOM, front=false, xlim=(37, 78),
+    #                                         segments=set.segments, fig="side_view")
+    #             end
+    #         end
+    #     end
+    end
+    iter / steps
+end
+
+@info "Initializing model..."
+integrator = init!(v3kite.sam; remake=false, remake_vsm=true)
+v3kite.sys.winches[1].brake = false
+
+simulate(integrator, STEPS, true)
