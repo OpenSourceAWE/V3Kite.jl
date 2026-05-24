@@ -38,7 +38,7 @@ export V3KITE
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
     set::Settings
-    "Reference to the KCU model (Kite Control Unit as implemented in the package KitePodModels"
+    "Reference to the KCU model (Kite Control Unit) as implemented in the package KitePodModels"
     kcu::KCU
     sam::SymbolicAWEModel
     sys::SystemStructure
