@@ -66,3 +66,4 @@ docs/src/.$kite_power_tools.drawio.bkp
 /refs
 examples_2d/LocalPreferences.toml
 settings.json
+.JETLSConfig.toml
