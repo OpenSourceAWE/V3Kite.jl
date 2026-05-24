@@ -41,7 +41,7 @@ STEPS = 600
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = true
-PRINT = true
+PRINT = false
 STATISTIC = false
 ALPHA_ZERO = 8.8 
 # end of user parameter section #
