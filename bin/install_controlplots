@@ -256,33 +256,43 @@ if [[ "$_backend" == "system" ]]; then
     # Unset JULIA_PYTHONCALL_EXE so the LocalPreferences.toml exe setting takes
     # effect (setup_env may have set it to the now-deleted CondaPkg Python).
     unset JULIA_PYTHONCALL_EXE
+    # Prevent CondaPkg from re-installing a Conda env in the current process
+    # (setup_env only sets this when no CondaPkg env exists, but we just deleted it).
+    export JULIA_CONDAPKG_BACKEND="Null"
+    export JULIA_PYTHONCALL_EXE="$_syspython"
+
+    # Helper: update a LocalPreferences.toml file with the system Python settings.
+    _write_system_python_prefs() {
+        local _pf="$1"
+        if [[ -f "$_pf" ]]; then
+            _tmp=$(mktemp)
+            awk '
+                /^\[PythonCall\]/ { in_sec=1; next }
+                /^\[PyCall\]/ { in_sec=1; next }
+                /^\[CondaPkg\]/ { in_sec=1; next }
+                in_sec && /^\[/ { in_sec=0 }
+                !in_sec { print }
+            ' "$_pf" > "$_tmp"
+            mv "$_tmp" "$_pf"
+        fi
+        {
+            echo ""
+            echo "[PythonCall]"
+            echo "exe = \"$_syspython\""
+            echo ""
+            echo "[CondaPkg]"
+            echo "backend = \"Null\""
+        } >> "$_pf"
+        echo "Written to $_pf."
+    }
 
     echo ""
-    echo "Saving python_exe=$_syspython to LocalPreferences.toml..."
-    # Write (or update) the root LocalPreferences.toml so that PythonCall uses
-    # the system Python for all projects in this repository.
-    _prefs_file="LocalPreferences.toml"
-    if [[ -f "$_prefs_file" ]]; then
-        # Remove any existing [PythonCall], [CondaPkg], and legacy [PyCall] sections.
-        _tmp=$(mktemp)
-        awk '
-            /^\[PythonCall\]/ { in_sec=1; next }
-            /^\[PyCall\]/ { in_sec=1; next }
-            /^\[CondaPkg\]/ { in_sec=1; next }
-            in_sec && /^\[/ { in_sec=0 }
-            !in_sec { print }
-        ' "$_prefs_file" > "$_tmp"
-        mv "$_tmp" "$_prefs_file"
-    fi
-    {
-        echo ""
-        echo "[PythonCall]"
-        echo "exe = \"$_syspython\""
-        echo ""
-        echo "[CondaPkg]"
-        echo "backend = \"Null\""
-    } >> "$_prefs_file"
-    echo "Written to $_prefs_file."
+    echo "Saving python_exe=$_syspython to LocalPreferences.toml files..."
+    # Write to both the root project and examples_2d project, because
+    # `julia --project=examples_2d` reads examples_2d/LocalPreferences.toml,
+    # not the root one.
+    _write_system_python_prefs "LocalPreferences.toml"
+    _write_system_python_prefs "examples_2d/LocalPreferences.toml"
 
     _set_mplbackend_qtagg
     _verify_controlplots
@@ -295,8 +305,10 @@ if [[ "$_backend" == "system" ]]; then
 elif [[ "$_backend" == "conda" ]]; then
     # Remove [PythonCall] exe, [CondaPkg] backend override, and legacy [PyCall]
     # so PythonCall falls back to the CondaPkg-managed Python.
-    _prefs_file="LocalPreferences.toml"
-    if [[ -f "$_prefs_file" ]]; then
+    # Must be done in both the root and examples_2d LocalPreferences.toml.
+    _remove_python_prefs() {
+        local _pf="$1"
+        [[ -f "$_pf" ]] || return 0
         _tmp=$(mktemp)
         awk '
             /^\[PythonCall\]/ { in_sec=1; next }
@@ -304,14 +316,16 @@ elif [[ "$_backend" == "conda" ]]; then
             /^\[CondaPkg\]/ { in_sec=1; next }
             in_sec && /^\[/ { in_sec=0 }
             !in_sec { print }
-        ' "$_prefs_file" > "$_tmp"
-        if ! diff -q "$_prefs_file" "$_tmp" &>/dev/null; then
-            mv "$_tmp" "$_prefs_file"
-            echo "Removed [PythonCall]/[CondaPkg] sections from $_prefs_file (switching to CondaPkg)."
+        ' "$_pf" > "$_tmp"
+        if ! diff -q "$_pf" "$_tmp" &>/dev/null; then
+            mv "$_tmp" "$_pf"
+            echo "Removed [PythonCall]/[CondaPkg] sections from $_pf (switching to CondaPkg)."
         else
             rm -f "$_tmp"
         fi
-    fi
+    }
+    _remove_python_prefs "LocalPreferences.toml"
+    _remove_python_prefs "examples_2d/LocalPreferences.toml"
 
     _install_matplotlib_condapkg
 
