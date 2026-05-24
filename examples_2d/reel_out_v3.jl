@@ -121,4 +121,11 @@ integrator = init!(v3kite.sam; remake=false, remake_vsm=true)
 v3kite.sys.winches[1].brake = false
 
 simulate(integrator, STEPS, true)
+
+if PLOT
+    local p
+    p = plotx(v_time, v_speed, v_force; 
+    ylabels=["v_reelout  [m/s]","tether_force [N]"], fig="winch")
+    display(p)
+end
 nothing
