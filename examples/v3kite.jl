@@ -9,7 +9,8 @@ control for constant tether length, and 3D visualization.
 """
 
 using Pkg
-if Base.active_project() != joinpath(@__DIR__, "Project.toml")
+if !Base.generating_output() &&
+        Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
