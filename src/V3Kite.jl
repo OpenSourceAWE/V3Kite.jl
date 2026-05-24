@@ -39,6 +39,7 @@ export V3KITE
     "Reference to the KCU model (Kite Control Unit as implemented in the package KitePodModels"
     kcu::KCU
     sam::SymbolicAWEModel
+    sys::SystemStructure
     "Reference to the atmospheric model as implemented in the package AtmosphericModels"
     am::AtmosphericModel = AtmosphericModel(set)
     
