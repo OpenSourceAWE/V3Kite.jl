@@ -5,6 +5,9 @@
 Example script demonstrating a simple reel-out maneuver of the V3 kite model.
 """
 
+# TODO: Implement lift_drag()
+# TODO: Plot heading
+
 using Pkg
 if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
