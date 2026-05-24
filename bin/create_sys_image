@@ -123,4 +123,9 @@ $JULIA_CMD --startup-file=no --project -J "$SOFILE" -e '
     using V3Kite
 '
 
+# Precompile Revise and its Distributed extension (from the default environment)
+# so the first `./bin/run_julia` launch doesn't need to recompile them.
+# shellcheck disable=SC2086
+$JULIA_CMD --startup-file=no -J "$SOFILE" -e 'using Revise, Distributed'
+
 echo "✅ System image creation and precompilation complete!"
