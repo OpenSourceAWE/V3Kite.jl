@@ -10,7 +10,7 @@ flight). Each run saves a permanent log with parameter
 tags in the filename.
 
 Usage:
-    julia --project=examples examples/batch_run_zenith_than_circles.jl
+    julia --project=examples examples/batch_run_zenith_then_circles.jl
 """
 
 using Pkg
