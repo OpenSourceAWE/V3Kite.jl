@@ -6,9 +6,6 @@ V3 Kite: Open-Loop Circular Flight
 
 Power-zone settling followed by ramped open-loop steering and
 depower. Winch brake engaged (constant tether length).
-
-Usage:
-    julia --project=examples examples/open_loop.jl
 """
 
 using Pkg
@@ -29,12 +26,12 @@ using Dates
 # =============================================================================
 
 TETHER_LENGTH = 262.0
-ELEVATION = 20.0       # degrees
+ELEVATION = 70.0       # degrees
 AZIMUTH = 0.0          # degrees
 
 V_WIND = 7.6
 US = 0.1               # Steering fraction [-1, 1]
-UP = 0.42              # Depower fraction [0, 1]
+UP = 0.25             # Depower fraction [0, 1]
 
 # Ramp timing
 RAMP_START_US = 3.0
