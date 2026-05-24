@@ -16,7 +16,6 @@ end
 
 using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_GAIN
-using VortexStepMethod: calculate_projected_area
 using LinearAlgebra
 using Statistics
 using Dates
@@ -131,8 +130,8 @@ end
 function calc_ref_area(sys)
     isempty(sys.wings) && return NaN
     wing = sys.wings[1]
-    hasproperty(wing, :vsm_wing) || return NaN
-    return calculate_projected_area(wing.vsm_wing)
+    hasproperty(wing, :vsm_aero) || return NaN
+    return wing.vsm_aero.projected_area
 end
 
 # =============================================================================

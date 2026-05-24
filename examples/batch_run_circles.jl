@@ -325,7 +325,7 @@ point_37_38_damping = [0.0, 20.0, 20.0]
 combos = generate_run_combos(defaults, sweeps, combine_all)
 @info "Batch combos generated" n=length(combos)
 
-failed_runs = NamedTuple[]
+const failed_runs = NamedTuple[]
 
 for (run_id, p) in enumerate(combos)
     run_tag = "run_" * lpad(string(run_id), 3, '0')
