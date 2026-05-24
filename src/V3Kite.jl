@@ -1,9 +1,11 @@
 # Copyright (c) 2025 Jelle Poland, Bart van de Lint
 # SPDX-License-Identifier: MPL-2.0
 
-# Package for simulation and validation of the TU Delft V3 ram-air kite.
-# Provides calibration functions, model setup utilities, CSV replay capabilities,
-# and simulation functions built on top of SymbolicAWEModels.jl.
+"""
+Package for simulation and validation of the TU Delft V3 ram-air kite.
+Provides calibration functions, model setup utilities, CSV replay capabilities,
+and simulation functions built on top of SymbolicAWEModels.jl.
+"""
 module V3Kite
 
 using SymbolicAWEModels
