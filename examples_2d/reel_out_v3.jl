@@ -40,7 +40,7 @@ dt = 0.05
 STEPS = 600
 const PLOT = true
 FRONT_VIEW = false
-ZOOM = true
+ZOOM = false
 PRINT = false
 STATISTIC = false
 ALPHA_ZERO = 8.8 
@@ -78,32 +78,40 @@ function simulate(integrator, steps, plot=false)
             @printf "%.2f: " round(integrator.t, digits=2)
             println("lift, drag  [N]: $(round(lift, digits=2)), $(round(drag, digits=2))")
         end
-    #     dforce = 0.0
-    #     if kps4.t_0 > 15.0
-    #         dforce = +4.5
-    #     end
-    #     force = norm(kps4.forces[1])
-    #     r = set.drum_radius
-    #     n = set.gear_ratio
-    #     set_torque = -r/n * force + dforce
-    #     v_time[i] = kps4.t_0
-    #     v_speed[i] = kps4.v_reel_out
-    #     v_force[i] = winch_force(kps4)
-    #     next_step!(kps4, integrator; set_torque, dt)
-    #     iter += kps4.iter
-        
-    #     if plot
-    #         reltime = i*dt-dt
-    #         if mod(i, 5) == 1
-    #             if FRONT_VIEW
-    #                 plot2d(kps4.pos, reltime; zoom=ZOOM, front=true,
-    #                                         segments=set.segments, fig="front_view")
-    #             else
-    #                 plot2d(kps4.pos, reltime; zoom=ZOOM, front=false, xlim=(37, 78),
-    #                                         segments=set.segments, fig="side_view")
-    #             end
-    #         end
-    #     end
+        dforce = 0.0
+        if integrator.t > 15.0
+            dforce = +4.5
+        end
+        winch = v3kite.sys.winches[1]
+        force = norm(winch.force)
+        r = winch.drum_radius
+        n = winch.gear_ratio
+        set_torque = -r/n * force + dforce
+        v_time[i] = integrator.t
+        v_speed[i] = winch.vel
+        v_force[i] = force
+        sim_step!(v3kite.sam; set_values=[set_torque], dt, vsm_interval=1)
+        iter += 1
+
+        if plot
+            reltime = i*dt-dt
+            if mod(i, 5) == 1
+                tether = v3kite.sys.tethers[1]
+                n_segs = length(tether.segment_idxs)
+                pos = [v3kite.sys.points[tether.start_point_idx].pos_w]
+                for si in tether.segment_idxs
+                    seg = v3kite.sys.segments[si]
+                    push!(pos, v3kite.sys.points[seg.point_idxs[2]].pos_w)
+                end
+                if FRONT_VIEW
+                    plot2d(pos, reltime; zoom=ZOOM, front=true,
+                                        segments=n_segs, fig="front_view")
+                else
+                    plot2d(pos, reltime; zoom=ZOOM, front=false,
+                                        segments=n_segs, fig="side_view")
+                end
+            end
+        end
     end
     iter / steps
 end
@@ -113,3 +121,4 @@ integrator = init!(v3kite.sam; remake=false, remake_vsm=true)
 v3kite.sys.winches[1].brake = false
 
 simulate(integrator, STEPS, true)
+nothing
