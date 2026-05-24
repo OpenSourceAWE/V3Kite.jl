@@ -287,7 +287,7 @@ fps_circles = 360
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
 
-failed_runs = NamedTuple[]
+const failed_runs = NamedTuple[]
 
 for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
     Iterators.product(elevation_vals, g_earth_vals,
