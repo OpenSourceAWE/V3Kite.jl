@@ -222,13 +222,12 @@ Determine the heading angle of the kite in radian.
 function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false, one_point=false)
     orientation = orient_euler(s; one_point)
     elevation = calc_elevation(s)
-    # use azimuth in wind reference frame
     if neg_azimuth
         azimuth = -calc_azimuth(s)
     else
         azimuth = calc_azimuth(s)
     end
-    calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+    KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
 end
 
 """
@@ -296,7 +295,7 @@ Positive values indicate tension; negative values indicate compression.
 """
 function spring_forces(s::V3KITE)
     tether = s.sys.tethers[1]
-    forces = zeros(SimFloat, length(tether.segment_idxs))
+    forces = zeros(Float64, length(tether.segment_idxs))
     for (i, seg_idx) in enumerate(tether.segment_idxs)
         seg = s.sys.segments[seg_idx]
         p1 = s.sys.points[seg.point_idxs[1]].pos_w

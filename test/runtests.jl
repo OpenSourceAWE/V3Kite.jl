@@ -202,6 +202,97 @@ using KitePodModels: KCU
             # zero wind returns NaN
             @test isnan(upwind_dir([0.0, 0.0, 0.0]))
         end
+
+        @testset "tether_length" begin
+            len = tether_length(v3kite)
+            @test isfinite(len)
+            @test len > 0.0
+            @test len ≈ unstretched_length(v3kite) rtol=0.01  # close to unstretched at rest
+        end
+
+        @testset "calc_azimuth" begin
+            az = calc_azimuth(v3kite)
+            @test isfinite(az)
+            @test -π <= az <= π
+        end
+
+        @testset "calc_azimuth_east" begin
+            az = calc_azimuth_east(v3kite)
+            @test isfinite(az)
+            @test -π <= az <= π
+        end
+
+        @testset "calc_azimuth_north" begin
+            az = calc_azimuth_north(v3kite)
+            @test isfinite(az)
+            @test -π <= az <= π
+        end
+
+        @testset "kite_ref_frame" begin
+            x, y, z = kite_ref_frame(v3kite)
+            @test length(x) == 3 && length(y) == 3 && length(z) == 3
+            @test all(isfinite, x) && all(isfinite, y) && all(isfinite, z)
+            @test norm(x) ≈ 1.0 atol=1e-10  # unit vectors
+            @test norm(y) ≈ 1.0 atol=1e-10
+            @test norm(z) ≈ 1.0 atol=1e-10
+            @test dot(x, y) ≈ 0.0 atol=1e-10  # orthogonal
+            @test dot(x, z) ≈ 0.0 atol=1e-10
+            @test dot(y, z) ≈ 0.0 atol=1e-10
+        end
+
+        @testset "calc_orient_quat" begin
+            q = calc_orient_quat(v3kite)
+            @test length(q) == 4
+            @test all(isfinite, q)
+            @test norm(q) ≈ 1.0 atol=1e-10  # unit quaternion
+        end
+
+        @testset "orient_euler" begin
+            rpy = orient_euler(v3kite)
+            @test length(rpy) == 3
+            @test all(isfinite, rpy)
+        end
+
+        @testset "calc_heading" begin
+            heading = calc_heading(v3kite)
+            @test isfinite(heading)
+            @test abs(heading) <= π + 1e-3
+        end
+
+        @testset "calc_course" begin
+            course = calc_course(v3kite)
+            @test isfinite(course) || isnan(course)  # NaN allowed if velocity ≈ 0
+        end
+
+        @testset "cl_cd" begin
+            cl, cd = cl_cd(v3kite)
+            @test isfinite(cl) && isfinite(cd)
+            @test cl > 0.0 && cd > 0.0
+            @test cl > cd  # kites typically have CL/CD > 1
+        end
+
+        @testset "winch_force" begin
+            f = winch_force(v3kite)
+            @test isfinite(f)
+            @test f >= 0.0
+        end
+
+        @testset "reel_out_speed" begin
+            v = reel_out_speed(v3kite)
+            @test isfinite(v)
+            @test v ≈ 0.0  # brake is on
+        end
+
+        @testset "states" begin
+            n = states(v3kite)
+            @test n > 0
+        end
+
+        @testset "spring_forces" begin
+            sf = spring_forces(v3kite)
+            @test length(sf) > 0
+            @test all(isfinite, sf)
+        end
     end
 
 end
