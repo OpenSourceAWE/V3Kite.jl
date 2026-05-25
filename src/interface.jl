@@ -69,9 +69,12 @@ end
 """
     pos_kite(s::V3KITE) -> Vector{Float64}
 
-Return the position of the kite (top particle).
-# Note: Not correctly implemented in the moment. Currently returns the position of the KCU.
+Return the centre-of-pressure position of the kite from the four mid-span wing points
+(indices 10–13: LE/TE pairs). The centre of pressure is at ~30 % chord, so each pair
+is weighted 0.7 × LE + 0.3 × TE, then averaged over both sides.
 """
 function pos_kite(s::V3KITE)
-    s.sys.wings[1].pos_w
+    pts = s.sys.points
+    (0.7 .* pts[10].pos_w .+ 0.3 .* pts[11].pos_w .+
+     0.7 .* pts[12].pos_w .+ 0.3 .* pts[13].pos_w) ./ 2
 end
