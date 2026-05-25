@@ -84,13 +84,12 @@ function simulate(integrator, steps, plot=false)
         if integrator.t > 15.0
             dforce = +4.5
         end
-        winch = v3kite.sys.winches[1]
         force = winch_force(v3kite)
-        r = winch.drum_radius
-        n = winch.gear_ratio
+        r = set.drum_radius
+        n = set.gear_ratio
         set_torque = -r/n * force + dforce
         v_time[i] = integrator.t
-        v_speed[i] = winch.vel
+        v_speed[i] = reel_out_speed(v3kite)
         v_force[i] = force
         v_elevation[i] = rad2deg(calc_elevation(v3kite))
         sim_step!(v3kite.sam; set_values=[set_torque], dt, vsm_interval=1)
