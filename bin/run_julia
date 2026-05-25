@@ -1,10 +1,20 @@
-#!/bin/bash
+#!/bin/bash -eu
+# SPDX-FileCopyrightText: 2025 Uwe Fechner
+# SPDX-License-Identifier: MIT
 
 if [[ $(basename $(pwd)) == "bin" ]]; then
     cd ..
 fi
 
+. "bin/setup_env"  # Sets JULIA_PYTHONCALL_EXE (CondaPkg) or JULIA_CONDAPKG_BACKEND=Null (system Python).
+
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
+
+julia_version=$(julia --version | awk '{print($3)}')
+julia_major=${julia_version:0:3}
+if [[ $julia_major == "1.1" ]]; then
+    julia_major=${julia_version:0:4}
+fi
 
 if [[ $# -gt 0 ]]; then
     JULIA_ARGS=("$@")
@@ -12,4 +22,9 @@ else
     JULIA_ARGS=(-i -e 'using Revise; using V3Kite; function menu(); include("examples/menu.jl"); end')
 fi
 
-julia --project "${JULIA_ARGS[@]}"
+if test -f "bin/kps-image-${julia_major}.so"; then
+    echo "Found system image!"
+    julia --project -J "bin/kps-image-${julia_major}.so" "${JULIA_ARGS[@]}"
+else
+    julia --project "${JULIA_ARGS[@]}"
+fi

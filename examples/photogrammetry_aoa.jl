@@ -158,7 +158,7 @@ function draw_frame_axes!(ax, origin, x_dir, z_dir,
 end
 
 function add_bridle_overlay!(ax, kcu_2d, cr_2d,
-        te_2d, le_2d, offset_deg)
+        te_2d, le_2d)
     # LE->TE chord line (see-through)
     lines!(ax,
         [le_2d[1], te_2d[1]],
@@ -274,7 +274,7 @@ function build_frame_plot!(ax, fd)
     end
 
     add_bridle_overlay!(ax, kcu_2d, cr_2d,
-        te_2d, le_2d, fd.offset)
+        te_2d, le_2d)
 
     frame_scale = 0.3 * fd.chord_len
     chord_body = fd.R_body' * fd.chord_w
@@ -327,9 +327,11 @@ display(combined)
 CairoMakie.activate!()
 combined_pdf = build_combined(sorted_frames,
     frame_results)
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
 fname = "chord_ref_incidence_combined.pdf"
 @info "Saving $fname"
-save(fname, combined_pdf)
+save(joinpath(OUTPUT_DIR, fname), combined_pdf)
 save(joinpath(FIGURES_DIR, fname), combined_pdf)
 GLMakie.activate!()
 

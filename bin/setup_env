@@ -1,0 +1,14 @@
+# Point PythonCall to the single shared Python environment (examples_2d/.CondaPkg).
+# This ensures a consistent Python is used regardless of which --project is active,
+# including when a sysimage compiled with ControlPlots is loaded.
+_setup_env_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_pythoncall_exe="$_setup_env_root/examples_2d/.CondaPkg/.pixi/envs/default/bin/python"
+if [[ -x "$_pythoncall_exe" ]]; then
+    export JULIA_PYTHONCALL_EXE="$_pythoncall_exe"
+else
+    # No CondaPkg environment present (system Python mode).
+    # Prevent CondaPkg from trying to install a Conda environment regardless of
+    # which --project is active.
+    export JULIA_CONDAPKG_BACKEND="Null"
+fi
+unset _setup_env_root _pythoncall_exe

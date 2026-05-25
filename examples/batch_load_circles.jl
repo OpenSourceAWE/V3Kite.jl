@@ -32,10 +32,11 @@ function parse_up_us_vw_lt(log_name)
         r"_up_([0-9]+)_us_([0-9._-]+)" *
         r"_vw_([0-9]+)_lt_([0-9]+)", log_name)
     m === nothing && return nothing
-    up_raw = parse(Float64, m.captures[1])
-    us_raw = parse(Float64, split(m.captures[2], "_")[1])
-    v_wind = parse(Int, m.captures[3])
-    lt = parse(Int, m.captures[4])
+    any(isnothing, m.captures) && return nothing
+    up_raw = parse(Float64, something(m.captures[1]))
+    us_raw = parse(Float64, split(something(m.captures[2]), "_")[1])
+    v_wind = parse(Int, something(m.captures[3]))
+    lt = parse(Int, something(m.captures[4]))
     return up_raw / 100, us_raw / 100, v_wind, lt
 end
 
@@ -130,9 +131,7 @@ function calc_ref_area(sys)
     isempty(sys.wings) && return NaN
     wing = sys.wings[1]
     hasproperty(wing, :vsm_aero) || return NaN
-    panels = wing.vsm_aero.panels
-    isempty(panels) && return NaN
-    return sum(p.chord * p.width for p in panels)
+    return wing.vsm_aero.projected_area
 end
 
 # =============================================================================
@@ -175,7 +174,7 @@ function calculate_cs(sl, sys; rho=1.225, eps=1e-12)
     return cs, sl.time
 end
 
-function compute_turn_radius(sl_in, sys;
+function compute_turn_radius(sl_in, _sys;
     smooth_window=10, eps=1e-12)
     sl = hasproperty(sl_in, :syslog) ?
          sl_in.syslog : sl_in
@@ -229,7 +228,7 @@ function compute_ekf_yaw_and_rate(sl_in, sys; eps=1e-12)
     (length(sys.wings) == 0 || length(sl.X) < n ||
      length(sl.Y) < n || length(sl.Z) < n) &&
         return nothing
-    kite_idx = sys.wings[1].origin_idx
+    kite_idx = sys.wings[1].idx
     yaw = Vector{Float64}(undef, n)
     @inbounds for k in 1:n
         pos = SVector{3}(sl.X[k][kite_idx],
