@@ -96,3 +96,13 @@ function tether_length(s::V3KITE)
     end
     return len
 end
+
+"""
+    calc_height(s::V3KITE) -> Float64
+
+Return the height [m] of the kite's centre-of-pressure above ground
+(z-component of `pos_kite`).
+"""
+function calc_height(s::V3KITE)
+    pos_kite(s)[3]
+end
