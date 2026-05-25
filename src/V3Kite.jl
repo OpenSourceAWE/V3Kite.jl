@@ -26,7 +26,7 @@ using Serialization
 using Parameters
 using StaticArrays
 
-import KiteUtils: calc_elevation
+import KiteUtils: calc_elevation, calc_heading
 
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState
