@@ -89,7 +89,7 @@ function simulate(integrator, steps, plot=false)
         end
         dforce = 0.0
         if integrator.t > 15.0
-            dforce = +20.0
+            dforce = +4.5
         end
         force = winch_force(v3kite)
         r = set.drum_radius
