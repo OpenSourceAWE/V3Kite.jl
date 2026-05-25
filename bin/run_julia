@@ -19,7 +19,7 @@ fi
 if [[ $# -gt 0 ]]; then
     JULIA_ARGS=("$@")
 else
-    JULIA_ARGS=(-i -e 'using Revise; using V3Kite; function menu(); include("examples/menu.jl"); end')
+    JULIA_ARGS=(-i -e 'using Revise; function menu(); include("examples/menu.jl"); end')
 fi
 
 if test -f "bin/kps-image-${julia_major}.so"; then
