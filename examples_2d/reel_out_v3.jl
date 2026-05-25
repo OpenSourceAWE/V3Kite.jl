@@ -5,8 +5,6 @@
 Example script demonstrating a simple reel-out maneuver of the V3 kite model.
 """
 
-# TODO: Plot heading
-
 using Pkg
 if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
@@ -53,6 +51,8 @@ v_time = zeros(STEPS)
 v_speed = zeros(STEPS)
 v_force = zeros(STEPS)
 v_elevation = zeros(STEPS)
+v_heading = zeros(STEPS)
+v_wind_speed = zeros(STEPS)
 
 kcu::KCU = KCU(set)
 
@@ -92,6 +92,8 @@ function simulate(integrator, steps, plot=false)
         v_speed[i] = reel_out_speed(v3kite)
         v_force[i] = force
         v_elevation[i] = rad2deg(calc_elevation(v3kite))
+        v_heading[i] = rad2deg(calc_heading(v3kite))
+        v_wind_speed[i] = norm(v_wind_kite(v3kite))
         sim_step!(v3kite.sam; set_values=[set_torque], dt, vsm_interval=1)
         iter += 1
 
@@ -126,8 +128,10 @@ simulate(integrator, STEPS, true)
 
 if PLOT
     local p
-    p = plotx(v_time, v_speed, v_force, v_elevation; 
-    ylabels=["v_reelout  [m/s]","tether_force [N]","elevation [deg]"], fig="winch")
+    p = plotx(v_time, v_speed, v_force, v_elevation, v_heading, v_wind_speed;
+    ysize= 11,
+        ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
+                 "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
     display(p)
 end
 println("Number of states: $(states(v3kite))")
