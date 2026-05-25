@@ -230,3 +230,19 @@ function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false, o
     calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
 end
 
+"""
+    calc_course(s::V3KITE; neg_azimuth=false)
+
+Determine the course angle of the kite in radian.
+Undefined if the velocity of the kite is near zero.
+"""
+function calc_course(s::V3KITE; neg_azimuth=false)
+    elevation = calc_elevation(s)
+    if neg_azimuth
+        azimuth = -calc_azimuth(s)
+    else
+        azimuth = calc_azimuth(s)
+    end
+    KiteUtils.calc_course(s.sys.wings[1].vel_w, elevation, azimuth)
+end
+
