@@ -10,6 +10,8 @@
     
 end
 
+# Output functions
+
 """
     lift_drag(s::V3KITE) -> (lift, drag)
 
@@ -62,4 +64,14 @@ applying the atmospheric wind profile to the ground-level wind vector.
 function v_wind_kite(s::V3KITE)
     height = s.sys.wings[1].pos_w[3]
     calc_wind_factor(s.am, height) * s.set.wind_vec
+end
+
+"""
+    pos_kite(s::V3KITE) -> Vector{Float64}
+
+Return the position of the kite (top particle).
+# Note: Not correctly implemented in the moment. Currently returns the position of the KCU.
+"""
+function pos_kite(s::V3KITE)
+    s.sys.wings[1].pos_w
 end
