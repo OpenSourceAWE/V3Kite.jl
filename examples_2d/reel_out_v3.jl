@@ -46,6 +46,8 @@ set.l_tether = TETHER_LENGTH
 set.profile_law = 3  # 3=EXPLOG, matches KiteModels default
 
 set.alpha_zero = ALPHA_ZERO
+set.mass = 6.2    # kite mass [kg]
+set.d_tether = 4.0  # tether diameter [mm]
 
 v_time = zeros(STEPS)
 v_speed = zeros(STEPS)
@@ -66,6 +68,7 @@ vsm_set.wings[1].geometry_file = source_aero
 sys = load_sys_struct_from_yaml(source_struc;
     system_name=V3_MODEL_NAME, set,
     wing_type=REFINE, vsm_set)
+sys.points[1].extra_mass = 8.4   # KCU mass [kg]
 sam = SymbolicAWEModel(set, sys)
 
 # create an instance of the V3KITE struct
@@ -134,6 +137,6 @@ if PLOT
                  "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
     display(p)
 end
-@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" set.mass sys.points[1].extra_mass sys.tethers[1].diameter*1000
+@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" set.mass sys.points[1].extra_mass set.d_tether
 println("Number of states: $(states(v3kite))")
 nothing
