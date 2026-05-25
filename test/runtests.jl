@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 using Test
+using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 
@@ -156,6 +157,21 @@ using KitePodModels: KCU
             @test lift > 0.0
             @test drag > 0.0
             @test lift > drag  # kites typically have L/D > 1
+        end
+
+        @testset "unstretched_length" begin
+            len = unstretched_length(v3kite)
+            @test isfinite(len)
+            @test len > 0.0
+            @test len ≈ config.tether_length  # should match configured tether length
+        end
+
+        @testset "v_wind_kite" begin
+            v = v_wind_kite(v3kite)
+            @test length(v) == 3
+            @test all(isfinite, v)
+            @test norm(v) > 0.0          # non-zero wind
+            @test norm(v) ≈ config.v_wind  # profile_law=0: constant wind, factor=1
         end
     end
 
