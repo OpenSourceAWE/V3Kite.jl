@@ -271,3 +271,9 @@ function winch_force(s::V3KITE)
     norm(s.sys.winches[1].force)
 end
 
+"""
+    reel_out_speed(s::V3KITE)
+
+Return the current reel-out speed of the winch in m/s.
+"""
+function reel_out_speed(s::V3KITE) s.sys.winches[1].vel end
