@@ -106,3 +106,12 @@ Return the height [m] of the kite's centre-of-pressure above ground
 function calc_height(s::V3KITE)
     pos_kite(s)[3]
 end
+
+"""
+    calc_elevation(s::V3KITE) -> Float64
+
+Determine the elevation angle of the kite in radian.
+"""
+function calc_elevation(s::V3KITE)
+    KiteUtils.calc_elevation(pos_kite(s))
+end
