@@ -26,7 +26,7 @@ gc = V3GeomAdjustConfig()
 
 # the following values can be changed to match your interest
 dt = 0.05/3
-STEPS = 600
+STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
@@ -48,6 +48,10 @@ set.profile_law = 3  # 3=EXPLOG, matches KiteModels default
 set.alpha_zero = ALPHA_ZERO
 set.mass = 6.2    # kite mass [kg]
 set.d_tether = 4.0  # tether diameter [mm]
+set.drum_radius = 0.1615  # radius of the drum                    [m]
+set.gear_ratio = 6.2      # gear ratio of the winch               [-]
+set.f_coulomb = 122.0     # coulomb friction                      [N]
+set.c_vf = 30.6           # coefficient for the viscous friction  [Ns/m]
 
 v_time = zeros(STEPS)
 v_speed = zeros(STEPS)
@@ -85,7 +89,7 @@ function simulate(integrator, steps, plot=false)
         end
         dforce = 0.0
         if integrator.t > 15.0
-            dforce = +4.5
+            dforce = +20.0
         end
         force = winch_force(v3kite)
         r = set.drum_radius
