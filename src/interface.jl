@@ -246,3 +246,19 @@ function calc_course(s::V3KITE; neg_azimuth=false)
     KiteUtils.calc_course(s.sys.wings[1].vel_w, elevation, azimuth)
 end
 
+"""
+    cl_cd(s::V3KITE) -> (cl, cd)
+
+Calculate the lift and drag coefficients of the kite, based on the lift and drag forces and the projected area.
+"""
+function cl_cd(s::V3KITE)
+    wing = s.sys.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return (0.0, 0.0)
+    A_proj = calculate_projected_area(wing.vsm_wing)
+    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    lift, drag = lift_drag(s)
+    return (lift / q_ref, drag / q_ref)
+end
+
