@@ -5,7 +5,6 @@
 Example script demonstrating a simple reel-out maneuver of the V3 kite model.
 """
 
-# TODO: Implement lift_drag()
 # TODO: Plot heading
 
 using Pkg
