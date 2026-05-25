@@ -134,5 +134,6 @@ if PLOT
                  "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
     display(p)
 end
+@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" set.mass sys.points[1].extra_mass sys.tethers[1].diameter*1000
 println("Number of states: $(states(v3kite))")
 nothing
