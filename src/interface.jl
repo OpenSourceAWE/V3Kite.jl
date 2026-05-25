@@ -169,11 +169,11 @@ function calc_azimuth_north(s::V3KITE)
 end
 
 """
-    kite_ref_frame(s::V3KITE; one_point=false)
+    kite_ref_frame(s::V3KITE)
 
 Returns a tuple of the x, y, and z vectors of the kite reference frame.
 """
-function kite_ref_frame(s::V3KITE; one_point=false)
+function kite_ref_frame(s::V3KITE)
     R_b_w = calc_R_b_w(s.sys)
     return R_b_w[:, 1], R_b_w[:, 2], R_b_w[:, 3]
 end
