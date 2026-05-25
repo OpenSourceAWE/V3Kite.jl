@@ -130,4 +130,5 @@ if PLOT
     ylabels=["v_reelout  [m/s]","tether_force [N]","elevation [deg]"], fig="winch")
     display(p)
 end
+println("Number of states: $(states(v3kite))")
 nothing
