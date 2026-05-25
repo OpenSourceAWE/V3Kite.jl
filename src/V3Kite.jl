@@ -109,7 +109,7 @@ export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_QUAT_MODEL_NAME
 
 # Interface exports
-export lift_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height
+export lift_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height, calc_elevation
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
