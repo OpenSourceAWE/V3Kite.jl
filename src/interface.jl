@@ -286,3 +286,27 @@ Return the number of states of the V3KITE model.
 function states(s::V3KITE)
     length(s.sam.prob.prob.u0)
 end
+
+"""
+    spring_forces(s::V3KITE) -> Vector{SimFloat}
+
+Return an array of the scalar spring forces [N] of all tether segments.
+Positive values indicate tension; negative values indicate compression.
+"""
+function spring_forces(s::V3KITE)
+    tether = s.sys.tethers[1]
+    forces = zeros(SimFloat, length(tether.segment_idxs))
+    for (i, seg_idx) in enumerate(tether.segment_idxs)
+        seg = s.sys.segments[seg_idx]
+        p1 = s.sys.points[seg.point_idxs[1]].pos_w
+        p2 = s.sys.points[seg.point_idxs[2]].pos_w
+        len = norm(p2 .- p1)
+        if len > seg.l0
+            stiffness = seg.unit_stiffness / len
+        else
+            stiffness = seg.compression_frac * seg.unit_stiffness / len
+        end
+        forces[i] = stiffness * (len - seg.l0)
+    end
+    return forces
+end
