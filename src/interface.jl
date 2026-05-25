@@ -277,3 +277,12 @@ end
 Return the current reel-out speed of the winch in m/s.
 """
 function reel_out_speed(s::V3KITE) s.sys.winches[1].vel end
+
+"""
+    states(s::V3KITE)
+
+Return the number of states of the V3KITE model.
+"""
+function states(s::V3KITE)
+    length(s.sam.prob.prob.u0)
+end
