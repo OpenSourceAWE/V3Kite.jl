@@ -187,6 +187,21 @@ using KitePodModels: KCU
             @test h > 0.0                # kite is above ground
             @test h ≈ pos_kite(v3kite)[3]  # consistent with pos_kite z-component
         end
+
+        @testset "calc_elevation" begin
+            el = calc_elevation(v3kite)
+            @test isfinite(el)
+            @test el > 0.0               # kite is above the horizon
+            @test el < π/2              # elevation below 90°
+        end
+
+        @testset "upwind_dir" begin
+            dir = upwind_dir(v3kite)
+            @test isfinite(dir)
+            @test dir ≈ -π/2  # wind_vec=[10,0,0] → wind_dir=0 → upwind_dir=-(0+π/2)
+            # zero wind returns NaN
+            @test isnan(upwind_dir([0.0, 0.0, 0.0]))
+        end
     end
 
 end
