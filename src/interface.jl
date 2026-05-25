@@ -78,3 +78,21 @@ function pos_kite(s::V3KITE)
     (0.7 .* pts[10].pos_w .+ 0.3 .* pts[11].pos_w .+
      0.7 .* pts[12].pos_w .+ 0.3 .* pts[13].pos_w) ./ 2
 end
+
+"""
+    tether_length(s::V3KITE) -> Float64
+
+Calculate and return the real, stretched tether length [m] by summing
+the Euclidean distances between the endpoints of each tether segment.
+"""
+function tether_length(s::V3KITE)
+    tether = s.sys.tethers[1]
+    len = 0.0
+    for seg_idx in tether.segment_idxs
+        seg = s.sys.segments[seg_idx]
+        p1 = s.sys.points[seg.point_idxs[1]].pos_w
+        p2 = s.sys.points[seg.point_idxs[2]].pos_w
+        len += norm(p2 .- p1)
+    end
+    return len
+end
