@@ -173,6 +173,20 @@ using KitePodModels: KCU
             @test norm(v) > 0.0          # non-zero wind
             @test norm(v) ≈ config.v_wind  # profile_law=0: constant wind, factor=1
         end
+
+        @testset "pos_kite" begin
+            pos = pos_kite(v3kite)
+            @test length(pos) == 3
+            @test all(isfinite, pos)
+            @test pos[3] > 0.0           # kite is above ground
+        end
+
+        @testset "calc_height" begin
+            h = calc_height(v3kite)
+            @test isfinite(h)
+            @test h > 0.0                # kite is above ground
+            @test h ≈ pos_kite(v3kite)[3]  # consistent with pos_kite z-component
+        end
     end
 
 end
