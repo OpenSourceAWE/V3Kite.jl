@@ -167,3 +167,66 @@ function calc_azimuth_north(s::V3KITE)
     KiteUtils.azimuth_north(pos_kite(s))
 end
 
+"""
+    kite_ref_frame(s::V3KITE; one_point=false)
+
+Returns a tuple of the x, y, and z vectors of the kite reference frame.
+"""
+function kite_ref_frame(s::V3KITE; one_point=false)
+    R_b_w = calc_R_b_w(s.sys)
+    return R_b_w[:, 1], R_b_w[:, 2], R_b_w[:, 3]
+end
+
+function calc_orient_quat(s::V3KITE; viewer=false, one_point=false)
+    if viewer
+        x, _, z = kite_ref_frame(s)
+        pos_kite_ = pos_kite(s)
+        pos_before = pos_kite_ .+ z
+
+        rotation = rot(pos_kite_, pos_before, -x)
+    else
+        x, y, z = kite_ref_frame(s; one_point) # in ENU reference
+        x = enu2ned(x)
+        y = enu2ned(y) 
+        z = enu2ned(z)
+
+        # reference frame for the orientation: NED (north, east, down)
+        ax = @SVector [1, 0, 0]
+        ay = @SVector [0, 1, 0]
+        az = @SVector [0, 0, 1]
+        rotation = rot3d(ax, ay, az, x, y, z)
+    end
+    q = QuatRotation(rotation)
+    return Rotations.params(q)
+end
+
+
+"""
+    orient_euler(s::V3KITE)
+
+Calculate and return the orientation of the kite in euler angles (roll, pitch, yaw)
+as SVector.
+"""
+function orient_euler(s::V3KITE; one_point=false)
+    q = QuatRotation(calc_orient_quat(s; one_point))
+    roll, pitch, yaw = quat2euler(q)
+    SVector(roll, pitch, yaw)
+end
+
+"""
+    calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false, one_point=false)
+
+Determine the heading angle of the kite in radian.
+"""
+function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false, one_point=false)
+    orientation = orient_euler(s; one_point)
+    elevation = calc_elevation(s)
+    # use azimuth in wind reference frame
+    if neg_azimuth
+        azimuth = -calc_azimuth(s)
+    else
+        azimuth = calc_azimuth(s)
+    end
+    calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+end
+
