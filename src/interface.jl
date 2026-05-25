@@ -115,3 +115,44 @@ Determine the elevation angle of the kite in radian.
 function calc_elevation(s::V3KITE)
     KiteUtils.calc_elevation(pos_kite(s))
 end
+
+"""
+    upwind_dir(s::V3KITE) -> Float64
+    upwind_dir(v_wind_gnd) -> Float64
+
+Return the upwind direction [rad] in the horizontal plane, measured clockwise
+from North (NED convention). Computed from the ground-level wind vector so that
+the result points into the wind (i.e. opposite to the wind direction).
+Returns `NaN` if the wind vector has no horizontal component.
+"""
+function upwind_dir(s::V3KITE)
+    upwind_dir(s.set.wind_vec)
+end
+function upwind_dir(v_wind_gnd)
+    if v_wind_gnd[1] == 0.0 && v_wind_gnd[2] == 0.0
+        return NaN
+    end
+    wind_dir = atan(v_wind_gnd[2], v_wind_gnd[1])
+    -(wind_dir + π/2)
+end
+
+"""
+    calc_azimuth(s::V3KITE) -> Float64
+
+Determine the azimuth angle of the kite in wind reference frame in radian.
+Positive anti-clockwise when seen from above.
+"""
+function calc_azimuth(s::V3KITE)
+    azn = KiteUtils.azimuth_north(pos_kite(s))
+    azn2azw(azn; upwind_dir = upwind_dir(s))
+end
+
+"""
+    calc_azimuth_east(s::V3KITE) -> Float64
+
+Determine the azimuth_east angle of the kite in radian.
+Positive clockwise when seen from above.
+"""
+function calc_azimuth_east(s::V3KITE)
+    KiteUtils.azimuth_east(pos_kite(s))
+end
