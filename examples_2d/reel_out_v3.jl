@@ -24,10 +24,20 @@ toc("Loaded packages")
 
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
+gc = V3GeomAdjustConfig()
+
+# the following values can be changed to match your interest
+dt = 0.05/3
+STEPS = 600
+const PLOT = true
+FRONT_VIEW = false
+ZOOM = false
+PRINT = true
+STATISTIC = false
+ALPHA_ZERO = 8.8 
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
-
-gc = V3GeomAdjustConfig()
+# end of user parameter section #
 
 data_path = v3_data_path()
 set_data_path(data_path)
@@ -36,17 +46,6 @@ set.g_earth = 9.81
 set.wind_vec = [V_WIND, 0.0, 0.0]
 set.l_tether = TETHER_LENGTH
 set.profile_law = 0
-
-# the following values can be changed to match your interest
-dt = 0.05
-STEPS = 600
-const PLOT = true
-FRONT_VIEW = false
-ZOOM = false
-PRINT = false
-STATISTIC = false
-ALPHA_ZERO = 8.8 
-# end of user parameter section #
 
 set.alpha_zero = ALPHA_ZERO
 
