@@ -35,18 +35,6 @@ export SymbolicAWEModels
 export record, replay
 export V3KITE
 
-@with_kw mutable struct V3KITE <: AbstractKiteModel
-    "Reference to the settings struct"
-    set::Settings
-    "Reference to the KCU model (Kite Control Unit) as implemented in the package KitePodModels"
-    kcu::KCU
-    sam::SymbolicAWEModel
-    sys::SystemStructure
-    "Reference to the atmospheric model as implemented in the package AtmosphericModels"
-    am::AtmosphericModel = AtmosphericModel(set)
-    
-end
-
 # Include submodules (model_setup before calibration: calibration uses V3GeomAdjustConfig)
 include("model_setup.jl")
 include("calibration.jl")
@@ -56,6 +44,7 @@ include("photogrammetry.jl")
 include("sim_helpers.jl")
 include("simulation.jl")
 include("stabilization.jl")
+include("interface.jl")
 
 # Calibration exports
 # Base values (official KCU measurements)
@@ -118,6 +107,9 @@ export find_frame_syslog_idxs, build_replay_sys_struct
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_QUAT_MODEL_NAME
+
+# Interface exports
+export lift_drag, unstretched_length, v_wind_kite
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
