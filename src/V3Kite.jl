@@ -110,7 +110,7 @@ export V3_MODEL_NAME, V3_QUAT_MODEL_NAME
 
 # Interface exports
 export lift_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height
-export calc_elevation, calc_azimuth, upwind_dir
+export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
