@@ -43,7 +43,7 @@ set = Settings("system.yaml")
 set.g_earth = 9.81
 set.wind_vec = [V_WIND, 0.0, 0.0]
 set.l_tether = TETHER_LENGTH
-set.profile_law = 0
+set.profile_law = 3  # 3=EXPLOG, matches KiteModels default
 
 set.alpha_zero = ALPHA_ZERO
 
