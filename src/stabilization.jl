@@ -346,7 +346,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break

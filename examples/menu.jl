@@ -19,6 +19,7 @@ using REPL.TerminalMenus
 
 options = [
     "v3kite = include(\"v3kite.jl\")",
+    "reel_out_v3 = include(\"../examples_2d/reel_out_v3.jl\")",
     "open_loop = include(\"open_loop.jl\")",
     "realtime = include(\"realtime.jl\")",
     "flight_replay = include(\"flight_replay.jl\")",

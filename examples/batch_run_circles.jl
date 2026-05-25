@@ -16,8 +16,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
-using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
-    V3_DEPOWER_IDX, V3_STEERING_GAIN
+using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX, V3_STEERING_GAIN
 using SymbolicAWEModels
 using KiteUtils: wind_vec_from_angles
 using GLMakie
@@ -130,7 +129,7 @@ function run_circles(;
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
         "v_wind=$v_wind, lt=$tether_length")
-    sys = sam.sys_struct
+    sys = something(sam).sys_struct
 
     set_v3_body_damping!(sys, body_damping,
                          point_37_38_damping)
@@ -148,7 +147,7 @@ function run_circles(;
     dt_c = n_c > 0 ? sim_time_circles / n_c : 0.0
     n_c > 0 || throw(ArgumentError(
         "Circular phase disabled. Set positive sim_time_circles and fps_circles."))
-    logger, sys_state = create_logger(sam, n_c)
+    logger, sys_state = create_logger(something(sam), n_c)
 
     course_uw = Vector{Float64}(undef, n_c)
     azimuth_uw = Vector{Float64}(undef, n_c)
@@ -191,12 +190,12 @@ function run_circles(;
 
         sys.set.v_wind = v_wind_base + vw_change * rf
 
-        if !sim_step!(sam;
+        if !sim_step!(something(sam);
             set_values=[0.0], dt=dt_c, vsm_interval=1)
             @error "Circular phase failed" step
             break
         end
-        log_state!(logger, sys_state, sam, t)
+        log_state!(logger, sys_state, something(sam), t)
 
         n_logged += 1
         c_raw = sys_state.course
@@ -256,7 +255,7 @@ function run_circles(;
     @info "Saving run log" name=ln path=save_dir
     save_log(logger, ln; path=save_dir)
 
-    return syslog, sam
+    return syslog, something(sam)
 end
 
 # =============================================================================
@@ -272,8 +271,8 @@ function generate_run_combos(defaults::NamedTuple,
         for v in sw[param]
             cand = merge(defaults,
                 NamedTuple{(param,)}((v,)))
-            cand == defaults && continue
-            cand in variants && continue
+            isequal(cand, defaults) && continue
+            any(isequal(cand), variants) && continue
             push!(variants, cand)
         end
     end
@@ -325,7 +324,7 @@ point_37_38_damping = [0.0, 20.0, 20.0]
 combos = generate_run_combos(defaults, sweeps, combine_all)
 @info "Batch combos generated" n=length(combos)
 
-failed_runs = NamedTuple[]
+const failed_runs = NamedTuple[]
 
 for (run_id, p) in enumerate(combos)
     run_tag = "run_" * lpad(string(run_id), 3, '0')

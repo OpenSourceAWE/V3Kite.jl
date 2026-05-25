@@ -35,9 +35,9 @@ using Dates
 
 generate_drag_adjusted_polars(1.0)
 
-LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-SECTION = "straight_right"
-YEAR = 2025
+const LOAD_FROM_DISK = false   # toggle to skip sim and just plot
+const SECTION = "straight_right"
+const YEAR = 2025
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
@@ -304,10 +304,9 @@ function run_physics_replay(h5_path;
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
 
-    settle_failed = false
     if SETTLE
         sam, settle_log, settle_failed =
-            settle_wing(settle_config, row1; remake=true)
+            settle_wing(settle_config, row1; remake=false)
         if settle_failed
             @warn "Settling failed — skipping sim"
             base_name = build_replay_name(h5_path,
@@ -336,7 +335,6 @@ function run_physics_replay(h5_path;
             remake_vsm=true)
         settle_log = nothing
     end
-    sys_struct = sam.sys_struct
     set = sam.set
     set.l_tether = tether_len
 
