@@ -24,6 +24,7 @@ using DiscretePIDs
 using HDF5
 using Serialization
 using Parameters
+using StaticArrays
 
 # Re-export commonly used types from SymbolicAWEModels
 export SymbolicAWEModel, SystemStructure, Logger, SysState
@@ -110,7 +111,8 @@ export V3_MODEL_NAME, V3_QUAT_MODEL_NAME
 
 # Interface exports
 export lift_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height
-export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir
+export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir, calc_heading
+export kite_ref_frame, calc_orient_quat, orient_euler
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
