@@ -3,6 +3,7 @@
 
 using Test
 using V3Kite
+using KitePodModels: KCU
 
 @testset "V3Kite.jl" begin
 
@@ -129,6 +130,33 @@ using V3Kite
         @test config.us == 0.0
         @test config.tether_length == 250.0
         @test config.brake == true
+    end
+
+    @testset "Interface Functions" begin
+        data_path = v3_data_path()
+        config = V3SimConfig(
+            struc_yaml_path   = "struc_geometry.yaml",
+            aero_yaml_path    = "aero_geometry.yaml",
+            vsm_settings_path = "vsm_settings.yaml",
+            v_wind            = 10.0,
+            tether_length     = 150.0,
+        )
+        sam, sys = create_v3_model(config; data_path)
+        sam.set.wind_vec = [10.0, 0.0, 0.0]
+        init!(sam; remake=false, remake_vsm=true)
+        sys.winches[1].brake = true
+        kcu = KCU(sam.set)
+        v3kite = V3KITE(set=sam.set, kcu=kcu, sam=sam, sys=sys)
+
+        @testset "lift_drag" begin
+            sim_step!(sam; set_values=[0.0], dt=1/60, vsm_interval=1)
+            lift, drag = lift_drag(v3kite)
+            @test isfinite(lift)
+            @test isfinite(drag)
+            @test lift > 0.0
+            @test drag > 0.0
+            @test lift > drag  # kites typically have L/D > 1
+        end
     end
 
 end
