@@ -262,3 +262,12 @@ function cl_cd(s::V3KITE)
     return (lift / q_ref, drag / q_ref)
 end
 
+"""
+    winch_force(s::V3KITE) -> Float64
+
+Return the absolute value of the force at the winch as calculated during the last timestep.
+"""
+function winch_force(s::V3KITE)
+    norm(s.sys.winches[1].force)
+end
+
