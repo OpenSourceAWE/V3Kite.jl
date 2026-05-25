@@ -306,7 +306,7 @@ groups:
 tethers:
   headers: [idx, start_point, end_point, n_segments, material, diameter_mm, init_unstretched_length]
   data:
-    - [1, 1, 39, 6, dyneema, 13.5, 100.0]
+    - [1, 1, 39, 6, dyneema, .nan, 100.0]  # diameter_mm: .nan → use set.d_tether
 
 ###########################
 ## Winches ################
