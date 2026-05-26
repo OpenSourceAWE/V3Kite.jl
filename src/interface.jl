@@ -213,10 +213,12 @@ end
     calc_course(s::V3KITE; neg_azimuth=false)
 
 Return the course angle of the kite in radian as stored in
-`sam.sys_struct.wings[1].course`.
+`sam.sys_struct.wings[1].course`. If `neg_azimuth=true`, return
+the course using the negated azimuth sign convention.
 """
 function calc_course(s::V3KITE; neg_azimuth=false)
-    s.sam.sys_struct.wings[1].course
+    course = s.sam.sys_struct.wings[1].course
+    neg_azimuth ? -course : course
 end
 
 """
