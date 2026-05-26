@@ -109,10 +109,10 @@ using KitePodModels: KCU
 
     @testset "Coordinate Utilities" begin
         @test wrap_to_pi(0.0) ≈ 0.0
-        @test_broken wrap_to_pi(π) ≈ π atol=1e-10
+        @test wrap_to_pi(π) ≈ -π atol=1e-10
         @test wrap_to_pi(-π) ≈ -π atol=1e-10
         @test wrap_to_pi(2π) ≈ 0.0 atol=1e-10
-        @test_broken wrap_to_pi(3π) ≈ π atol=1e-10
+        @test wrap_to_pi(3π) ≈ -π atol=1e-10
         @test wrap_to_pi(-3π) ≈ -π atol=1e-10
     end
 
