@@ -212,17 +212,11 @@ end
 """
     calc_course(s::V3KITE; neg_azimuth=false)
 
-Determine the course angle of the kite in radian.
-Undefined if the velocity of the kite is near zero.
+Return the course angle of the kite in radian as stored in
+`sam.sys_struct.wings[1].course`.
 """
 function calc_course(s::V3KITE; neg_azimuth=false)
-    elevation = calc_elevation(s)
-    if neg_azimuth
-        azimuth = -calc_azimuth(s)
-    else
-        azimuth = calc_azimuth(s)
-    end
-    KiteUtils.calc_course(s.sys.wings[1].vel_w, elevation, azimuth)
+    s.sam.sys_struct.wings[1].course
 end
 
 """
@@ -263,23 +257,14 @@ end
 """
     spring_forces(s::V3KITE) -> Vector{SimFloat}
 
-Return an array of the scalar spring forces [N] of all tether segments.
-Positive values indicate tension; negative values indicate compression.
+Return an array of scalar spring forces [N] from
+`sam.sys_struct.segments[seg_idx].force` for all tether segments.
 """
 function spring_forces(s::V3KITE)
     tether = s.sys.tethers[1]
     forces = zeros(Float64, length(tether.segment_idxs))
     for (i, seg_idx) in enumerate(tether.segment_idxs)
-        seg = s.sys.segments[seg_idx]
-        p1 = s.sys.points[seg.point_idxs[1]].pos_w
-        p2 = s.sys.points[seg.point_idxs[2]].pos_w
-        len = norm(p2 .- p1)
-        if len > seg.l0
-            stiffness = seg.unit_stiffness / len
-        else
-            stiffness = seg.compression_frac * seg.unit_stiffness / len
-        end
-        forces[i] = stiffness * (len - seg.l0)
+        forces[i] = s.sam.sys_struct.segments[seg_idx].force
     end
     return forces
 end
