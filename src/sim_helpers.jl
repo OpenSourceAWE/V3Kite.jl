@@ -77,19 +77,18 @@ function sim_step!(sam; kwargs...)
 end
 
 """
-    compute_drag_coeff(sam) -> Float64
+    compute_drag(sam) -> Float64
 
-Wing drag coefficient: VSM aero drag plus parasitic drag
-from WING-type points. Together with tether, bridle, and
-KCU drag coefficients, the four sum to the total CD.
+Wing drag force [N]: VSM aero drag plus parasitic drag
+from WING-type points.
 """
-function compute_drag_coeff(sam)
+function compute_drag(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     va_b = wing.va_b
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
-    va_hat_b, q_ref = _drag_coeff_ref(wing)
+    va_hat_b = va_b / v_app
 
     # VSM drag component (body frame → scalar)
     vsm_drag = dot(wing.aero_force_b, va_hat_b)
@@ -104,7 +103,37 @@ function compute_drag_coeff(sam)
     va_hat_w = R_b_w * va_hat_b
     parasitic_drag = dot(parasitic_w, va_hat_w)
 
-    return (vsm_drag + parasitic_drag) / q_ref
+    return vsm_drag + parasitic_drag
+end
+
+"""
+    compute_drag_coeff(sam) -> Float64
+
+Wing drag coefficient: VSM aero drag plus parasitic drag
+from WING-type points. Together with tether, bridle, and
+KCU drag coefficients, the four sum to the total CD.
+"""
+function compute_drag_coeff(sam)
+    wing = sam.sys_struct.wings[1]
+    norm(wing.va_b) < 1e-6 && return 0.0
+    _, q_ref = _drag_coeff_ref(wing)
+    return compute_drag(sam) / q_ref
+end
+
+"""
+    compute_lift(sam) -> Float64
+
+Compute lift force [N] from the first wing's aero force
+component perpendicular to the apparent wind direction.
+"""
+function compute_lift(sam)
+    wing = sam.sys_struct.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return 0.0
+    va_hat = va_b / v_app
+    lift_vec = wing.aero_force_b - dot(wing.aero_force_b, va_hat) * va_hat
+    return norm(lift_vec)
 end
 
 """
@@ -116,14 +145,19 @@ normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
 """
 function compute_lift_coeff(sam)
     wing = sam.sys_struct.wings[1]
-    va_b = wing.va_b
-    v_app = norm(va_b)
-    v_app < 1e-6 && return 0.0
-    va_hat = va_b / v_app
-    lift_vec = wing.aero_force_b - dot(wing.aero_force_b, va_hat) * va_hat
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_inf = 0.5 * _RHO_SL * v_app^2
-    return norm(lift_vec) / (q_inf * A_proj)
+    norm(wing.va_b) < 1e-6 && return 0.0
+    _, q_ref = _drag_coeff_ref(wing)
+    return compute_lift(sam) / q_ref
+end
+
+"""
+    compute_lift_drag(sam) -> Tuple{Float64, Float64}
+
+Return `(lift, drag)` in Newton using the same definitions as
+`compute_lift` and `compute_drag`.
+"""
+function compute_lift_drag(sam)
+    return compute_lift(sam), compute_drag(sam)
 end
 
 const _RHO_SL = 1.225
