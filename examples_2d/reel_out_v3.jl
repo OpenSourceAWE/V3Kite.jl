@@ -76,7 +76,7 @@ sys.points[1].extra_mass = 8.4   # KCU mass [kg]
 sam = SymbolicAWEModel(set, sys)
 
 # create an instance of the V3KITE struct
-v3kite = V3KITE(set=set, kcu=kcu, sam=sam, sys=sys)
+v3kite = V3KITE(set=set, kcu=kcu, sam=sam)
 toc("Created V3KITE instance")
 
 function simulate(integrator, steps, plot=false)

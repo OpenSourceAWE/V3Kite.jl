@@ -147,7 +147,7 @@ using KitePodModels: KCU
         init!(sam; remake=false, remake_vsm=true)
         sys.winches[1].brake = true
         kcu = KCU(sam.set)
-        v3kite = V3KITE(set=sam.set, kcu=kcu, sam=sam, sys=sys)
+        v3kite = V3KITE(set=sam.set, kcu=kcu, sam=sam)
 
         @testset "lift_drag" begin
             sim_step!(sam; set_values=[0.0], dt=1/60, vsm_interval=1)
