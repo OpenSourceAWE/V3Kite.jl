@@ -93,6 +93,7 @@ export compute_wind_vec, interpolate_lidar_wind
 export create_logger, ramp_factor
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
+export compute_drag, compute_lift, compute_lift_drag
 export compute_drag_coeff, compute_lift_coeff
 export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff

@@ -26,35 +26,11 @@ end
 """
     lift_drag(s::V3KITE) -> (lift, drag)
 
-Return the aerodynamic lift and drag forces [N] of the kite wing.
-Lift is the component of `aero_force_b` perpendicular to the apparent wind;
-drag is the VSM wing drag plus bridle drag, both along the apparent wind direction.
+Return aerodynamic lift and drag forces [N] from the shared
+simulation-helper definitions.
 """
 function lift_drag(s::V3KITE)
-    wing = s.sys.wings[1]
-    sys  = s.sys
-    va_b = wing.va_b
-    v_app = norm(va_b)
-    v_app < 1e-6 && return (0.0, 0.0)
-    va_hat = va_b / v_app
-
-    # Wing: VSM drag (body frame) and lift (perpendicular component)
-    vsm_drag  = dot(wing.aero_force_b, va_hat)
-    lift_force = norm(wing.aero_force_b .- vsm_drag .* va_hat)
-
-    # Bridle drag: non-tether, non-wing, non-KCU points (world frame)
-    tether_pts = _tether_point_idxs(sys)
-    bridle_w   = zeros(3)
-    for p in sys.points
-        p.idx in tether_pts && continue
-        p.type == WING        && continue
-        p.idx == 1            && continue  # KCU
-        bridle_w .+= p.drag_force
-    end
-    va_hat_w    = calc_R_b_w(sys) * va_hat
-    bridle_drag = dot(bridle_w, va_hat_w)
-
-    return (lift_force, vsm_drag + bridle_drag)
+    return compute_lift_drag(s.sam)
 end
 
 """
@@ -260,17 +236,11 @@ end
 """
     cl_cd(s::V3KITE) -> (cl, cd)
 
-Calculate the lift and drag coefficients of the kite, based on the lift and drag forces and the projected area.
+Calculate lift and drag coefficients using the shared
+simulation-helper definitions.
 """
 function cl_cd(s::V3KITE)
-    wing = s.sys.wings[1]
-    va_b = wing.va_b
-    v_app = norm(va_b)
-    v_app < 1e-6 && return (0.0, 0.0)
-    A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
-    lift, drag = lift_drag(s)
-    return (lift / q_ref, drag / q_ref)
+    return compute_lift_coeff(s.sam), compute_drag_coeff(s.sam)
 end
 
 """
