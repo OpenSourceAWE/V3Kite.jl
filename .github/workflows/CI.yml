@@ -18,6 +18,9 @@ jobs:
     name: Julia ${{ matrix.version }} — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      DISPLAY: ':99'
+      LIBGL_ALWAYS_SOFTWARE: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -35,10 +38,18 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1280x1024x24 &
+
       - uses: julia-actions/julia-buildpkg@v1
 
       - uses: julia-actions/julia-runtest@v1
         env:
-          # Prevent GLMakie from trying to open a display
-          DISPLAY: ''
+          # Keep GR headless in CI
           GKSwstype: '100'
