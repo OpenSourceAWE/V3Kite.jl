@@ -4,10 +4,21 @@
     "Reference to the KCU model (Kite Control Unit) as implemented in the package KitePodModels"
     kcu::KCU
     sam::SymbolicAWEModel
-    sys::SystemStructure
     "Reference to the atmospheric model as implemented in the package AtmosphericModels"
     am::AtmosphericModel = AtmosphericModel(set)
     
+end
+
+function Base.getproperty(s::V3KITE, name::Symbol)
+    if name === :sys
+        return getfield(s, :sam).sys_struct
+    end
+    return getfield(s, name)
+end
+
+function Base.propertynames(::V3KITE, private::Bool=false)
+    props = (:set, :kcu, :sam, :am, :sys)
+    return private ? props : props
 end
 
 # Output functions
