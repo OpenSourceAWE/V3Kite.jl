@@ -74,15 +74,7 @@ Calculate and return the real, stretched tether length [m] by summing
 the Euclidean distances between the endpoints of each tether segment.
 """
 function tether_length(s::V3KITE)
-    tether = s.sys.tethers[1]
-    len = 0.0
-    for seg_idx in tether.segment_idxs
-        seg = s.sys.segments[seg_idx]
-        p1 = s.sys.points[seg.point_idxs[1]].pos_w
-        p2 = s.sys.points[seg.point_idxs[2]].pos_w
-        len += norm(p2 .- p1)
-    end
-    return len
+    s.sam.sys_struct.tethers[1].stretched_len
 end
 
 """
