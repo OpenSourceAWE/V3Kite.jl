@@ -22,19 +22,19 @@ using KitePodModels: KCU
         @test L_left ≈ V3_STEERING_L0_BASE
         @test L_right ≈ V3_STEERING_L0_BASE
 
-        # Full positive (left turn): left tape longer
+        # Full positive: left tape shorter, right tape longer
         L_left, L_right =
             steering_percentage_to_lengths(100.0)
-        @test_broken L_left > L_right
-        @test_broken L_left ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN
-        @test_broken L_right ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN
+        @test L_left < L_right
+        @test L_left ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN
+        @test L_right ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN
 
-        # Full negative (right turn): right tape longer
+        # Full negative: right tape shorter, left tape longer
         L_left, L_right =
             steering_percentage_to_lengths(-100.0)
-        @test_broken L_right > L_left
-        @test_broken L_left ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN
-        @test_broken L_right ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN
+        @test L_right < L_left
+        @test L_left ≈ V3_STEERING_L0_BASE + V3_STEERING_GAIN
+        @test L_right ≈ V3_STEERING_L0_BASE - V3_STEERING_GAIN
 
         # Symmetry
         L_left_neg, L_right_neg =
