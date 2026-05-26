@@ -70,8 +70,8 @@ end
 """
     tether_length(s::V3KITE) -> Float64
 
-Calculate and return the real, stretched tether length [m] by summing
-the Euclidean distances between the endpoints of each tether segment.
+Return the current stretched tether length [m] from the model's
+`stretched_len` field for the primary tether.
 """
 function tether_length(s::V3KITE)
     s.sam.sys_struct.tethers[1].stretched_len
