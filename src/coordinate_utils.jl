@@ -10,7 +10,7 @@ const COURSE_RATE_WINDOW_SEC = 10.0
 """
     wrap_to_pi(angle)
 
-Wrap angle to [-π, π] range.
+Wrap angle to [-π, π) range.
 """
 function wrap_to_pi(angle)
     return mod(angle + π, 2π) - π
