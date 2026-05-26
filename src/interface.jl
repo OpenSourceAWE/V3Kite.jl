@@ -45,13 +45,11 @@ end
 """
     v_wind_kite(s::V3KITE) -> Vector{Float64}
 
-Return the wind velocity vector [m/s] at the kite's current height,
-applying the atmospheric wind profile to the ground-level wind vector.
+Return the current wind velocity vector [m/s] at the kite,
+as stored in `sam.sys_struct.wings[1].v_wind`.
 """
 function v_wind_kite(s::V3KITE)
-    s.set.profile_law == 0 && return s.set.wind_vec
-    height = s.sys.wings[1].pos_w[3]
-    calc_wind_factor(s.am, height) * s.set.wind_vec
+    s.sam.sys_struct.wings[1].v_wind
 end
 
 """
