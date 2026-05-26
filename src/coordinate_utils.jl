@@ -44,27 +44,6 @@ function euler_to_quaternion(roll, pitch, yaw)
 end
 
 """
-    calc_heading(R_b_w, pos_w)
-
-Heading in the tangential sphere frame, matching
-`wing.heading` from SymbolicAWEModels. Zero when the
-nose (body x-axis) points toward the ground station
-along the great circle.
-
-# Arguments
-- `R_b_w`: Rotation matrix from body to world frame
-- `pos_w`: Kite position in world (ENU) frame
-"""
-function calc_heading(R_b_w, pos_w)
-    e_x = R_b_w[:, 1]
-    # Tangential sphere frame (same as scalar_eqs.jl)
-    z = normalize(pos_w)
-    y = normalize([-pos_w[2], pos_w[1], 0.0])
-    x = cross(y, z)
-    return atan(dot(e_x, y), dot(e_x, x))
-end
-
-"""
     calc_csv_heading(roll, pitch, yaw, pos_w)
 
 Heading from EKF NED Euler angles and kite position,
