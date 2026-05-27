@@ -95,6 +95,8 @@ function simulate(integrator, steps, plot=false)
         r = set.drum_radius
         n = set.gear_ratio
         set_torque = -r/n * force + dforce
+        # This should be the same as the above, but it isn't. Why?
+        # set_torque = force_to_torque(-force, v3kite.sys) + dforce
         v_time[i] = integrator.t
         v_speed[i] = reel_out_speed(v3kite)
         v_force[i] = force
