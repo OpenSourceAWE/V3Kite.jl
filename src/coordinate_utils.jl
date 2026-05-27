@@ -44,13 +44,12 @@ function euler_to_quaternion(roll, pitch, yaw)
 end
 
 function _calc_heading_from_rotation(R_b_w, pos_w)
-    q = QuatRotation(R_b_w)
-    roll, pitch, yaw = quat2euler(q)
-    orientation = SVector(roll, pitch, yaw)
-    elevation = KiteUtils.calc_elevation(pos_w)
-    azimuth_north = KiteUtils.azimuth_north(pos_w)
-    azimuth_wind = KiteUtils.azn2azw(azimuth_north)
-    return KiteUtils.calc_heading(orientation, elevation, azimuth_wind)
+    e_x = R_b_w[:, 1]
+    # Tangential sphere frame (same as scalar_eqs.jl)
+    z = normalize(pos_w)
+    y = normalize([-pos_w[2], pos_w[1], 0.0])
+    x = cross(y, z)
+    return atan(dot(e_x, y), dot(e_x, x))
 end
 
 """
