@@ -218,6 +218,8 @@ if [ -f "Manifest.toml" ]; then
     rm -f Manifest.toml
     echo "Removed stale Manifest.toml"
 fi
+# Remove the test sub-project manifest so it is regenerated on the next test run.
+rm -f test/Manifest.toml
 
 # Resolve and instantiate a project, retrying once after deleting only the
 # plain manifest and the manifest matching the active Julia version.
