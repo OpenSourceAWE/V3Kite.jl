@@ -43,6 +43,16 @@ function euler_to_quaternion(roll, pitch, yaw)
     return q
 end
 
+function _calc_heading_from_rotation(R_b_w, pos_w)
+    q = QuatRotation(R_b_w)
+    roll, pitch, yaw = quat2euler(q)
+    orientation = SVector(roll, pitch, yaw)
+    elevation = KiteUtils.calc_elevation(pos_w)
+    azimuth_north = KiteUtils.azimuth_north(pos_w)
+    azimuth_wind = KiteUtils.azn2azw(azimuth_north)
+    return KiteUtils.calc_heading(orientation, elevation, azimuth_wind)
+end
+
 """
     calc_csv_heading(roll, pitch, yaw, pos_w)
 
@@ -55,7 +65,7 @@ function calc_csv_heading(roll, pitch, yaw, pos_w)
     quat = euler_to_quaternion(roll, pitch, yaw)
     R = SymbolicAWEModels.quaternion_to_rotation_matrix(
         quat)
-    return wrap_to_pi(calc_heading(R, pos_w) + π)
+    return wrap_to_pi(_calc_heading_from_rotation(R, pos_w) + π)
 end
 
 """
