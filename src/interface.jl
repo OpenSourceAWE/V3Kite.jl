@@ -261,7 +261,7 @@ function states(s::V3KITE)
 end
 
 """
-    spring_forces(s::V3KITE) -> Vector{SimFloat}
+    spring_forces(s::V3KITE) -> Vector{Float64}
 
 Return an array of scalar spring forces [N] from
 `sam.sys_struct.segments[seg_idx].force` for all tether segments.
