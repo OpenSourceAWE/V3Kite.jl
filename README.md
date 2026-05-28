@@ -28,6 +28,9 @@ Pick an example from the menu. See `V3SimConfig` in `src/simulation.jl` for
 the simulation options; bundled geometry and flight data live at
 `v3_data_path()`.
 
+> **First run is slow** (compilation + system build). Subsequent runs are
+> fast — keep the same REPL open across runs.
+
 ## Examples
 
 All examples share one project — `julia --project=examples`. Run the
