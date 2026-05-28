@@ -1,136 +1,96 @@
-
-[WORK IN PROGRESS] 
-
 # V3Kite.jl
 
-Julia package for simulation and validation of the TU Delft V3 leading edge inflatable (LEI) kite.
-
-## Overview
-
-V3Kite.jl provides calibration functions, model setup utilities, CSV replay capabilities, and simulation functions built on top of [SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl) for the TU Delft V3 kite.
+Julia package for simulation and validation of the TU Delft V3 leading edge
+inflatable (LEI) kite. Built on
+[SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl);
+ships calibration, model setup, CSV replay, and bundled V3 geometry.
 
 ## Installation
-Inside the REPL:
-```julia
-using Pkg
-Pkg.add(url="https://github.com/OpenSourceAWE/V3Kite.jl")
+
+```bash
+git clone https://github.com/OpenSourceAWE/V3Kite.jl
+cd V3Kite.jl
+./bin/install
+./bin/run_julia
 ```
 
 ## Quick Start
 
-```julia
-using V3Kite
-using GLMakie  # Optional, for visualization
-
-# Create a simulation configuration
-config = V3SimConfig(
-    sim_time = 60.0,      # seconds
-    fps = 60,             # frames per second
-    v_wind = 10.0,        # wind speed [m/s]
-    up = 40.0,            # depower percentage [0-100]
-    us = 0.0,             # steering percentage [-100, 100]
-    wing_type = REFINE,   # or QUATERNION
-)
-
-# Run simulation
-sam, syslog, tape_data = run_v3_simulation(config)
-
-# Visualize (requires GLMakie)
-fig = plot(sam.sys_struct, syslog)
-display(fig)
+```bash
+./bin/run_julia
 ```
 
-## Calibration System
-
-V3Kite uses a base + delta calibration pattern:
-
-### Official KCU Measurements (Base Values)
-
-| Parameter | Base Value | Description |
-|-----------|------------|-------------|
-| `V3_STEERING_L0_BASE` | 1.6 m | Neutral steering tape length |
-| `V3_DEPOWER_L0_BASE` | 0.2 m | Neutral depower tape length |
-| `V3_STEERING_GAIN` | 1.4 m | Max differential at 100% steering |
-| `V3_DEPOWER_GAIN` | 5.0 m | Depower range for 0-100% |
-
-### Tape Reductions
-
-Tape reductions (shortening of steering/depower tapes) are applied
-through `V3GeomAdjustConfig`, not through global constants. Use
-`set_steering!`/`set_depower!` with a config to apply reductions.
-
-### Conversion Functions
-
 ```julia
-# Using base values (no reduction)
-L_left, L_right = steering_percentage_to_lengths(50.0)
-L_depower = depower_percentage_to_length(40.0)
-
-# With custom l0_base (e.g. after reduction)
-L_left, L_right = steering_percentage_to_lengths(50.0; l0_base=1.4)
-
-# Inverse conversions
-pct = steering_length_to_percentage(L_left, L_right)
-pct = depower_length_to_percentage(L_depower)
+include("examples/menu.jl")
 ```
 
-## Configuration
-
-### V3SimConfig
-
-```julia
-V3SimConfig(
-    # Geometry files (relative to data directory)
-    struc_yaml_path = "struc_geometry_depower0.0_tip0.4_te0.95.yaml",
-    aero_yaml_path = "aero_geometry_depower0.0_tip0.4_te0.95.yaml",
-    vsm_settings_path = "vsm_settings_reduced_for_coupling.yaml",
-
-    # Simulation parameters
-    sim_time = 60.0,           # Duration [s]
-    fps = 60,                  # Logging frequency
-
-    # Wind parameters
-    v_wind = 10.0,             # Wind speed [m/s]
-    upwind_dir = -90.0,        # Wind direction [deg]
-
-    # Control parameters
-    up = 40.0,                 # Depower [0-100%]
-    us = 0.0,                  # Steering [-100, 100%]
-    tether_length = 250.0,     # [m]
-
-    # Model options
-    wing_type = REFINE,        # REFINE or QUATERNION
-    n_panels = 36,             # VSM panel count
-    brake = true,              # Winch brake engaged
-)
-```
-
-## Data Directory
-
-V3Kite includes bundled V3 kite geometry and configuration files. Access with:
-
-```julia
-data_path = v3_data_path()
-```
+Pick an example from the menu. See `V3SimConfig` in `src/simulation.jl` for
+the simulation options; bundled geometry and flight data live at
+`v3_data_path()`.
 
 ## Examples
 
-Run the included example:
+All examples share one project — `julia --project=examples`. Run the
+interactive launcher with `examples/menu.jl`, or pick one from the table:
+
+| # | Script | What it does |
+|---|--------|--------------|
+| 1 | `v3kite.jl` | Hello-world: heading PID + winch PID + 3D replay. Start here. |
+| 2 | `examples_2d/reel_out_v3.jl` | Single reel-out maneuver, 2D ControlPlots. |
+| 3 | `realtime.jl` | Keyboard-controlled simulation (arrows steer/depower, ESC stops). |
+| 4 | `open_loop.jl` | Settle in power zone, then ramped open-loop steering. |
+| 5 | **`flight_replay.jl`** | Replays real EKF flight data through the simulator. See below. |
+| 6 | `batch_run_circles.jl` | Parameter sweep of circular-flight runs. See below. |
+| 7 | `batch_load_circles.jl` | Loads a batch directory; writes metrics CSV + scatter plot. |
+| 8 | `batch_run_zenith_then_circles.jl` | Two-phase variant (zenith hold → circles). |
+| 9 | `load_and_plot.jl` | Post-processes any saved log: timeseries, 3D replay, line stretch. |
+
+Utilities (no simulation): `photogrammetry_aoa.jl`, `plot_wind_sources.jl`,
+`depower_drum_model.jl`.
+
+### Flight replay
+
+`flight_replay.jl` slices a maneuver from an EKF H5 by UTC, settles the wing
+into the recorded conditions, then steps the simulator while feeding
+recorded steering/depower/tether inputs. A second `SymbolicAWEModel` driven
+straight from the EKF state is plotted alongside. Outputs land in
+`processed_data/`; PDFs go to `output/` when `SAVE_FIGS=true`. Toggles for
+maneuver, year, feedback gains, and tape reductions are at the top of the
+script.
+
+### Batch sweeps
+
+`batch_run_circles.jl` runs a grid of circular-flight sims (settle → ramp
+steering → early-stop on course-rate convergence). Logs land in
+`processed_data/<batch_tag>/`; failures get listed in `failed_runs.txt`.
+Edit `defaults`/`sweeps`/`combine_all` at the bottom of the script to
+define the grid. Then:
 
 ```bash
-julia --project=examples examples/v3kite.jl
+julia --project=examples examples/batch_load_circles.jl
 ```
+
+prompts for a batch directory and emits `circles_batch_analysis.csv` plus a
+`|u_s · v_a|` vs `|χ̇|` scatter.
+
+## Calibration
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `V3_STEERING_L0_BASE` | 1.6 m | Neutral steering tape length |
+| `V3_DEPOWER_L0_BASE` | 0.2 m | Neutral depower tape length |
+| `V3_STEERING_GAIN` | 1.4 m | Max differential at 100% steering |
+| `V3_DEPOWER_GAIN` | 5.0 m | 0–100% depower stroke |
+
+Tape reductions are applied via `V3GeomAdjustConfig` and `set_steering!` /
+`set_depower!` — see their docstrings.
 
 ## Visualization Extension
 
-When GLMakie is loaded, additional visualization functions become available:
+When GLMakie is loaded, extra plotters become available, e.g.:
 
 ```julia
-using V3Kite
-using GLMakie
-
-# Plot wing points in body frame
-fig = plot_body_frame_local(sys_struct; dir=:front)
+plot_body_frame_local(sys_struct; dir=:front)
 ```
 
 ## Testing
@@ -141,9 +101,9 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 ## Related Packages
 
-- [SymbolicAWEModels.jl](https://github.com/aenarete/SymbolicAWEModels.jl) - Symbolic kite modeling
-- [VortexStepMethod.jl](https://github.com/aenarete/VortexStepMethod.jl) - Aerodynamic calculations
-- [KiteUtils.jl](https://github.com/aenarete/KiteUtils.jl) - Shared utilities
+- [SymbolicAWEModels.jl](https://github.com/aenarete/SymbolicAWEModels.jl) — symbolic kite modeling
+- [VortexStepMethod.jl](https://github.com/aenarete/VortexStepMethod.jl) — aerodynamics
+- [KiteUtils.jl](https://github.com/aenarete/KiteUtils.jl) — shared utilities
 
 ## License
 
