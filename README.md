@@ -40,7 +40,7 @@ interactive launcher with `examples/menu.jl`, or pick one from the table:
 | 3 | `realtime.jl` | Keyboard-controlled simulation (arrows steer/depower, ESC stops). |
 | 4 | `open_loop.jl` | Settle in power zone, then ramped open-loop steering. |
 | 5 | **`flight_replay.jl`** | Replays real EKF flight data through the simulator. See below. |
-| 6 | `batch_run_circles.jl` | Parameter sweep of circular-flight runs. See below. |
+| 6 | **`batch_run_circles.jl`** | Parameter sweep of circular-flight runs. See below. |
 | 7 | `batch_load_circles.jl` | Loads a batch directory; writes metrics CSV + scatter plot. |
 | 8 | `batch_run_zenith_then_circles.jl` | Two-phase variant (zenith hold → circles). |
 | 9 | `load_and_plot.jl` | Post-processes any saved log: timeseries, 3D replay, line stretch. |
