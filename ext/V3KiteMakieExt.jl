@@ -904,13 +904,17 @@ function V3Kite.plot_yaw_rate_vs_steering(
         source=:heading,
         labels=nothing, figsize=(600, 400),
         labelsize=18,
-        min_steering=0.0, dt=0.01)
+        min_steering=0.0, dt=0.01,
+        strides=nothing)
     logs = syslogs isa Vector ? syslogs : [syslogs]
     n = length(logs)
 
     if isnothing(labels)
         labels = n == 1 ? ["series"] :
             ["series_$i" for i in 1:n]
+    end
+    if isnothing(strides)
+        strides = ones(Int, n)
     end
 
     ylabel = source === :course ?
@@ -920,8 +924,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
     ax = Axis(fig[1, 1];
         xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
         ylabel=ylabel,
-        xlabelsize=labelsize, ylabelsize=labelsize,
-        title="source = $source")
+        xlabelsize=labelsize, ylabelsize=labelsize)
 
     has_data = false
     for (i, lg) in enumerate(logs)
@@ -930,20 +933,22 @@ function V3Kite.plot_yaw_rate_vs_steering(
 
         us = sl.set_steering[2:end]
         mask = abs.(us) .> min_steering
-        x = abs.(us[mask] .* sl.v_app[2:end][mask])
-        y = abs.(rate[mask])
+        x_all = abs.(us[mask] .* sl.v_app[2:end][mask])
+        y_all = abs.(rate[mask])
+        x = x_all[1:strides[i]:end]
+        y = y_all[1:strides[i]:end]
         isempty(x) && continue
         has_data = true
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
-        scatter!(ax, x, y; markersize=4, color=color,
-            label=labels[i])
+        scatter!(ax, x, y; markersize=8, color=color,
+            label=L"\text{%$(labels[i])}")
 
         # Best fit line through origin: gk = sum(x.*y) / sum(x.^2)
         gk = dot(x, y) / dot(x, x)
         x_fit = range(0, maximum(x); length=50)
         lines!(ax, collect(x_fit), gk .* collect(x_fit);
             color=color, linewidth=2,
-            label="$(labels[i]) gk=$(round(gk; digits=2))")
+            label=L"\text{%$(labels[i])} \; G_\text{k}=%$(round(gk; digits=3))")
     end
 
     if has_data
