@@ -35,9 +35,9 @@ using Dates
 
 generate_drag_adjusted_polars(1.0)
 
-const LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-const SECTION = "straight_right"
-const YEAR = 2025
+LOAD_FROM_DISK = false   # toggle to skip sim and just plot
+SECTION = "straight_right"
+YEAR = 2025
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
@@ -891,4 +891,5 @@ if !isnothing(syslog)
         distance_based_steering=DISTANCE_BASED_STEERING,
         depower_offset_pct=depower_offset_pct,
         figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
+    replay(syslog, sam.sys_struct)
 end
