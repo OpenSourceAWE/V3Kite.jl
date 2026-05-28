@@ -4,8 +4,8 @@
 """
 V3 Kite Simulation Example
 
-Heading PID control with sinusoidal setpoint, winch PID
-control for constant tether length, and 3D visualization.
+Power-zone settling, then heading PID with a sinusoidal setpoint,
+winch PID for constant tether length, and 3D visualization.
 """
 
 using Pkg
@@ -15,10 +15,8 @@ if !Base.generating_output() &&
 end
 
 using V3Kite
-using VortexStepMethod
 using GLMakie
 using LinearAlgebra
-using DiscretePIDs
 
 # =============================================================================
 # Configuration
@@ -30,51 +28,47 @@ MAX_HEADING = 40.0    # degrees
 PERIOD = 30.0         # seconds
 V_WIND = 15.4
 TETHER_LENGTH = 250.0
+ELEVATION = 70.0      # degrees
 DEPOWER = 0.30        # fraction [0, 1]
-WORLD_DAMPING = 40.0  # initial world damping
-DAMPING_DECAY_STEPS = 200
 
 # PID gains
-HEADING_P = 5.0
+HEADING_P = 1.0
 HEADING_I = false
 HEADING_D = 0.0
-WINCH_P = 1000.0
-WINCH_I = 100.0
-WINCH_D = 50.0
 
 # =============================================================================
-# Setup
+# Settling
 # =============================================================================
 
 @info "V3 Kite Simulation Example"
 @info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
 
-gc = V3GeomAdjustConfig()
+el_rad = deg2rad(ELEVATION)
+position = [cos(el_rad) * TETHER_LENGTH, 0.0,
+            sin(el_rad) * TETHER_LENGTH]
+wind_vec = [V_WIND, 0.0, 0.0]
 
-data_path = v3_data_path()
-set_data_path(data_path)
-set = Settings("system.yaml")
-set.g_earth = 9.81
-set.wind_vec = [V_WIND, 0.0, 0.0]
-set.l_tether = TETHER_LENGTH
-set.profile_law = 0
+settle_config = V3SettleConfig(
+    v_wind = V_WIND,
+    tether_length = TETHER_LENGTH,
+    dt = 0.001,
+    num_steps = 400,
+    num_substeps = 5,
+    body_damping = [0.0, 0.0, 40.0],
+    start_depower = DEPOWER * 100.0 + 10.0,
+    course_correction_mode = :heading,
+    course_correction_gain = 0.05,
+    geom = V3GeomAdjustConfig(),
+)
+gc = settle_config.geom
 
-source_struc = joinpath(data_path, "struc_geometry.yaml")
-source_aero = joinpath(data_path, "aero_geometry.yaml")
-vsm_path = joinpath(data_path, "vsm_settings.yaml")
-vsm_set = VortexStepMethod.VSMSettings(vsm_path; data_prefix=false)
-vsm_set.wings[1].geometry_file = source_aero
-
-@info "Creating V3 model..."
-sys = load_sys_struct_from_yaml(source_struc;
-    system_name=V3_MODEL_NAME, set,
-    wing_type=REFINE, vsm_set)
-sam = SymbolicAWEModel(set, sys)
-
-@info "Initializing model..."
-init!(sam; remake=false, remake_vsm=true)
-sys.winches[1].brake = false
-set_depower!(sys, DEPOWER, 0.0, gc)
+@info "Settling V3 model..."
+sam, settle_log, settle_failed = settle_wing(settle_config;
+    position, velocity=[0.0, 0.0, 0.0], heading=0.0,
+    steering=0.0, depower=DEPOWER, wind_vec, remake=false)
+settle_failed && error("Settling failed")
+sys = sam.sys_struct
+sys.winches[1].brake = true
 
 n_steps = Int(round(FPS * SIM_TIME))
 dt = SIM_TIME / n_steps
@@ -93,15 +87,6 @@ heading_pid = create_heading_pid(;
     dt, umin=-abs(max_steering),
     umax=abs(max_steering))
 
-# Winch PID
-nominal_tether_length = sys.tethers[1].len
-init_winch_torque!(sys)
-winch_pid = create_winch_pid(;
-    K = WINCH_P,
-    Ti = WINCH_I > 0 ? WINCH_P / WINCH_I : false,
-    Td = WINCH_D > 0 ? WINCH_D / WINCH_P : false,
-    dt)
-
 heading_setpoint = [0.0]
 
 # =============================================================================
@@ -114,11 +99,6 @@ sim_start = time()
 for step in 1:n_steps
     t = step * dt
 
-    damping = max(WORLD_DAMPING *
-        (1.0 - step / DAMPING_DECAY_STEPS), 0.0)
-    SymbolicAWEModels.set_world_frame_damping(sys, damping)
-
-    # PID heading control with sine wave setpoint
     target_rad = max_heading_rad * sin(angular_freq * t)
     current = sam.sys_struct.wings[1].heading
     steer_ctrl = heading_pid(target_rad, current, 0.0)
@@ -126,14 +106,7 @@ for step in 1:n_steps
 
     set_steering!(sys, nominal_steering + steer_ctrl, gc)
 
-    # Winch PID
-    tl = sys.tethers[1].len
-    wf = winch_pid(nominal_tether_length, tl, 0.0)
-    wt = force_to_torque(wf, sys)
-    sys.winches[1].set_value = -wt
-
-    if !sim_step!(sam;
-            set_values=[-wt], dt, vsm_interval=1)
+    if !sim_step!(sam; dt, vsm_interval=1)
         @error "Simulation failed" step
         break
     end
@@ -141,7 +114,7 @@ for step in 1:n_steps
 
     if should_report(step, n_steps)
         elapsed = time() - sim_start
-        @info "Step $step/$n_steps" times_realtime=round(t/elapsed, digits=2) damping=round(damping, digits=2)
+        @info "Step $step/$n_steps" times_realtime=round(t/elapsed, digits=2)
     end
 end
 
@@ -158,10 +131,10 @@ syslog = load_log("v3kite_example")
 fig = plot(sam.sys_struct, syslog;
     plot_tether=true,
     setpoints=Dict(:heading => heading_setpoint))
-display(fig)
+display(GLMakie.Screen(), fig)
 
 scene = replay(syslog, sam.sys_struct)
-display(scene)
+display(GLMakie.Screen(), scene)
 
 @info "Example complete!"
 nothing
