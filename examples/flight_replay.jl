@@ -35,7 +35,7 @@ using Dates
 
 generate_drag_adjusted_polars(1.0)
 
-LOAD_FROM_DISK = true   # toggle to skip sim and just plot
+LOAD_FROM_DISK = false   # toggle to skip sim and just plot
 N_SUBSTEPS = 20
 SECTION = "straight_right"
 YEAR = 2025
