@@ -18,6 +18,7 @@ using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
 using GLMakie
+using SymbolicAWEModels
 using LinearAlgebra
 using Statistics
 using REPL.TerminalMenus
@@ -207,7 +208,7 @@ end
 # =============================================================================
 
 function plot_time_series(lg, sam)
-    return plot(sam.sys_struct, lg;
+    return Makie.plot(sam.sys_struct, lg;
         plot_turn_rates=false, plot_reelout=false,
         plot_twist=false,
         plot_yaw_rate_paper=false,
@@ -711,7 +712,7 @@ stretch_info = compute_line_stretch(lg, sam;
 
 # Plots
 fig_time = plot_time_series(lg, sam)
-scene = replay(lg, sam.sys_struct;
+scene = SymbolicAWEModels.replay(lg, sam.sys_struct;
     autoplay=false, loop=true, show_panes=false)
 fig_wing = print_and_plot_wing(lg, sam, is_print=true)
 

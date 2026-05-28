@@ -17,6 +17,7 @@ using V3Kite
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
+using SymbolicAWEModels
 using LinearAlgebra
 using Statistics
 using Dates
@@ -146,8 +147,8 @@ log_name = "open_loop_lt_$(lt_tag)"
 save_log(logger, log_name)
 syslog = load_log(log_name)
 
-fig = plot(sam.sys_struct, syslog)
-scene = replay(syslog, sam.sys_struct, show_panes=false)
+fig = Makie.plot(sam.sys_struct, syslog)
+scene = SymbolicAWEModels.replay(syslog, sam.sys_struct, show_panes=false)
 
 display(fig)
 display(scene)

@@ -887,5 +887,5 @@ if !isnothing(syslog)
         distance_based_steering=DISTANCE_BASED_STEERING,
         depower_offset_pct=depower_offset_pct,
         figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
-    replay(syslog, sam.sys_struct)
+    SymbolicAWEModels.replay(syslog, sam.sys_struct)
 end
