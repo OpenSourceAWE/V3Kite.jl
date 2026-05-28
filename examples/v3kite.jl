@@ -16,6 +16,7 @@ end
 
 using V3Kite
 using GLMakie
+using SymbolicAWEModels
 using LinearAlgebra
 
 # =============================================================================
@@ -128,12 +129,12 @@ syslog = load_log("v3kite_example")
 # =============================================================================
 
 @info "Creating visualization..."
-fig = plot(sam.sys_struct, syslog;
+fig = Makie.plot(sam.sys_struct, syslog;
     plot_tether=true,
     setpoints=Dict(:heading => heading_setpoint))
 display(GLMakie.Screen(), fig)
 
-scene = replay(syslog, sam.sys_struct)
+scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
 display(GLMakie.Screen(), scene)
 
 @info "Example complete!"

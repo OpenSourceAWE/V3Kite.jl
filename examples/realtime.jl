@@ -22,6 +22,7 @@ end
 
 using V3Kite
 using GLMakie
+using SymbolicAWEModels
 using LinearAlgebra
 using Statistics
 using Printf
@@ -100,7 +101,7 @@ display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
 # =============================================================================
 
 @info "Creating 3D visualization..."
-scene = plot(sys; vector_scale, size=(1400, 900))
+scene = Makie.plot(sys; vector_scale, size=(1400, 900))
 display(scene)
 
 progress_text = Observable("t = 0.0s")
@@ -251,7 +252,7 @@ if record_video
 
     save_log(logger, "realtime_v3")
     syslog = load_log("realtime_v3")
-    replay_scene = replay(
+    replay_scene = SymbolicAWEModels.replay(
         syslog, sys; autoplay=false, loop=true)
     display(replay_scene)
 else
