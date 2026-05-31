@@ -328,7 +328,7 @@ function run_physics_replay(h5_path;
         gc = settle_config.geom
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
         apply_geom_adjustments!(sys, gc)
         SymbolicAWEModels.init!(sam;
@@ -348,7 +348,7 @@ function run_physics_replay(h5_path;
     # CSV reference model
     data_struct = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
     data_sam = SymbolicAWEModel(set, data_struct)
     data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
