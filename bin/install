@@ -141,6 +141,13 @@ fi
 
 echo "Detected Julia version: $julia_version (major: $julia_major)"
 
+# Delete any stale system image for this Julia version so it is not used after
+# packages are updated (it will be out of date until create_sys_image is re-run).
+if [[ -f "bin/kps-image-${julia_major}.so" ]]; then
+    rm -f "bin/kps-image-${julia_major}.so"
+    echo "Deleted stale system image bin/kps-image-${julia_major}.so"
+fi
+
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
