@@ -193,7 +193,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -225,7 +225,7 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
 
     if !isnothing(config.kcu_mass)
         sys.points[1].extra_mass = config.kcu_mass
