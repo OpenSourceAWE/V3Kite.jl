@@ -318,7 +318,7 @@ winches:
 ###########################
 # Wing aerodynamic bodies
 # headers: [id, type, point_idxs]
-# type: PARTICLE_DYNAMICS or QUATERNION
+# type: PARTICLE_DYNAMICS or RIGID_DYNAMICS
 # point_idxs: List of WING-type points (for PARTICLE_DYNAMICS: must be LE/TE pairs)
 
 wings:
