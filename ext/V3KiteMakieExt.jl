@@ -26,8 +26,8 @@ LE lines are opaque+thick, strut inner points are
 transparent.
 """
 function _draw_extra_groups!(ax, coords, groups;
-    point_size=8, strut_alpha=0.6,
-    skip_ungrouped=false)
+        point_size=8, strut_alpha=0.6,
+        skip_ungrouped=false)
     te_idxs = Set{Int}()
     for (gname, indices) in groups
         is_le = gname == "LE"
@@ -65,7 +65,7 @@ function _draw_extra_groups!(ax, coords, groups;
     # Opaque points (LE, TE, other)
     opaque = [i for i in eachindex(coords)
               if i ∉ strut_inner &&
-              (!skip_ungrouped || i ∈ grouped)]
+                 (!skip_ungrouped || i ∈ grouped)]
     scatter!(ax,
         [coords[i][1] for i in opaque],
         [coords[i][2] for i in opaque];
@@ -84,7 +84,7 @@ end
 
 """Draw text with a white halo (CairoMakie-safe)."""
 function _halo_text!(ax, x, y; text, fontsize=12,
-    color=:black, halo_width=3, kw...)
+        color=:black, halo_width=3, kw...)
     text!(ax, x, y; text, fontsize,
         color=:white, strokecolor=:white,
         strokewidth=halo_width, kw...)
@@ -96,9 +96,9 @@ Draw incidence angle overlay: chord line, bridle
 lines, scatter points, angle arc, and labels.
 """
 function _draw_incidence!(ax, kcu_2d, cr_2d,
-    te_2d, le_2d; color=:purple,
-    radius_scale=0.3, show_labels=true,
-    origin_label="KCU")
+        te_2d, le_2d; color=:purple,
+        radius_scale=0.3, show_labels=true,
+        origin_label="KCU")
     # LE→TE chord line (semi-transparent)
     lines!(ax,
         [le_2d[1], te_2d[1]],
@@ -136,18 +136,18 @@ function _draw_incidence!(ax, kcu_2d, cr_2d,
     end
     # Angle arc at CR
     v_kcu = normalize([kcu_2d[1] - cr_2d[1],
-        kcu_2d[2] - cr_2d[2]])
-    v_te = normalize([te_2d[1] - cr_2d[1],
-        te_2d[2] - cr_2d[2]])
+                       kcu_2d[2] - cr_2d[2]])
+    v_te  = normalize([te_2d[1] - cr_2d[1],
+                       te_2d[2] - cr_2d[2]])
     th1 = atan(v_kcu[2], v_kcu[1])
     th2 = atan(v_te[2], v_te[1])
     dth = th2 - th1
-    dth > pi && (dth -= 2pi)
+    dth > pi  && (dth -= 2pi)
     dth < -pi && (dth += 2pi)
     arm_kcu = norm([kcu_2d[1] - cr_2d[1],
-        kcu_2d[2] - cr_2d[2]])
-    arm_te = norm([te_2d[1] - cr_2d[1],
-        te_2d[2] - cr_2d[2]])
+                    kcu_2d[2] - cr_2d[2]])
+    arm_te  = norm([te_2d[1] - cr_2d[1],
+                    te_2d[2] - cr_2d[2]])
     radius = radius_scale * min(arm_kcu, arm_te)
     ths = range(th1, th1 + dth; length=30)
     arc_x = cr_2d[1] .+ radius .* cos.(ths)
@@ -189,23 +189,23 @@ Extra points connected per-strut and LE.
 - `show_camera`: Show camera point (ungrouped extra point) with legend entry (default: false)
 """
 function V3Kite.plot_body_frame_local(sys_structs;
-    extra_points=nothing,
-    extra_groups=nothing,
-    dir::Symbol=:front,
-    point_size=10,
-    extra_point_size=8,
-    figsize=(560, 420),
-    labels=nothing,
-    point_idxs=nothing,
-    legend=true,
-    legend_position=:right,
-    title=true,
-    show_point_idxs=false,
-    show_twist=false,
-    show_incidence=false,
-    show_kcu=false,
-    show_camera=false,
-    annotation="")
+                               extra_points=nothing,
+                               extra_groups=nothing,
+                               dir::Symbol=:front,
+                               point_size=10,
+                               extra_point_size=8,
+                               figsize=(560, 420),
+                               labels=nothing,
+                               point_idxs=nothing,
+                               legend=true,
+                               legend_position=:right,
+                               title=true,
+                               show_point_idxs=false,
+                               show_twist=false,
+                               show_incidence=false,
+                               show_kcu=false,
+                               show_camera=false,
+                               annotation="")
     # Normalize to vector
     structs = sys_structs isa Vector ? sys_structs : [sys_structs]
     n_structs = length(structs)
@@ -213,9 +213,9 @@ function V3Kite.plot_body_frame_local(sys_structs;
     # Default labels
     if isnothing(labels)
         labels = n_structs == 1 ?
-                 ["simulation"] :
-                 ["simulation $i"
-                  for i in 1:n_structs]
+            ["simulation"] :
+            ["simulation $i"
+             for i in 1:n_structs]
     end
 
     # Set up axis labels
@@ -231,11 +231,11 @@ function V3Kite.plot_body_frame_local(sys_structs;
     end
 
     twist_figsize = show_twist ?
-                    (figsize[1], figsize[2] + 150) : figsize
+        (figsize[1], figsize[2] + 150) : figsize
     fig = Figure(size=twist_figsize)
     ax_title = title ? "Wing Points (Body Frame)" : ""
     ax = Axis(fig[1, 1]; xlabel, ylabel,
-        title=ax_title, aspect=DataAspect())
+              title=ax_title, aspect=DataAspect())
     ax_twist = nothing
     if show_twist
         ax_twist = Axis(fig[2, 1];
@@ -292,7 +292,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             n_le = length(le_pos)
             body_x = [1.0, 0.0, 0.0]
             for k in 1:n_le
-                le = wing_pts[2k-1]
+                le = wing_pts[2k - 1]
                 te = wing_pts[2k]
                 chord_b = te.pos_b - le.pos_b
                 y_airf = if k == 1
@@ -311,7 +311,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             end
             push!(sim_aoa_data,
                 (span_ys, aoas, color,
-                    labels[s_idx]))
+                 labels[s_idx]))
         end
 
         # Select points to plot: use point_idxs if provided, otherwise WING points
@@ -351,13 +351,13 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 lw = is_le ? 5 : 3
                 clr = is_le ? color : (color, 0.5)
                 lines!(ax, [c1[1], c2[1]], [c1[2], c2[2]];
-                    color=clr, linewidth=lw)
+                       color=clr, linewidth=lw)
             end
         end
 
         # Plot wing points
         scatter!(ax, x_vals, y_vals;
-            markersize=point_size, color=color, marker=:circle)
+                 markersize=point_size, color=color, marker=:circle)
 
         # Add point labels only for first struct
         if show_point_idxs && s_idx == 1
@@ -384,7 +384,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 align_x = away_x >= 0 ? :left : :right
                 align_y = away_y >= 0 ? :bottom : :top
                 text!(ax, px, py; text=string(p.idx), fontsize=12,
-                    align=(align_x, align_y), offset=offset)
+                      align=(align_x, align_y), offset=offset)
             end
         end
     end
@@ -395,7 +395,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             wing = sys_struct.wings[1]
             R_w_b = V3Kite.calc_R_b_w(sys_struct)'
             kcu_b = R_w_b *
-                    (sys_struct.points[1].pos_w - wing.pos_w)
+                (sys_struct.points[1].pos_w - wing.pos_w)
             kx, ky = get_2d(kcu_b)
             push!(all_x_vals, kx)
             push!(all_y_vals, ky)
@@ -420,7 +420,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
 
         _s_alpha = show_incidence && dir == :side ?
-                   0.4 : 0.6
+            0.4 : 0.6
         _draw_extra_groups!(ax, extra_coords,
             extra_groups;
             point_size=extra_point_size,
@@ -525,7 +525,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
         # Photogrammetry incidence (when extra data given)
         if !isnothing(extra_points) &&
-           !isnothing(extra_groups)
+                !isnothing(extra_groups)
             eb = [R_w_b * (collect(p) - wing1.pos_w)
                   for p in extra_points]
             s3_idx = nothing
@@ -589,7 +589,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         margin_x = 0.15 * (x_max - x_min) + 0.3
         margin_y = 0.15 * (y_max - y_min) + 0.3
         limits!(ax, x_min - margin_x, x_max + margin_x,
-            y_min - margin_y, y_max + margin_y)
+                    y_min - margin_y, y_max + margin_y)
     end
 
     # Plot sim twist curves
@@ -619,20 +619,20 @@ function V3Kite.plot_body_frame_local(sys_structs;
         legend_labels = copy(labels)
         if show_kcu
             push!(legend_elements,
-                MarkerElement(color=:green,
-                    marker=:circle, markersize=10))
+                  MarkerElement(color=:green,
+                      marker=:circle, markersize=10))
             push!(legend_labels, "KCU")
         end
         if !isnothing(extra_points)
             push!(legend_elements,
-                MarkerElement(color=:orange,
-                    marker=:circle, markersize=10))
+                  MarkerElement(color=:orange,
+                      marker=:circle, markersize=10))
             push!(legend_labels, "photogrammetry")
         end
         if show_camera
             push!(legend_elements,
-                MarkerElement(color=:black,
-                    marker=:circle, markersize=10))
+                  MarkerElement(color=:black,
+                      marker=:circle, markersize=10))
             push!(legend_labels, "camera")
         end
         if legend_position == :top
@@ -680,25 +680,25 @@ sys_structs and optionally from photogrammetry data.
 - `limits`: Twist axis limits in deg (default: (-7, 10))
 """
 function V3Kite.plot_twist_dist(sys_structs;
-    extra_points=nothing,
-    extra_groups=nothing,
-    labels=nothing,
-    figsize=(560, 210),
-    labelsize=16,
-    title=true,
-    legend=true,
-    wingtips=false,
-    limits=(-7, 10),
-    show_yaxis=true,
-    annotation="")
+        extra_points=nothing,
+        extra_groups=nothing,
+        labels=nothing,
+        figsize=(560, 210),
+        labelsize=16,
+        title=true,
+        legend=true,
+        wingtips=false,
+        limits=(-7, 10),
+        show_yaxis=true,
+        annotation="")
     structs = sys_structs isa Vector ?
-              sys_structs : [sys_structs]
+        sys_structs : [sys_structs]
     n_structs = length(structs)
     if isnothing(labels)
         labels = n_structs == 1 ?
-                 ["simulation"] :
-                 ["simulation $i"
-                  for i in 1:n_structs]
+            ["simulation"] :
+            ["simulation $i"
+             for i in 1:n_structs]
     end
 
     fig = Figure(size=figsize)
@@ -741,9 +741,9 @@ function V3Kite.plot_twist_dist(sys_structs;
         span_ys = Float64[]
         aoas = Float64[]
         k_range = wingtips ? (1:n_le) :
-                  (2:(n_le-1))
+            (2:(n_le - 1))
         for k in k_range
-            le = wing_pts[2k-1]
+            le = wing_pts[2k - 1]
             te = wing_pts[2k]
             chord_b = te.pos_b - le.pos_b
             y_airf = if k == 1
@@ -771,7 +771,7 @@ function V3Kite.plot_twist_dist(sys_structs;
 
     # Photogrammetry AoA
     if !isnothing(extra_points) &&
-       !isnothing(extra_groups)
+            !isnothing(extra_groups)
         wing = structs[1].wings[1]
         R_w_b = V3Kite.calc_R_b_w(structs[1])'
         extra_body = [R_w_b * (collect(p) - wing.pos_w)
@@ -793,7 +793,7 @@ function V3Kite.plot_twist_dist(sys_structs;
             stations = [(
                 te_b=extra_body[indices[1]],
                 le_b=extra_body[indices[end]])
-                        for (_, indices) in strut_groups]
+                for (_, indices) in strut_groups]
             # Sort by span position
             span_pos = [(s.te_b[2] + s.le_b[2]) / 2
                         for s in stations]
@@ -808,10 +808,10 @@ function V3Kite.plot_twist_dist(sys_structs;
                         stations[i].le_b
                 y_airf = if i == 1
                     normalize(stations[2].le_b -
-                              stations[1].le_b)
+                        stations[1].le_b)
                 elseif i == n_st
                     normalize(stations[n_st].le_b -
-                              stations[n_st-1].le_b)
+                        stations[n_st-1].le_b)
                 else
                     normalize(
                         stations[i+1].le_b -
@@ -862,9 +862,9 @@ and scatter points.
 - `figsize`: Figure size (default: (800, 600))
 """
 function V3Kite.plot_photogrammetry(points, groups;
-    dir::Symbol=:front,
-    point_size=8,
-    figsize=(800, 600))
+        dir::Symbol=:front,
+        point_size=8,
+        figsize=(800, 600))
     xlabel, ylabel = if dir == :top
         (L"x \; [m]", L"y \; [m]")
     elseif dir == :side
@@ -900,28 +900,31 @@ frame-transport correction internally. The steering input
 - `labelsize`: Axis label font size (default: 18)
 """
 function V3Kite.plot_yaw_rate_vs_steering(
-    syslogs;
-    source=:heading,
-    labels=nothing, figsize=(600, 400),
-    labelsize=18,
-    min_steering=0.0, dt=0.01)
+        syslogs;
+        source=:heading,
+        labels=nothing, figsize=(600, 400),
+        labelsize=18,
+        min_steering=0.0, dt=0.01,
+        strides=nothing)
     logs = syslogs isa Vector ? syslogs : [syslogs]
     n = length(logs)
 
     if isnothing(labels)
         labels = n == 1 ? ["series"] :
-                 ["series_$i" for i in 1:n]
+            ["series_$i" for i in 1:n]
+    end
+    if isnothing(strides)
+        strides = ones(Int, n)
     end
 
     ylabel = source === :course ?
-             L"|\dot{\chi}| \; [rad/s]" :
-             L"|\dot{\psi}| \; [rad/s]"
+        L"|\dot{\chi}| \; [rad/s]" :
+        L"|\dot{\psi}| \; [rad/s]"
     fig = Figure(size=figsize)
     ax = Axis(fig[1, 1];
         xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
         ylabel=ylabel,
-        xlabelsize=labelsize, ylabelsize=labelsize,
-        title="source = $source")
+        xlabelsize=labelsize, ylabelsize=labelsize)
 
     has_data = false
     for (i, lg) in enumerate(logs)
@@ -930,20 +933,22 @@ function V3Kite.plot_yaw_rate_vs_steering(
 
         us = sl.set_steering[2:end]
         mask = abs.(us) .> min_steering
-        x = abs.(us[mask] .* sl.v_app[2:end][mask])
-        y = abs.(rate[mask])
+        x_all = abs.(us[mask] .* sl.v_app[2:end][mask])
+        y_all = abs.(rate[mask])
+        x = x_all[1:strides[i]:end]
+        y = y_all[1:strides[i]:end]
         isempty(x) && continue
         has_data = true
         color = PLOT_COLORS[mod1(i, length(PLOT_COLORS))]
-        scatter!(ax, x, y; markersize=4, color=color,
-            label=labels[i])
+        scatter!(ax, x, y; markersize=8, color=color,
+            label=L"\text{%$(labels[i])}")
 
         # Best fit line through origin: gk = sum(x.*y) / sum(x.^2)
         gk = dot(x, y) / dot(x, x)
         x_fit = range(0, maximum(x); length=50)
         lines!(ax, collect(x_fit), gk .* collect(x_fit);
             color=color, linewidth=2,
-            label="$(labels[i]) gk=$(round(gk; digits=2))")
+            label=L"\text{%$(labels[i])} \; G_\text{k}=%$(round(gk; digits=3))")
     end
 
     if has_data
@@ -971,17 +976,17 @@ distinct color is used per log.
 - `labelsize`: Axis label font size (default: 18)
 """
 function V3Kite.plot_turn_rate_vs_time(
-    syslogs;
-    sources=(:heading, :course),
-    labels=nothing,
-    dt=0.01,
-    figsize=(900, 400),
-    labelsize=18)
+        syslogs;
+        sources=(:heading, :course),
+        labels=nothing,
+        dt=0.01,
+        figsize=(900, 400),
+        labelsize=18)
     logs = syslogs isa Vector ? syslogs : [syslogs]
     n = length(logs)
     if isnothing(labels)
         labels = n == 1 ? ["series"] :
-                 ["series_$i" for i in 1:n]
+            ["series_$i" for i in 1:n]
     end
 
     fig = Figure(size=figsize)
@@ -1016,9 +1021,9 @@ expected at `sl.v_wind_gnd` (ekf) and `sl.v_wind_200m`
 both `wind_vec_ekf` and `wind_vec_lidar` are passed.
 """
 function V3Kite.plot_wind_compare(syslog;
-    figsize=(900, 600), labelsize=18)
+        figsize=(900, 600), labelsize=18)
     sl = hasproperty(syslog, :syslog) ? syslog.syslog :
-         syslog
+        syslog
     fig = Figure(size=figsize)
     comp_labels = ("x (E)", "y (N)", "z (U)")
     for (k, label) in enumerate(comp_labels)
@@ -1027,9 +1032,9 @@ function V3Kite.plot_wind_compare(syslog;
             ylabel="$label [m/s]",
             xlabelsize=labelsize, ylabelsize=labelsize)
         ekf = [sl.v_wind_gnd[i][k]
-               for i in eachindex(sl.v_wind_gnd)]
+            for i in eachindex(sl.v_wind_gnd)]
         lid = [sl.v_wind_200m[i][k]
-               for i in eachindex(sl.v_wind_200m)]
+            for i in eachindex(sl.v_wind_200m)]
         lines!(ax, sl.time, ekf;
             label="ekf", color=:blue)
         lines!(ax, sl.time, lid;
@@ -1053,12 +1058,12 @@ tether force, apparent wind, wind speed, kite velocity, force
 coefficient, steering gain, and steering input.
 """
 function V3Kite.plot_replay(
-    syss::Vector{<:SymbolicAWEModels.SystemStructure},
-    logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
-    tape_lengths=nothing,
-    suffixes=nothing,
-    size=(1200, 800),
-    labelsize=18)
+        syss::Vector{<:SymbolicAWEModels.SystemStructure},
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        tape_lengths=nothing,
+        suffixes=nothing,
+        size=(1200, 800),
+        labelsize=18)
 
     n = length(logs)
     actual_suffixes = if n == 1
@@ -1113,7 +1118,7 @@ function V3Kite.plot_replay(
     for (i, lg) in enumerate(logs)
         sl = lg.syslog
         wd = [rad2deg(atan(sl.v_wind_gnd[k][2],
-            sl.v_wind_gnd[k][1]))
+                           sl.v_wind_gnd[k][1]))
               for k in eachindex(sl.v_wind_gnd)]
         push!(all_data, wd)
         push!(all_labels,
@@ -1180,17 +1185,16 @@ function V3Kite.plot_replay(
                 end
             end
             heading_rate = (diff(rad2deg.(hw))
-                            ./
-                            diff(sl.time))
+                            ./ diff(sl.time))
             v_app = sl.v_app[2:end]
             us_seg = us_pct[2:end]
 
             gk = similar(heading_rate)
             for k in eachindex(gk)
                 gk[k] = abs(us_seg[k]) > 0.01 ?
-                        heading_rate[k] /
+                    heading_rate[k] /
                         (v_app[k] * us_seg[k]) :
-                        NaN
+                    NaN
             end
 
             push!(all_data, gk)
@@ -1242,12 +1246,12 @@ function V3Kite.plot_replay(
         end
 
         for (j, (data_series, label, time_vec)) in
-            enumerate(zip(panel.data,
-            panel.labels, panel.times))
+                enumerate(zip(panel.data,
+                    panel.labels, panel.times))
             if length(data_series) != length(time_vec)
                 @warn "Skipping '$label': " *
-                      "len $(length(data_series)) " *
-                      "!= $(length(time_vec))"
+                    "len $(length(data_series)) " *
+                    "!= $(length(time_vec))"
                 continue
             end
             lines!(ax, time_vec, data_series;
@@ -1282,13 +1286,13 @@ Plot kite trajectories on a unit sphere. Adds body-frame axes
 (red=x, green=y, blue=z) at the final position of each trajectory.
 """
 function V3Kite.plot_sphere_trajectory(
-    logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
-    radius=1.0,
-    colors=nothing,
-    labels=nothing,
-    sphere_alpha=0.2,
-    linewidth=2.0,
-    size=(800, 800))
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        radius=1.0,
+        colors=nothing,
+        labels=nothing,
+        sphere_alpha=0.2,
+        linewidth=2.0,
+        size=(800, 800))
 
     fig = Figure(; size)
     ax = LScene(fig[1, 1], show_axis=false)
@@ -1307,17 +1311,17 @@ function V3Kite.plot_sphere_trajectory(
     scatter!(ax, [Point3f(0, 0, 0)];
         color=:black, markersize=10)
     lines!(ax, [Point3f(0, 0, 0),
-            Point3f(axis_len, 0, 0)];
+        Point3f(axis_len, 0, 0)];
         color=:red, linewidth=3)
     text!(ax, Point3f(axis_len * 1.1, 0, 0);
         text="X (az=0)", fontsize=14, color=:red)
     lines!(ax, [Point3f(0, 0, 0),
-            Point3f(0, axis_len, 0)];
+        Point3f(0, axis_len, 0)];
         color=:green, linewidth=3)
     text!(ax, Point3f(0, axis_len * 1.1, 0);
         text="Y (az=-90)", fontsize=14, color=:green)
     lines!(ax, [Point3f(0, 0, 0),
-            Point3f(0, 0, axis_len)];
+        Point3f(0, 0, axis_len)];
         color=:blue, linewidth=3)
     text!(ax, Point3f(0, 0, axis_len * 1.1);
         text="Z (el=90)", fontsize=14, color=:blue)
@@ -1325,7 +1329,7 @@ function V3Kite.plot_sphere_trajectory(
     default_colors = [:blue, :red, :green,
         :orange, :purple, :cyan]
     actual_colors = isnothing(colors) ?
-                    default_colors : colors
+        default_colors : colors
 
     arrow_scale = 0.3 * radius
 
@@ -1342,7 +1346,7 @@ function V3Kite.plot_sphere_trajectory(
         color = actual_colors[
             mod1(i, length(actual_colors))]
         label = isnothing(labels) ?
-                "trajectory $i" : labels[i]
+            "trajectory $i" : labels[i]
         lines!(ax, x, y, z; color, linewidth, label)
 
         # Body-frame axes at final position
@@ -1352,7 +1356,7 @@ function V3Kite.plot_sphere_trajectory(
         pos = Point3f(x[end], y[end], z[end])
 
         for (col, arrow_color) in enumerate(
-            (:red, :green, :blue))
+                (:red, :green, :blue))
             dir = Vec3f(R_b_w[:, col]...) * arrow_scale
             arrows3d!(ax, [pos], [dir];
                 color=arrow_color, shaftradius=0.01 * radius,
@@ -1376,16 +1380,16 @@ function _compute_ranges(logs, tapes, t_start, t_end)
     _time_range(t) = begin
         t0 = t[1]
         i1 = isnothing(t_start) ? 1 :
-             searchsortedfirst(t, t0 + t_start)
+            searchsortedfirst(t, t0 + t_start)
         i2 = isnothing(t_end) ? length(t) :
-             searchsortedlast(t, t0 + t_end)
+            searchsortedlast(t, t0 + t_end)
         i1:i2
     end
     log_ranges = [_time_range(collect(lg.syslog.time))
                   for lg in logs]
     tape_ranges = isnothing(tapes) ? nothing :
-                  [_time_range(collect(Float64, tp.time))
-                   for tp in tapes]
+        [_time_range(collect(Float64, tp.time))
+         for tp in tapes]
     return log_ranges, tape_ranges
 end
 
@@ -1414,16 +1418,16 @@ Plot kite y vs z position colored by a gradient quantity.
   frame with a legend entry
 """
 function V3Kite.plot_2d_trajectory(
-    logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
-    gradient::Symbol=:vel,
-    tapes=nothing,
-    labels=nothing,
-    colormap=:viridis,
-    size=(560, 420),
-    labelsize=20,
-    t_start=nothing,
-    t_end=nothing,
-    frame_indexes=nothing)
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        gradient::Symbol=:vel,
+        tapes=nothing,
+        labels=nothing,
+        colormap=:viridis,
+        size=(560, 420),
+        labelsize=20,
+        t_start=nothing,
+        t_end=nothing,
+        frame_indexes=nothing)
 
     if gradient == :steering && isnothing(tapes)
         error("tapes required for gradient=:steering")
@@ -1502,20 +1506,20 @@ function V3Kite.plot_2d_trajectory(
     legend_labels = String[]
     for (i, _) in enumerate(logs)
         lbl = isnothing(labels) ?
-              "trajectory $i" : labels[i]
+            "trajectory $i" : labels[i]
         lw = i == 1 ? 4.0 : 2.5
         ls = i == 1 ? :solid :
-             Makie.Linestyle([0, 1, 3, 4])
+            Makie.Linestyle([0, 1, 3, 4])
         push!(legend_elems, [LineElement(;
             color=:black, linewidth=lw,
             linestyle=ls)])
         push!(legend_labels, lbl)
     end
     if !isnothing(frame_indexes) &&
-       !isempty(frame_indexes)
+            !isempty(frame_indexes)
         sl1 = logs[1].syslog
         for (j, (frame_nr, syslog_idx)) in
-            enumerate(frame_indexes)
+                enumerate(frame_indexes)
             clr = FRAME_COLORS[
                 mod1(j, length(FRAME_COLORS))]
             t_frame = collect(sl1.time)[syslog_idx]
@@ -1532,11 +1536,11 @@ function V3Kite.plot_2d_trajectory(
             end
             push!(legend_elems,
                 [MarkerElement(color=clr,
-                        marker=:circle,
-                        markersize=10),
-                    LineElement(color=clr,
-                        linewidth=2,
-                        linestyle=:dash)])
+                    marker=:circle,
+                    markersize=10),
+                 LineElement(color=clr,
+                    linewidth=2,
+                    linestyle=:dash)])
             push!(legend_labels,
                 "frame $frame_nr")
         end
@@ -1577,39 +1581,34 @@ extracted from `plot_2d_trajectory`.
   frame markers
 """
 function V3Kite.plot_2d_panels(
-    logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
-    tapes=nothing,
-    labels=nothing,
-    size=nothing,
-    panel_height::Int=120,
-    show_steering=nothing,
-    show_winch_force=true,
-    show_v_app=true,
-    show_tether_len=false,
-    show_drag_coeff=false,
-    show_lift_coeff=false,
-    show_lift_drag_ratio=false,
-    show_te_force=false,
-    show_heading=false,
-    show_course=false,
-    show_elevation=false,
-    show_azimuth=false,
-    show_bridle_pitch=false,
-    show_aoa=true,
-    show_wing_vel=false,
-    show_vw=false,
-    show_depower=false,
-    show_steering_tape=false,
-    show_depower_tape=false,
-    show_yaw=false,
-    show_pitch=false,
-    show_roll=false,
-    show_cop=false,
-    t_start=nothing,
-    t_end=nothing,
-    twin_time_axes::Bool=false,
-    labelsize=20,
-    frame_indexes=nothing)
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        tapes=nothing,
+        labels=nothing,
+        size=nothing,
+        panel_height::Int=120,
+        show_steering=nothing,
+        show_winch_force=true,
+        show_v_app=true,
+        show_tether_len=false,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=false,
+        show_te_force=false,
+        show_heading=false,
+        show_course=false,
+        show_bridle_pitch=false,
+        show_aoa=true,
+        show_wing_vel=false,
+        show_depower=false,
+        show_yaw=false,
+        show_pitch=false,
+        show_roll=false,
+        show_cop=false,
+        t_start=nothing,
+        t_end=nothing,
+        twin_time_axes::Bool=false,
+        labelsize=20,
+        frame_indexes=nothing)
 
     show_steering = something(show_steering,
         !isnothing(tapes))
@@ -1620,19 +1619,16 @@ function V3Kite.plot_2d_panels(
     has_euler = show_yaw || show_pitch || show_roll
     has_aoa = show_aoa && length(logs) >= 2
     n_panels = show_steering + show_depower +
-               show_steering_tape + show_depower_tape +
-               show_winch_force + show_v_app +
-               show_tether_len +
-               show_drag_coeff + show_lift_coeff +
-               show_lift_drag_ratio + show_te_force +
-               show_heading + show_course +
-               show_elevation + show_azimuth +
-               show_wing_vel + show_vw +
-               has_euler +
-               show_bridle_pitch + has_aoa + show_cop
+        show_winch_force + show_v_app +
+        show_tether_len +
+        show_drag_coeff + show_lift_coeff +
+        show_lift_drag_ratio + show_te_force +
+        show_heading + show_course + show_wing_vel +
+        has_euler +
+        show_bridle_pitch + has_aoa + show_cop
 
     fig_size = isnothing(size) ?
-               (800, n_panels * panel_height) : size
+        (800, n_panels * panel_height) : size
 
     log_ranges, tape_ranges = _compute_ranges(
         logs, tapes, t_start, t_end)
@@ -1670,13 +1666,13 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_st
+                top_axes[end] : ax_st
             lines!(target,
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
                     tp.steering)[trng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
     end
 
@@ -1693,72 +1689,13 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_dp
+                top_axes[end] : ax_dp
             lines!(target,
                 collect(Float64, tp.time)[trng],
                 collect(Float64,
                     tp.depower .* 100)[trng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
-        end
-    end
-
-    if show_steering_tape
-        if isnothing(tapes)
-            error(
-                "tapes required for show_steering_tape=true")
-        end
-        cur_row += 1
-        ax_stape = _twin_panel!(fig, cur_row,
-            L"l_{\mathrm{s}} \; [m]")
-        for (i, tp) in enumerate(tapes)
-            if !hasproperty(tp, :steering_left_m) ||
-               !hasproperty(tp, :steering_right_m)
-                error("tapes[$i] missing steering_left_m/steering_right_m for show_steering_tape=true")
-            end
-            trng = tape_ranges[i]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_stape
-            lines!(target,
-                collect(Float64, tp.time)[trng],
-                collect(Float64,
-                    tp.steering_left_m)[trng];
-                linewidth=lw, linestyle=ls,
-                color=:black)
-            lines!(target,
-                collect(Float64, tp.time)[trng],
-                collect(Float64,
-                    tp.steering_right_m)[trng];
-                linewidth=lw, linestyle=ls,
-                color=:gray45)
-        end
-    end
-
-    if show_depower_tape
-        if isnothing(tapes)
-            error(
-                "tapes required for show_depower_tape=true")
-        end
-        cur_row += 1
-        ax_dtape = _twin_panel!(fig, cur_row,
-            L"l_{\mathrm{d}} \; [m]")
-        for (i, tp) in enumerate(tapes)
-            if !hasproperty(tp, :depower_m)
-                error("tapes[$i] missing depower_m for show_depower_tape=true")
-            end
-            trng = tape_ranges[i]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_dtape
-            lines!(target,
-                collect(Float64, tp.time)[trng],
-                collect(Float64,
-                    tp.depower_m)[trng];
-                linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
     end
 
@@ -1774,11 +1711,11 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_wf
+                top_axes[end] : ax_wf
             lines!(target,
                 collect(sl.time)[rng], wf;
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_wf, [0]; linewidth=0.5,
             color=:gray70)
@@ -1794,12 +1731,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_va
+                top_axes[end] : ax_va
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.v_app)[rng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_va, [0]; linewidth=0.5,
             color=:gray70)
@@ -1816,11 +1753,11 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_tl
+                top_axes[end] : ax_tl
             lines!(target,
                 collect(sl.time)[rng], lt;
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
     end
 
@@ -1837,10 +1774,10 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_cd
+                top_axes[end] : ax_cd
             t = collect(sl.time)[rng]
             for (v, c, lab) in zip(
-                cd_vars, cd_colors, cd_labels)
+                    cd_vars, cd_colors, cd_labels)
                 lines!(target, t,
                     collect(getproperty(sl, v))[rng];
                     linewidth=lw, linestyle=ls,
@@ -1864,12 +1801,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_cl
+                top_axes[end] : ax_cl
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_02)[rng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_cl, [0]; linewidth=0.5,
             color=:gray70)
@@ -1883,20 +1820,20 @@ function V3Kite.plot_2d_panels(
             sl = lg.syslog
             rng = log_ranges[i]
             cd_total = collect(sl.var_01)[rng] .+
-                       collect(sl.var_09)[rng] .+
-                       collect(sl.var_10)[rng] .+
-                       collect(sl.var_11)[rng]
+                collect(sl.var_09)[rng] .+
+                collect(sl.var_10)[rng] .+
+                collect(sl.var_11)[rng]
             cl = collect(sl.var_02)[rng]
             ratio = [abs(d) > 1e-6 ? l / d : NaN
                      for (l, d) in zip(cl, cd_total)]
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_ld
+                top_axes[end] : ax_ld
             lines!(target,
                 collect(sl.time)[rng], ratio;
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_ld, [0]; linewidth=0.5,
             color=:gray70)
@@ -1912,12 +1849,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_te
+                top_axes[end] : ax_te
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_03)[rng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_te, [0]; linewidth=0.5,
             color=:gray70)
@@ -1933,12 +1870,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_hd
+                top_axes[end] : ax_hd
             lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.heading)[rng]);
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_hd, [0]; linewidth=0.5,
             color=:gray70)
@@ -1954,79 +1891,14 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_co
+                top_axes[end] : ax_co
             lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.course)[rng]);
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_co, [0]; linewidth=0.5,
-            color=:gray70)
-    end
-
-    if show_elevation
-        cur_row += 1
-        ax_el = _twin_panel!(fig, cur_row,
-            L"\beta \; [°]")
-        for (i, lg) in enumerate(logs)
-            sl = lg.syslog
-            rng = log_ranges[i]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_el
-            lines!(target,
-                collect(sl.time)[rng],
-                rad2deg.(collect(sl.elevation)[rng]);
-                linewidth=lw, linestyle=ls,
-                color=:black)
-        end
-        hlines!(ax_el, [0]; linewidth=0.5,
-            color=:gray70)
-    end
-
-    if show_azimuth
-        cur_row += 1
-        ax_az = _twin_panel!(fig, cur_row,
-            L"\gamma \; [°]")
-        for (i, lg) in enumerate(logs)
-            sl = lg.syslog
-            rng = log_ranges[i]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_az
-            lines!(target,
-                collect(sl.time)[rng],
-                rad2deg.(collect(sl.azimuth)[rng]);
-                linewidth=lw, linestyle=ls,
-                color=:black)
-        end
-        hlines!(ax_az, [0]; linewidth=0.5,
-            color=:gray70)
-    end
-
-    if show_vw
-        cur_row += 1
-        ax_vw = _twin_panel!(fig, cur_row,
-            L"v_{\text{w}} \; [m/s]")
-        for (i, lg) in enumerate(logs)
-            sl = lg.syslog
-            rng = log_ranges[i]
-            vw_h = [hypot(sl.v_wind_gnd[k][1],
-                sl.v_wind_gnd[k][2])
-                    for k in rng]
-            lw = i == 1 ? 2.0 : 1.5
-            ls = i == 1 ? :solid : :dash
-            target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_vw
-            lines!(target,
-                collect(sl.time)[rng], vw_h;
-                linewidth=lw, linestyle=ls,
-                color=:black)
-        end
-        hlines!(ax_vw, [0]; linewidth=0.5,
             color=:gray70)
     end
 
@@ -2041,11 +1913,11 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_wv
+                top_axes[end] : ax_wv
             lines!(target,
                 collect(sl.time)[rng], vk;
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_wv, [0]; linewidth=0.5,
             color=:gray70)
@@ -2063,7 +1935,7 @@ function V3Kite.plot_2d_panels(
         active = filter(x -> x[1], angle_vars)
         single_angle = length(active) == 1
         ylabel_euler = single_angle ?
-                       active[1][5] : L"\text{angle} \; [°]"
+            active[1][5] : L"\text{angle} \; [°]"
         cur_row += 1
         ax_euler = _twin_panel!(fig, cur_row,
             ylabel_euler)
@@ -2077,7 +1949,7 @@ function V3Kite.plot_2d_panels(
                 lw = i == 1 ? 2.0 : 1.5
                 ls = i == 1 ? :solid : :dash
                 target = (use_twin && i == 2) ?
-                         top_axes[end] : ax_euler
+                    top_axes[end] : ax_euler
                 lines!(target,
                     collect(sl.time)[rng], vals;
                     linewidth=lw, linestyle=ls,
@@ -2095,7 +1967,7 @@ function V3Kite.plot_2d_panels(
                     lw = i == 1 ? 2.0 : 1.5
                     ls = i == 1 ? :solid : :dash
                     target = (use_twin && i == 2) ?
-                             top_axes[end] : ax_euler
+                        top_axes[end] : ax_euler
                     lines!(target,
                         collect(sl.time)[rng],
                         vals;
@@ -2130,12 +2002,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_bp
+                top_axes[end] : ax_bp
             lines!(target,
                 collect(sl.time)[rng],
                 rad2deg.(collect(sl.var_08)[rng]);
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_bp, [0]; linewidth=0.5,
             color=:gray70)
@@ -2199,12 +2071,12 @@ function V3Kite.plot_2d_panels(
             lw = i == 1 ? 2.0 : 1.5
             ls = i == 1 ? :solid : :dash
             target = (use_twin && i == 2) ?
-                     top_axes[end] : ax_cop
+                top_axes[end] : ax_cop
             lines!(target,
                 collect(sl.time)[rng],
                 collect(sl.var_13)[rng];
                 linewidth=lw, linestyle=ls,
-                color=:black)
+                    color=:black)
         end
         hlines!(ax_cop, [0]; linewidth=0.5,
             color=:gray70)
@@ -2215,7 +2087,7 @@ function V3Kite.plot_2d_panels(
         linkxaxes!(time_axes...)
         time_axes[end].xticklabelsvisible = true
         time_axes[end].xlabel = use_twin ?
-                                L"t_{\text{sim}} \; [s]" : L"t \; [s]"
+            L"t_{\text{sim}} \; [s]" : L"t \; [s]"
         time_axes[end].xlabelsize = labelsize
         if use_twin && !isempty(top_axes)
             linkxaxes!(top_axes...)
@@ -2228,11 +2100,11 @@ function V3Kite.plot_2d_panels(
 
     # Frame index vertical lines on all panels
     if !isnothing(frame_indexes) &&
-       !isempty(frame_indexes) &&
-       !isempty(time_axes)
+            !isempty(frame_indexes) &&
+            !isempty(time_axes)
         sl = logs[1].syslog
         for (j, (_, syslog_idx)) in
-            enumerate(frame_indexes)
+                enumerate(frame_indexes)
             clr = FRAME_COLORS[
                 mod1(j, length(FRAME_COLORS))]
             t = collect(sl.time)[syslog_idx]

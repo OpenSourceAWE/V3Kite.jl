@@ -35,9 +35,10 @@ using Dates
 
 generate_drag_adjusted_polars(1.0)
 
-const LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-const BASE_SECTION = "straight_right"
-const YEAR = 2025
+LOAD_FROM_DISK = false   # toggle to skip sim and just plot
+N_SUBSTEPS = 20
+BASE_SECTION = "straight_right"
+YEAR = 2025
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
@@ -72,7 +73,7 @@ else
 end
 depower_offset_pct = YEAR == 2019 ?
     DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025
-const SECTION = "$(BASE_SECTION)_$(YEAR)"
+SECTION = "$(BASE_SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
     end_utc = "15:36:38.0"
@@ -151,7 +152,7 @@ end
 
 function run_physics_replay(h5_path;
         start_utc=start_utc, end_utc=end_utc,
-        n_substeps=20)
+        n_substeps=N_SUBSTEPS)
 
     full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
@@ -631,21 +632,40 @@ function create_replay_plots(;
         suffixes=_labels,
         size=(1200, 800), labelsize=18)
 
-    # GLMakie display
-    trajectory = plot_2d_trajectory(_logs;
+    trajectory_kwargs = (;
         gradient=:vel, tapes=_tapes, labels=_labels,
         size=(560, 420), labelsize=20,
         frame_indexes=frame_syslog_idxs)
-    panels = plot_2d_panels(_logs;
+    panels_kwargs = (;
         tapes=_tapes, labels=_labels,
-        show_aoa=true, labelsize=20,
+        show_aoa=false, labelsize=20,
         twin_time_axes=distance_based_steering,
         frame_indexes=frame_syslog_idxs,
-        show_heading=true,
+        show_heading=false,
         show_course=true,
         show_drag_coeff=false,
         show_lift_coeff=false,
-        show_lift_drag_ratio=true)
+        show_lift_drag_ratio=false)
+    yaw_heading_kwargs = (;
+        source=:heading,
+        min_steering=0.05,
+        labels=_labels,
+        strides=[N_SUBSTEPS, N_SUBSTEPS],
+        figsize=(600, 400), labelsize=18, dt)
+    yaw_course_kwargs = (;
+        source=:course,
+        min_steering=0.05,
+        labels=_labels,
+        strides=[N_SUBSTEPS, N_SUBSTEPS],
+        figsize=(600, 400), labelsize=18, dt)
+
+    # GLMakie display
+    trajectory = plot_2d_trajectory(_logs; trajectory_kwargs...)
+    panels = plot_2d_panels(_logs; panels_kwargs...)
+    yaw_fig_heading = plot_yaw_rate_vs_steering(
+        _logs; yaw_heading_kwargs...)
+    yaw_fig_course = plot_yaw_rate_vs_steering(
+        _logs; yaw_course_kwargs...)
 
     # CairoMakie PDF saves
     sr = geom.reduce_steering ? geom.steering_reduction : 0.0
@@ -656,53 +676,29 @@ function create_replay_plots(;
         "_sr_$(sr)_tr_$(tr)"
     suffix = "_$(section)" * config_suffix
     CairoMakie.activate!()
-    traj_2d = plot_2d_trajectory(_logs;
-        gradient=:vel, tapes=_tapes, labels=_labels,
-        size=(560, 420), labelsize=20,
-        frame_indexes=frame_syslog_idxs)
-    panels_2d = plot_2d_panels(_logs;
-        tapes=_tapes, labels=_labels,
-        show_aoa=true, labelsize=20,
-        twin_time_axes=distance_based_steering,
-        frame_indexes=frame_syslog_idxs,
-        show_heading=true,
-        show_course=true,
-        show_drag_coeff=false,
-        show_lift_coeff=false,
-        show_lift_drag_ratio=true)
+    traj_2d = plot_2d_trajectory(_logs; trajectory_kwargs...)
+    panels_2d = plot_2d_panels(_logs; panels_kwargs...)
+    yaw_heading_2d = plot_yaw_rate_vs_steering(
+        _logs; yaw_heading_kwargs...)
+    yaw_course_2d = plot_yaw_rate_vs_steering(
+        _logs; yaw_course_kwargs...)
     if save_figs
         mkpath(figures_dir)
-        traj_fname = "trajectory_2d$(suffix).pdf"
-        panels_fname = "panels_2d$(suffix).pdf"
-        @info "Saving $traj_fname"
-        save(joinpath(figures_dir, traj_fname), traj_2d)
-        fig_traj = joinpath(figures_dir, replace(
-            traj_fname,
-            ".pdf" => "$(dist_suffix).pdf"))
-        @info "Saving $fig_traj"
-        save(fig_traj, traj_2d)
-        @info "Saving $panels_fname"
-        save(joinpath(figures_dir, panels_fname), panels_2d)
-        fig_panels = joinpath(figures_dir, replace(
-            panels_fname,
-            ".pdf" => "$(dist_suffix).pdf"))
-        @info "Saving $fig_panels"
-        save(fig_panels, panels_2d)
+        function save_with_dist(name, figure)
+            fname = "$(name)$(suffix).pdf"
+            @info "Saving $fname"
+            save(joinpath(figures_dir, fname), figure)
+            fig_path = joinpath(figures_dir, replace(
+                fname, ".pdf" => "$(dist_suffix).pdf"))
+            @info "Saving $fig_path"
+            save(fig_path, figure)
+        end
+        save_with_dist("trajectory_2d", traj_2d)
+        save_with_dist("panels_2d", panels_2d)
+        save_with_dist("yaw_rate_heading", yaw_heading_2d)
+        save_with_dist("yaw_rate_course", yaw_course_2d)
     end
     GLMakie.activate!()
-
-    yaw_fig_heading = plot_yaw_rate_vs_steering(
-        _logs;
-        source=:heading,
-        min_steering=0.05,
-        labels=_labels,
-        figsize=(600, 400), labelsize=18, dt)
-    yaw_fig_course = plot_yaw_rate_vs_steering(
-        _logs;
-        source=:course,
-        min_steering=0.05,
-        labels=_labels,
-        figsize=(600, 400), labelsize=18, dt)
 
     # 2D body frame plots for PDF export
     body = Dict{Int, Dict{Symbol, Any}}()
@@ -789,7 +785,6 @@ function create_replay_plots(;
     end
     GLMakie.activate!()
 
-    # Average gk for |steering| > 5%
     mean_gk = Dict{Tuple{String,Symbol},Float64}()
     for (label, lg) in [("sim", syslog),
                          ("data", datalog)]
@@ -799,15 +794,16 @@ function create_replay_plots(;
             us = sl.set_steering[2:end]
             va = sl.v_app[2:end]
             mask = abs.(us) .> 0.05
-            gk_vals = rate[mask] ./ (va[mask] .* us[mask])
-            mean_gk[(label, source)] = mean(gk_vals)
+            x = abs.(us[mask] .* va[mask])[1:N_SUBSTEPS:end]
+            y = abs.(rate[mask])[1:N_SUBSTEPS:end]
+            mean_gk[(label, source)] = dot(x, y) / dot(x, x)
         end
     end
     for source in (:heading, :course)
         sim_gk  = mean_gk[("sim",  source)]
         data_gk = mean_gk[("data", source)]
         pct = (sim_gk - data_gk) / data_gk * 100
-        @info "Mean gk" source sim=round(sim_gk; digits=3) data=round(data_gk; digits=3) pct=round(pct; digits=1)
+        @info "gk (least-squares, plot-matching)" source sim=round(sim_gk; digits=3) data=round(data_gk; digits=3) pct=round(pct; digits=1)
     end
 
     n_steer = min(length(sim_tape.steering),
@@ -891,4 +887,5 @@ if !isnothing(syslog)
         distance_based_steering=DISTANCE_BASED_STEERING,
         depower_offset_pct=depower_offset_pct,
         figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
+    SymbolicAWEModels.replay(syslog, sam.sys_struct)
 end
