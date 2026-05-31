@@ -35,7 +35,7 @@ ELEVATION = 70.0       # degrees
 AZIMUTH = 0.0          # degrees
 
 V_WIND = 7.6
-UP = 0.25              # Depower fraction [0, 1]
+UDP = 0.25             # Depower fraction [0, 1]
 
 # Steering targets (keyboard-driven)
 STEERING_TARGET = 15.0     # Target % when key held
@@ -77,7 +77,7 @@ settle_config = V3SettleConfig(
     num_steps = 400,
     num_substeps = 5,
     body_damping = [0.0, 0.0, 40.0],
-    start_depower = UP * 100.0 + 10.0,
+    start_depower = UDP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
@@ -87,7 +87,7 @@ gc = settle_config.geom
 @info "Settling V3 model..."
 sam, _settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = UP, wind_vec)
+    steering = 0.0, depower = UDP, wind_vec)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 sys.winches[1].brake = true
@@ -199,7 +199,7 @@ try
 
         set_steering!(sys, steering_pct[] / 100.0, gc)
 
-        depower_val = UP + depower_pct_delta[] / 100.0
+        depower_val = UDP + depower_pct_delta[] / 100.0
         set_depower!(sys, depower_val, 0.0, gc)
 
         step_start = time()

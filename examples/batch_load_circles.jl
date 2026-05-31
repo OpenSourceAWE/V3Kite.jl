@@ -24,20 +24,32 @@ using REPL.TerminalMenus
 using GLMakie
 
 # =============================================================================
+# Configuration
+# =============================================================================
+
+PROJECT_DIR = dirname(@__DIR__)
+
+BATCH_DATA_PATH = joinpath(PROJECT_DIR, "processed_data",
+    "circles_batch_2026_05_30_22_18_57")
+DEFAULT_STRUC_YAML_PATH = joinpath(PROJECT_DIR, "data/python_yamls/struc_geometry_julia_generated.yaml")
+DEFAULT_AERO_YAML_PATH = joinpath(PROJECT_DIR, "data/aero_geometry.yaml")
+DEFAULT_VSM_SETTINGS_PATH = joinpath(PROJECT_DIR, "data/vsm_settings.yaml")
+
+# =============================================================================
 # Tag parsing
 # =============================================================================
 
-function parse_up_us_vw_lt(log_name)
+function parse_udp_us_vw_lt(log_name)
     m = match(
-        r"_up_([0-9]+)_us_([0-9._-]+)" *
+        r"_(?:udp|up)_([0-9]+)_us_([0-9._-]+)" *
         r"_vw_([0-9]+)_lt_([0-9]+)", log_name)
     m === nothing && return nothing
     any(isnothing, m.captures) && return nothing
-    up_raw = parse(Float64, something(m.captures[1]))
+    udp_raw = parse(Float64, something(m.captures[1]))
     us_raw = parse(Float64, split(something(m.captures[2]), "_")[1])
     v_wind = parse(Int, something(m.captures[3]))
     lt = parse(Int, something(m.captures[4]))
-    return up_raw / 100, us_raw / 100, v_wind, lt
+    return udp_raw / 100, us_raw / 100, v_wind, lt
 end
 
 # =============================================================================
@@ -46,16 +58,16 @@ end
 
 function build_sys(; v_wind=10.0, tether_length=150.0)
     config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
+        struc_yaml_path=DEFAULT_STRUC_YAML_PATH,
+        aero_yaml_path=DEFAULT_AERO_YAML_PATH,
+        vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=v_wind,
         tether_length=tether_length,
         wing_type=REFINE,
     )
     _, sys = create_v3_model(config)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
-        reduce_te=true))
+        tether_length=tether_length))
     return sys
 end
 
@@ -470,16 +482,21 @@ function find_log_names(batch_dir)
         isfile(file) || continue
         endswith(file, ".txt") && continue
         name = splitext(basename(file))[1]
-        parse_up_us_vw_lt(name) === nothing && continue
+        parse_udp_us_vw_lt(name) === nothing && continue
         push!(names, name)
     end
     return sort(unique(names))
 end
 
 function resolve_batch_dir(batch_name)
-    batch_dir = joinpath("processed_data", batch_name)
+    isdir(batch_name) && return batch_name
+    project_path = joinpath(PROJECT_DIR, batch_name)
+    isdir(project_path) && return project_path
+
+    batch_dir = joinpath(PROJECT_DIR, "processed_data", batch_name)
     isdir(batch_dir) && return batch_dir
-    legacy_dir = joinpath("processed_data", "v3_kite", batch_name)
+    legacy_dir = joinpath(PROJECT_DIR, "processed_data",
+        "v3_kite", batch_name)
     if isdir(legacy_dir)
         @warn "Using legacy batch path" batch_dir = legacy_dir
         return legacy_dir
@@ -488,7 +505,7 @@ function resolve_batch_dir(batch_name)
 end
 
 function write_csv(path, rows)
-    base = "vw,up,us,lt,aero_force,v_app," *
+    base = "vw,udp,us,lt,aero_force,v_app," *
            "yaw_rate,yaw_rate_paper,gk,gk_paper," *
            "kite_vel,aoa,elevation,azimuth,cs,turn_radius"
     tc = String[]
@@ -500,7 +517,7 @@ function write_csv(path, rows)
     open(path, "w") do io
         println(io, header)
         for r in rows
-            bv = [r.vw, r.up, r.us, r.lt,
+            bv = [r.vw, r.udp, r.us, r.lt,
                 r.aero_force, r.v_app,
                 r.yaw_rate, r.yaw_rate_paper,
                 r.gk, r.gk_paper, r.kite_vel,
@@ -525,7 +542,7 @@ function last_timestamp_token(name::AbstractString)
     return token
 end
 
-function classify_swept(rows; params=(:up, :us, :vw, :lt))
+function classify_swept(rows; params=(:udp, :us, :vw, :lt))
     defaults = Dict{Symbol,Any}()
     for p in params
         counts = Dict{Any,Int}()
@@ -556,7 +573,7 @@ function plot_usva_vs_course_rate(rows;
     window_sec=COURSE_RATE_WINDOW_SEC)
     finite_rows = [r for r in rows
                    if isfinite(r.usva) &&
-                      isfinite(r.course_rate)]
+                   isfinite(r.course_rate)]
 
     fig = Figure(size=(600, 400))
     ax = Axis(fig[1, 1];
@@ -581,7 +598,7 @@ function plot_usva_vs_course_rate(rows;
 
     fmt_v(v) = v isa AbstractFloat ?
                string(round(v; digits=3)) : string(v)
-    sweep_params = (:up, :us, :vw, :lt)
+    sweep_params = (:udp, :us, :vw, :lt)
 
     all_x = Float64[]
     all_y = Float64[]
@@ -662,13 +679,15 @@ end
 
 function main()
     batch_name = isempty(ARGS) ? "" : strip(ARGS[1])
-    if isempty(batch_name)
-        batch_name = select_batch_interactively(
-            "processed_data")
+    batch_dir = if !isempty(batch_name)
+        resolve_batch_dir(batch_name)
+    elseif !isempty(BATCH_DATA_PATH)
+        BATCH_DATA_PATH
+    else
+        selected_batch = select_batch_interactively(
+            joinpath(PROJECT_DIR, "processed_data"))
+        resolve_batch_dir(selected_batch)
     end
-    isempty(batch_name) && error("Batch name required.")
-
-    batch_dir = resolve_batch_dir(batch_name)
     log_names = find_log_names(batch_dir)
     isempty(log_names) && error("No logs in: $batch_dir")
 
@@ -677,9 +696,9 @@ function main()
         SymbolicAWEModels.SystemStructure}()
 
     for log_name in log_names
-        tags = parse_up_us_vw_lt(log_name)
+        tags = parse_udp_us_vw_lt(log_name)
         tags === nothing && continue
-        up, us, vw, lt = tags
+        udp, us, vw, lt = tags
         sys = get!(sys_cache, (vw, lt)) do
             build_sys(v_wind=Float64(vw),
                 tether_length=Float64(lt))
@@ -687,7 +706,7 @@ function main()
         lg = load_log(log_name; path=batch_dir)
         m = analyze_log(lg, sys)
         push!(rows, (
-            vw=vw, up=up, us=us, lt=lt,
+            vw=vw, udp=udp, us=us, lt=lt,
             aero_force=m.aero_force, v_app=m.v_app,
             yaw_rate=m.yaw_rate,
             yaw_rate_paper=m.yaw_rate_paper,
@@ -700,7 +719,7 @@ function main()
             yaw_rate_at=m.yaw_rate_at))
     end
 
-    sort!(rows, by=r -> (r.vw, r.up, r.us, r.lt))
+    sort!(rows, by=r -> (r.vw, r.udp, r.us, r.lt))
 
     out_path = joinpath(batch_dir,
         "circles_batch_analysis.csv")
@@ -710,7 +729,7 @@ function main()
     fig = plot_usva_vs_course_rate(rows)
     plot_path = joinpath(batch_dir,
         "circles_batch_usva_vs_course_rate.png")
-    @info "Saving plot" path=plot_path
+    @info "Saving plot" path = plot_path
     save(plot_path, fig)
     display(fig)
 end

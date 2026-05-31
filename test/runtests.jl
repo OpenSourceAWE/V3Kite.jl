@@ -10,9 +10,12 @@ using KitePodModels: KCU
 
     @testset "Calibration Constants" begin
         @test V3_STEERING_L0_BASE == 1.6
-        @test V3_DEPOWER_L0_BASE == 0.2
+        @test V3_DEPOWER_L0_BASE == 0.192
         @test V3_STEERING_GAIN == 1.4
         @test V3_DEPOWER_GAIN == 5.0
+        @test UDP_2025_QUADRATIC_A == -1.7237
+        @test UDP_2025_QUADRATIC_B == 6.623795
+        @test UDP_2025_QUADRATIC_C == V3_DEPOWER_L0_BASE
     end
 
     @testset "Steering Conversion" begin
@@ -58,15 +61,21 @@ using KitePodModels: KCU
     end
 
     @testset "Depower Conversion" begin
+        @test udp_to_depower_tape_length_m(0.0) ≈
+            UDP_2025_QUADRATIC_C
+        @test udp_to_depower_tape_length_m(1.0) ≈
+            UDP_2025_QUADRATIC_A +
+            UDP_2025_QUADRATIC_B +
+            UDP_2025_QUADRATIC_C
+
         L_depower = depower_percentage_to_length(0.0)
         @test L_depower ≈ V3_DEPOWER_L0_BASE
 
         L_depower = depower_percentage_to_length(100.0)
-        @test L_depower ≈ V3_DEPOWER_L0_BASE + V3_DEPOWER_GAIN
+        @test L_depower ≈ udp_to_depower_tape_length_m(1.0)
 
         L_depower = depower_percentage_to_length(50.0)
-        @test L_depower ≈ V3_DEPOWER_L0_BASE +
-            V3_DEPOWER_GAIN / 2
+        @test L_depower ≈ udp_to_depower_tape_length_m(0.5)
     end
 
     @testset "Depower Round-Trip" begin
@@ -127,7 +136,7 @@ using KitePodModels: KCU
         @test config.sim_time == 60.0
         @test config.fps == 60
         @test config.v_wind == 10.0
-        @test config.up == 40.0
+        @test config.udp == 40.0
         @test config.us == 0.0
         @test config.tether_length == 250.0
         @test config.brake == true

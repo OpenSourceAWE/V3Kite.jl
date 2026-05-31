@@ -38,14 +38,14 @@ Base.@kwdef mutable struct V3SimConfig
     upwind_dir::Float64 = -90.0
 
     # Control parameters
-    up::Float64 = 40.0           # Depower percentage [0, 100]
+    udp::Float64 = 40.0          # Depower percentage [0, 100]
     us::Float64 = 0.0            # Steering percentage [-100, 100]
     tether_length::Float64 = 250.0
     elevation::Union{Nothing, Float64} = nothing
 
     # Ramp parameters
-    ramp_start_time_up::Float64 = 0.0
-    ramp_end_time_up::Float64 = 5.0
+    ramp_start_time_udp::Float64 = 0.0
+    ramp_end_time_udp::Float64 = 5.0
     ramp_start_time_us::Float64 = 0.0
     ramp_end_time_us::Float64 = 5.0
 
@@ -175,13 +175,13 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         t = step * dt
 
         # Calculate ramp factors
-        if t <= config.ramp_start_time_up
+        if t <= config.ramp_start_time_udp
             power_ramp = 0.0
-        elseif t >= config.ramp_end_time_up
+        elseif t >= config.ramp_end_time_udp
             power_ramp = 1.0
         else
-            power_ramp = (t - config.ramp_start_time_up) /
-                         (config.ramp_end_time_up - config.ramp_start_time_up)
+            power_ramp = (t - config.ramp_start_time_udp) /
+                         (config.ramp_end_time_udp - config.ramp_start_time_udp)
         end
 
         if t <= config.ramp_start_time_us
@@ -197,12 +197,12 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
         set_steering!(sys,
             steering_ramp * config.us / 100.0, gc)
         set_depower!(sys,
-            power_ramp * config.up / 100.0, 0.0, gc)
+            power_ramp * config.udp / 100.0, 0.0, gc)
 
         # Log tape percentages
         push!(tape_times, t)
         push!(tape_steering_pct, steering_ramp * config.us)
-        push!(tape_depower_pct, power_ramp * config.up)
+        push!(tape_depower_pct, power_ramp * config.udp)
 
         # Advance simulation
         try

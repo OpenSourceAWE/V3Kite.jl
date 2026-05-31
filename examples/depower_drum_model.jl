@@ -1,7 +1,8 @@
+using V3Kite
 using GLMakie
 
-len_0pct = 0.2
-len_100pct = 5.2
+len_0pct = V3_DEPOWER_L0_BASE
+len_100pct = udp_to_depower_tape_length_m(1.0)
 stroke = len_100pct - len_0pct
 
 drum_diameter = 0.05
@@ -24,7 +25,7 @@ function ld_2019(u_dp)
 end
 
 function ld_2025(u_dp)
-    return -0.00017237 * (100 * u_dp)^2 + 0.06623795 * (100 * u_dp) + 0.192
+    return udp_to_depower_tape_length_m(u_dp)
 end
 
 pcts = range(0, 100; length=201)

@@ -20,21 +20,30 @@ const V3_STEERING_L0_BASE = 1.6
 """Maximum differential steering (m) at |u_s| = 1"""
 const V3_STEERING_GAIN = 1.4
 
-"""Base neutral depower tape length from KCU documentation (m)"""
-const V3_DEPOWER_L0_BASE = 0.2
+"""Base neutral depower tape length from 2025 KCU calibration (m)"""
+const V3_DEPOWER_L0_BASE = 0.192
 
-"""Depower range (m) for 0-100%"""
+"""Legacy linear depower range (m) for 0-100%"""
 const V3_DEPOWER_GAIN = 5.0
 
-# V3 Kite segment indices
+"""Quadratic coefficient for `udp^2` in the 2025 depower calibration"""
+const UDP_2025_QUADRATIC_A = -1.7237
+
+"""Linear coefficient for `udp` in the 2025 depower calibration"""
+const UDP_2025_QUADRATIC_B = 6.623795
+
+"""Constant coefficient in the 2025 depower calibration"""
+const UDP_2025_QUADRATIC_C = V3_DEPOWER_L0_BASE
+
+# V3 Kite segment indices for data/python_yamls/struc_geometry_julia_generated.yaml
 """Left steering tape segment index"""
-const V3_STEERING_LEFT_IDX = 89
+const V3_STEERING_LEFT_IDX = 91
 
 """Right steering tape segment index"""
-const V3_STEERING_RIGHT_IDX = 87
+const V3_STEERING_RIGHT_IDX = 89
 
 """Depower tape segment index"""
-const V3_DEPOWER_IDX = 88
+const V3_DEPOWER_IDX = 90
 
 """
     steering_percentage_to_lengths(percentage;
@@ -63,16 +72,35 @@ function steering_percentage_to_lengths(percentage;
 end
 
 """
+    udp_to_depower_tape_length_m(udp)
+
+Convert Ch. 9 2025 depower command to depower-tape length in meters.
+
+# Arguments
+- `udp`: Depower command in range [0, 1]
+
+# Returns
+- Depower tape length in meters
+"""
+function udp_to_depower_tape_length_m(udp)
+    return UDP_2025_QUADRATIC_A * udp^2 +
+        UDP_2025_QUADRATIC_B * udp +
+        UDP_2025_QUADRATIC_C
+end
+
+"""
     depower_percentage_to_length(percentage;
         l0_base=V3_DEPOWER_L0_BASE,
         gain=V3_DEPOWER_GAIN)
 
-Convert depower percentage to tape length (m).
+Convert depower percentage to tape length (m) using the 2025
+quadratic UDP calibration. The `gain` keyword is kept for API
+compatibility and is not used by this calibration.
 
 # Arguments
 - `percentage`: Depower percentage in range [0, 100]
 - `l0_base`: Base neutral depower tape length (m)
-- `gain`: Depower range (m) for 0-100%
+- `gain`: Deprecated legacy linear gain
 
 # Returns
 - Depower tape length in meters
@@ -80,8 +108,9 @@ Convert depower percentage to tape length (m).
 function depower_percentage_to_length(percentage;
         l0_base=V3_DEPOWER_L0_BASE,
         gain=V3_DEPOWER_GAIN)
-    u_p = percentage / 100.0
-    return l0_base + gain * u_p
+    udp = percentage / 100.0
+    return udp_to_depower_tape_length_m(udp) +
+        (l0_base - V3_DEPOWER_L0_BASE)
 end
 
 """
@@ -117,12 +146,12 @@ end
         gain=V3_DEPOWER_GAIN)
 
 Convert depower tape length back to percentage.
-Inverse of `depower_percentage_to_length`.
+Inverse of the 2025 quadratic `depower_percentage_to_length`.
 
 # Arguments
 - `length`: Depower tape length (m)
 - `l0_base`: Base neutral depower tape length (m)
-- `gain`: Depower range (m)
+- `gain`: Deprecated legacy linear gain
 
 # Returns
 - Depower percentage in range [0, 100]
@@ -130,8 +159,24 @@ Inverse of `depower_percentage_to_length`.
 function depower_length_to_percentage(length;
         l0_base=V3_DEPOWER_L0_BASE,
         gain=V3_DEPOWER_GAIN)
-    u_p = (length - l0_base) / gain
-    return u_p * 100.0
+    target = length - (l0_base - V3_DEPOWER_L0_BASE)
+    a = UDP_2025_QUADRATIC_A
+    b = UDP_2025_QUADRATIC_B
+    c = UDP_2025_QUADRATIC_C - target
+    disc = b^2 - 4.0 * a * c
+    disc < 0 && throw(DomainError(
+        length, "depower tape length is outside the 2025 UDP calibration range"))
+    r1 = (-b + sqrt(disc)) / (2.0 * a)
+    r2 = (-b - sqrt(disc)) / (2.0 * a)
+    udp = if 0.0 <= r1 <= 1.0
+        r1
+    elseif 0.0 <= r2 <= 1.0
+        r2
+    else
+        throw(DomainError(
+            length, "depower tape length is outside the 2025 UDP calibration range"))
+    end
+    return udp * 100.0
 end
 
 """
@@ -209,24 +254,24 @@ function get_steering(sys, ::V3GeomAdjustConfig)
 end
 
 """
-    set_depower!(sys, depower, steering,
+    set_depower!(sys, udp, steering,
         config::V3GeomAdjustConfig)
 
-Set the depower input, accounting for depower tape reduction,
+Set the UDP depower input, accounting for depower tape reduction,
 depower offset, and steering-based depower offset from the
 geometry config.
 
 # Arguments
 - `sys`: SystemStructure from the kite model
-- `depower`: Relative depower, must be between 0.0 .. 1.0
+- `udp`: Relative depower, must be between 0.0 .. 1.0
              (0.0 = no depower, 1.0 = full depower)
 - `steering`: Relative steering in -1.0 .. 1.0 (used for
               steering-dependent depower offset)
 - `config`: Geometry adjustment config
 """
-function set_depower!(sys, depower, steering,
+function set_depower!(sys, udp, steering,
         config::V3GeomAdjustConfig)
-    dp = depower + config.depower_offset +
+    dp = udp + config.depower_offset +
         config.steering_dp_offset * abs(steering)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
