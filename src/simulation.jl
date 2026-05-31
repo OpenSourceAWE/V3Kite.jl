@@ -104,7 +104,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     # Load system structure (use absolute path)
     struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
     sys = load_sys_struct_from_yaml(struc_yaml_full;
-        system_name=model_name, set, wing_type=config.wing_type, vsm_set)
+        system_name=model_name, set, dynamics_type=config.wing_type, vsm_set)
 
     # Initialize damping
     SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)

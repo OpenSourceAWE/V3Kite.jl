@@ -585,7 +585,7 @@ function build_replay_sys_struct(set,
         geom::V3GeomAdjustConfig, source_struc, vsm_set)
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, geom)
     SymbolicAWEModels.init!(sam;
