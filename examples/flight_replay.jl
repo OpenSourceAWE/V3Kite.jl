@@ -860,7 +860,7 @@ if LOAD_FROM_DISK
     set.g_earth = 9.81
     set.profile_law = 0
     source_struc = joinpath(data_path,
-        "struc_geometry.yaml")
+        "python_yamls/struc_geometry_julia_generated.yaml")
     source_aero = joinpath(data_path,
         "aero_geometry.yaml")
     vsm_path = joinpath(data_path, "vsm_settings.yaml")

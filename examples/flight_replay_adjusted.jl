@@ -35,9 +35,9 @@ using Dates
 
 generate_drag_adjusted_polars(1.0)
 
-const LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-const BASE_SECTION = "straight_right"
-const YEAR = 2025
+LOAD_FROM_DISK = false   # toggle to skip sim and just plot
+BASE_SECTION = "straight_right"
+YEAR = 2025
 SETTLE = true
 REMAKE_SETTLE = true
 IS_VISUALIZE_SETTLE = false #TODO: new flag
@@ -49,7 +49,7 @@ EXTRA_WING_DRAG_COEFF = 0.0
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
-STEERING_OFFSET = 0.0 #TODO: steering offset, used to be 1.5%, now set to 0.
+STEERING_OFFSET = 1.5 #TODO: steering offset, used to be 1.5%, now set to 0.
 DISTANCE_BASED_STEERING = false
 REDUCE_STEERING = false #TODO: set to false
 STEERING_REDUCTION = 0.2
@@ -80,7 +80,7 @@ else
 end
 depower_offset_pct = YEAR == 2019 ?
                      DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025
-const SECTION = "$(BASE_SECTION)_$(YEAR)"
+SECTION = "$(BASE_SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
     end_utc = "15:36:38.0"
@@ -275,6 +275,7 @@ function run_physics_replay(h5_path;
         source_aero_path=DEFAULT_AERO_GEOM_YAML,
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         world_damping=100.0,
+        decay_steps=400,
         body_damping=BODY_DAMPING * 2.0,
         body_damping_overrides=[
             (37:38, POINT_37_38_DAMPING * 2.0)],
@@ -282,10 +283,9 @@ function run_physics_replay(h5_path;
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
-        num_steps=1500,
+        num_steps=800,
         num_substeps=5,
-        decay_steps=1200,
-        start_depower=row1.depower * 100.0,
+        start_depower=nothing,
         course_correction_gain=0.02,
         course_correction_mode=:heading,
         geom=V3GeomAdjustConfig(
@@ -704,28 +704,38 @@ function create_replay_plots(;
         suffixes=_labels,
         size=(1200, 800), labelsize=18)
 
-    # GLMakie display
-    trajectory = plot_2d_trajectory(_logs;
+    trajectory_kwargs = (;
         gradient=:vel, tapes=_tapes, labels=_labels,
         size=(560, 420), labelsize=20,
         frame_indexes=frame_syslog_idxs)
-    panels = plot_2d_panels(_logs;
+    panels_kwargs = (;
         tapes=_tapes, labels=_labels,
-        show_aoa=true, labelsize=20,
+        show_aoa=false, labelsize=20,
         twin_time_axes=distance_based_steering,
         frame_indexes=frame_syslog_idxs,
-        show_depower=true,
-        show_heading=true,
+        show_heading=false,
         show_course=true,
-        show_elevation=true,
-        show_azimuth=true,
-        show_vw=true,
-        show_wing_vel=true,
-        show_steering_tape=true,
-        show_depower_tape=true,
-        show_drag_coeff=true,
-        show_lift_coeff=true,
-        show_lift_drag_ratio=true)
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=false)
+    yaw_heading_kwargs = (;
+        source=:heading,
+        min_steering=0.05,
+        labels=_labels,
+        figsize=(600, 400), labelsize=18, dt)
+    yaw_course_kwargs = (;
+        source=:course,
+        min_steering=0.05,
+        labels=_labels,
+        figsize=(600, 400), labelsize=18, dt)
+
+    # GLMakie display
+    trajectory = plot_2d_trajectory(_logs; trajectory_kwargs...)
+    panels = plot_2d_panels(_logs; panels_kwargs...)
+    yaw_fig_heading = plot_yaw_rate_vs_steering(
+        _logs; yaw_heading_kwargs...)
+    yaw_fig_course = plot_yaw_rate_vs_steering(
+        _logs; yaw_course_kwargs...)
 
     # CairoMakie PDF saves
     sr = geom.reduce_steering ? geom.steering_reduction : 0.0
@@ -736,60 +746,29 @@ function create_replay_plots(;
                     "_sr_$(sr)_tr_$(tr)"
     suffix = "_$(section)" * config_suffix
     CairoMakie.activate!()
-    traj_2d = plot_2d_trajectory(_logs;
-        gradient=:vel, tapes=_tapes, labels=_labels,
-        size=(560, 420), labelsize=20,
-        frame_indexes=frame_syslog_idxs)
-    panels_2d = plot_2d_panels(_logs;
-        tapes=_tapes, labels=_labels,
-        show_aoa=true, labelsize=20,
-        twin_time_axes=distance_based_steering,
-        frame_indexes=frame_syslog_idxs,
-        show_depower=true,
-        show_heading=true,
-        show_course=true,
-        show_elevation=true,
-        show_azimuth=true,
-        show_vw=true,
-        show_wing_vel=true,
-        show_steering_tape=true,
-        show_depower_tape=true,
-        show_drag_coeff=true,
-        show_lift_coeff=true,
-        show_lift_drag_ratio=true)
+    traj_2d = plot_2d_trajectory(_logs; trajectory_kwargs...)
+    panels_2d = plot_2d_panels(_logs; panels_kwargs...)
+    yaw_heading_2d = plot_yaw_rate_vs_steering(
+        _logs; yaw_heading_kwargs...)
+    yaw_course_2d = plot_yaw_rate_vs_steering(
+        _logs; yaw_course_kwargs...)
     if save_figs
         mkpath(figures_dir)
-        traj_fname = "trajectory_2d$(suffix).pdf"
-        panels_fname = "panels_2d$(suffix).pdf"
-        @info "Saving $traj_fname"
-        save(joinpath(figures_dir, traj_fname), traj_2d)
-        fig_traj = joinpath(figures_dir, replace(
-            traj_fname,
-            ".pdf" => "$(dist_suffix).pdf"))
-        @info "Saving $fig_traj"
-        save(fig_traj, traj_2d)
-        @info "Saving $panels_fname"
-        save(joinpath(figures_dir, panels_fname), panels_2d)
-        fig_panels = joinpath(figures_dir, replace(
-            panels_fname,
-            ".pdf" => "$(dist_suffix).pdf"))
-        @info "Saving $fig_panels"
-        save(fig_panels, panels_2d)
+        function save_with_dist(name, figure)
+            fname = "$(name)$(suffix).pdf"
+            @info "Saving $fname"
+            save(joinpath(figures_dir, fname), figure)
+            fig_path = joinpath(figures_dir, replace(
+                fname, ".pdf" => "$(dist_suffix).pdf"))
+            @info "Saving $fig_path"
+            save(fig_path, figure)
+        end
+        save_with_dist("trajectory_2d", traj_2d)
+        save_with_dist("panels_2d", panels_2d)
+        save_with_dist("yaw_rate_heading", yaw_heading_2d)
+        save_with_dist("yaw_rate_course", yaw_course_2d)
     end
     GLMakie.activate!()
-
-    yaw_fig_heading = plot_yaw_rate_vs_steering(
-        _logs;
-        source=:heading,
-        min_steering=0.05,
-        labels=_labels,
-        figsize=(600, 400), labelsize=18, dt)
-    yaw_fig_course = plot_yaw_rate_vs_steering(
-        _logs;
-        source=:course,
-        min_steering=0.05,
-        labels=_labels,
-        figsize=(600, 400), labelsize=18, dt)
 
     # 2D body frame plots for PDF export
     body = Dict{Int,Dict{Symbol,Any}}()

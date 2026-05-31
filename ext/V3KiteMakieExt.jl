@@ -1596,10 +1596,15 @@ function V3Kite.plot_2d_panels(
         show_te_force=false,
         show_heading=false,
         show_course=false,
+        show_elevation=false,
+        show_azimuth=false,
         show_bridle_pitch=false,
         show_aoa=true,
         show_wing_vel=false,
+        show_vw=false,
         show_depower=false,
+        show_steering_tape=false,
+        show_depower_tape=false,
         show_yaw=false,
         show_pitch=false,
         show_roll=false,
@@ -1619,11 +1624,14 @@ function V3Kite.plot_2d_panels(
     has_euler = show_yaw || show_pitch || show_roll
     has_aoa = show_aoa && length(logs) >= 2
     n_panels = show_steering + show_depower +
+        show_steering_tape + show_depower_tape +
         show_winch_force + show_v_app +
         show_tether_len +
         show_drag_coeff + show_lift_coeff +
         show_lift_drag_ratio + show_te_force +
-        show_heading + show_course + show_wing_vel +
+        show_heading + show_course +
+        show_elevation + show_azimuth +
+        show_wing_vel + show_vw +
         has_euler +
         show_bridle_pitch + has_aoa + show_cop
 
@@ -1696,6 +1704,65 @@ function V3Kite.plot_2d_panels(
                     tp.depower .* 100)[trng];
                 linewidth=lw, linestyle=ls,
                     color=:black)
+        end
+    end
+
+    if show_steering_tape
+        if isnothing(tapes)
+            error(
+                "tapes required for show_steering_tape=true")
+        end
+        cur_row += 1
+        ax_stape = _twin_panel!(fig, cur_row,
+            L"l_{\mathrm{s}} \; [m]")
+        for (i, tp) in enumerate(tapes)
+            if !hasproperty(tp, :steering_left_m) ||
+               !hasproperty(tp, :steering_right_m)
+                error("tapes[$i] missing steering_left_m/steering_right_m for show_steering_tape=true")
+            end
+            trng = tape_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_stape
+            lines!(target,
+                collect(Float64, tp.time)[trng],
+                collect(Float64,
+                    tp.steering_left_m)[trng];
+                linewidth=lw, linestyle=ls,
+                color=:black)
+            lines!(target,
+                collect(Float64, tp.time)[trng],
+                collect(Float64,
+                    tp.steering_right_m)[trng];
+                linewidth=lw, linestyle=ls,
+                color=:gray45)
+        end
+    end
+
+    if show_depower_tape
+        if isnothing(tapes)
+            error(
+                "tapes required for show_depower_tape=true")
+        end
+        cur_row += 1
+        ax_dtape = _twin_panel!(fig, cur_row,
+            L"l_{\mathrm{d}} \; [m]")
+        for (i, tp) in enumerate(tapes)
+            if !hasproperty(tp, :depower_m)
+                error("tapes[$i] missing depower_m for show_depower_tape=true")
+            end
+            trng = tape_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_dtape
+            lines!(target,
+                collect(Float64, tp.time)[trng],
+                collect(Float64,
+                    tp.depower_m)[trng];
+                linewidth=lw, linestyle=ls,
+                color=:black)
         end
     end
 
@@ -1899,6 +1966,71 @@ function V3Kite.plot_2d_panels(
                     color=:black)
         end
         hlines!(ax_co, [0]; linewidth=0.5,
+            color=:gray70)
+    end
+
+    if show_elevation
+        cur_row += 1
+        ax_el = _twin_panel!(fig, cur_row,
+            L"\beta \; [°]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_el
+            lines!(target,
+                collect(sl.time)[rng],
+                rad2deg.(collect(sl.elevation)[rng]);
+                linewidth=lw, linestyle=ls,
+                color=:black)
+        end
+        hlines!(ax_el, [0]; linewidth=0.5,
+            color=:gray70)
+    end
+
+    if show_azimuth
+        cur_row += 1
+        ax_az = _twin_panel!(fig, cur_row,
+            L"\gamma \; [°]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_az
+            lines!(target,
+                collect(sl.time)[rng],
+                rad2deg.(collect(sl.azimuth)[rng]);
+                linewidth=lw, linestyle=ls,
+                color=:black)
+        end
+        hlines!(ax_az, [0]; linewidth=0.5,
+            color=:gray70)
+    end
+
+    if show_vw
+        cur_row += 1
+        ax_vw = _twin_panel!(fig, cur_row,
+            L"v_{\text{w}} \; [m/s]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            vw_h = [hypot(sl.v_wind_gnd[k][1],
+                sl.v_wind_gnd[k][2])
+                    for k in rng]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_vw
+            lines!(target,
+                collect(sl.time)[rng], vw_h;
+                linewidth=lw, linestyle=ls,
+                color=:black)
+        end
+        hlines!(ax_vw, [0]; linewidth=0.5,
             color=:gray70)
     end
 
