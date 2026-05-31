@@ -24,14 +24,14 @@ Base.@kwdef mutable struct V3SettleConfig
     dt::Float64 = 0.01
 
     # Damping
-    world_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
+    world_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 0.0]
+    min_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 0.0]
     decay_steps::Int = 2000
-    body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
+    body_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 20.0]
     # Per-point overrides applied AFTER body_damping
     body_damping_overrides::Vector{
-        Tuple{UnitRange{Int}, Vector{Float64}}} =
-        Tuple{UnitRange{Int}, Vector{Float64}}[]
+        Tuple{UnitRange{Int},Vector{Float64}}} =
+        Tuple{UnitRange{Int},Vector{Float64}}[]
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -84,9 +84,9 @@ simulation is skipped and the settled geometry is loaded from
 file.
 """
 function settle_wing(config::V3SettleConfig;
-                     position, velocity, heading,
-                     steering, depower, wind_vec,
-                     kwargs...)
+    position, velocity, heading,
+    steering, depower, wind_vec,
+    kwargs...)
     init_row = (
         x=position[1], y=position[2], z=position[3],
         vx=velocity[1], vy=velocity[2], vz=velocity[3],
@@ -97,9 +97,9 @@ function settle_wing(config::V3SettleConfig;
 end
 
 function settle_wing(config::V3SettleConfig, init_row;
-                     data_path=nothing,
-                     show_progress=true,
-                     remake=false)
+    data_path=nothing,
+    show_progress=true,
+    remake=false)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -108,11 +108,11 @@ function settle_wing(config::V3SettleConfig, init_row;
     gc.tether_length = config.tether_length
 
     dp_reduction = gc.reduce_depower ?
-        gc.depower_reduction : 0.0
+                   gc.depower_reduction : 0.0
     st_reduction = gc.reduce_steering ?
-        gc.steering_reduction : 0.0
+                   gc.steering_reduction : 0.0
     dp_norm = isnothing(config.end_depower) ?
-        init_row.depower : config.end_depower / 100.0
+              init_row.depower : config.end_depower / 100.0
     st_norm = init_row.steering
     depower_tape = depower_percentage_to_length(
         dp_norm * 100.0;
@@ -125,8 +125,8 @@ function settle_wing(config::V3SettleConfig, init_row;
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
-        "_lt$(Int(round(config.tether_length)))" *
-        "_g$(Int(round(config.g_earth * 10)))"
+              "_lt$(Int(round(config.tether_length)))" *
+              "_g$(Int(round(config.g_earth * 10)))"
     if !isnothing(config.kcu_mass)
         suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
     end
@@ -148,13 +148,14 @@ function settle_wing(config::V3SettleConfig, init_row;
                 dest_struc, init_row)
         catch err
             is_interrupt = err isa InterruptException ||
-                any(e isa InterruptException
-                    for (e, _) in current_exceptions())
+                           any(e isa InterruptException
+                               for (e, _) in current_exceptions())
             if is_interrupt
                 @warn "Settling interrupted"
                 settle_failed = true
             elseif err isa ErrorException
-                @warn "Settling failed" msg=err.msg
+                bt = catch_backtrace()
+                @warn "Settling failed" msg = err.msg exception = (err, bt)
                 settle_failed = true
             else
                 rethrow(err)
@@ -209,7 +210,7 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function _setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero)
+    data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
     set = Settings("system.yaml")
@@ -247,7 +248,7 @@ function _setup_settling_model(config::V3SettleConfig;
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
 
-    @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
+    @info "Settling REFINE wing" config.num_steps config.dt total_time = config.num_steps * config.dt
 
     for winch in sys.winches
         winch.brake = true
@@ -258,10 +259,10 @@ end
 
 """Run power-zone settling initialized from flight data."""
 function _run_power_zone_settling!(config::V3SettleConfig;
-        data_path, show_progress,
-        source_struc, source_aero,
-        dest_struc,
-        init_row)
+    data_path, show_progress,
+    source_struc, source_aero,
+    dest_struc,
+    init_row)
     sam, sys, gc = _setup_settling_model(config;
         data_path, source_struc, source_aero)
 
@@ -290,9 +291,9 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         @assert isapprox(
             sam.set.wind_vec, init_row.wind_vec;
             atol=1e-6) "wind_vec mismatch " *
-            "after settle init: " *
-            "got $(sam.set.wind_vec), " *
-            "expected $(init_row.wind_vec)"
+          "after settle init: " *
+          "got $(sam.set.wind_vec), " *
+          "expected $(init_row.wind_vec)"
     end
 
     for idx in config.fix_sphere_idxs
@@ -302,13 +303,13 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     total_steps = config.num_steps * config.num_substeps
     logger, sys_state = create_logger(sam, total_steps)
 
-    @info "Starting power-zone settling..." num_substeps=config.num_substeps
+    @info "Starting power-zone settling..." num_substeps = config.num_substeps
     wing = sys.wings[1]
     failed = false
     try
         for step in 1:config.num_steps
             damping = max(config.world_damping *
-                (1.0 - step / config.decay_steps),
+                          (1.0 - step / config.decay_steps),
                 config.min_damping)
             SymbolicAWEModels.set_world_frame_damping(
                 sys, damping)
@@ -316,12 +317,12 @@ function _run_power_zone_settling!(config::V3SettleConfig;
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)
                 dp_end = isnothing(config.end_depower) ?
-                    init_row.depower * 100.0 :
-                    config.end_depower
+                         init_row.depower * 100.0 :
+                         config.end_depower
                 frac = (step - 1) /
-                    max(config.num_steps - 1, 1)
+                       max(config.num_steps - 1, 1)
                 dp = config.start_depower +
-                    frac * (dp_end - config.start_depower)
+                     frac * (dp_end - config.start_depower)
                 set_depower!(sys, dp / 100.0, 0.0, gc)
             end
 
@@ -336,7 +337,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
                 t = global_step * config.dt
 
                 if !sim_step!(sam; dt=config.dt,
-                        vsm_interval=1)
+                    vsm_interval=1)
                     @error "Simulation failed" step sub t
                     failed = true
                     break
@@ -346,7 +347,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep=sub damping=round(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep = sub damping = round(damping, digits=1) elevation = round(rad2deg(wing.elevation), digits=2) heading = round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break
@@ -383,12 +384,12 @@ function _run_power_zone_settling!(config::V3SettleConfig;
             if show_progress &&
                should_report(step, config.num_steps) &&
                config.course_correction_mode === :course
-                @info "Course correction step $step" target_course=round(rad2deg(target), digits=2) wing_course=round(rad2deg(current), digits=2) course_diff=round(rad2deg(diff), digits=2) old_heading=round(rad2deg(old_heading), digits=2) new_heading=round(rad2deg(sys.transforms[1].heading), digits=2)
+                @info "Course correction step $step" target_course = round(rad2deg(target), digits=2) wing_course = round(rad2deg(current), digits=2) course_diff = round(rad2deg(diff), digits=2) old_heading = round(rad2deg(old_heading), digits=2) new_heading = round(rad2deg(sys.transforms[1].heading), digits=2)
             end
         end
     catch err
         if logger.index > 1
-            @warn "Settling crashed, saving partial log" msg=sprint(showerror, err)
+            @warn "Settling crashed, saving partial log" msg = sprint(showerror, err)
             save_log(logger, "settle_refine_wing")
         end
         rethrow(err)

@@ -24,6 +24,43 @@ using LinearAlgebra
 using Dates
 
 # =============================================================================
+# Configuration
+# =============================================================================
+# these are 2019 and 2025 averages, except for elevation & udp that is.
+defaults = (
+    elevation=35, g_earth=0.0,
+    us=0.05, udp=0.235, vw=8.0, lt=270, kcu_mass=22.65,
+)
+sweeps = nothing
+# combine_all = (
+#     us=[0.05, 0.1, 0.15],
+#     udp=[0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42],
+# )
+# #TODO: when you are done you will still need to do:
+# udp = [0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43]
+# us = 0.075
+#combine_all = (
+#    us=[0.05, 0.1, 0.125, 0.15],
+#    udp=[0.27, 0.31, 0.35, 0.39, 0.43],
+#)
+combine_all = (
+    us=[0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18],
+    udp=[0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43],
+)
+IS_REMAKE_SETTLE = true
+IS_VISUALIZE_SETTLE = false
+IS_DEBUG_ON_FAILURE = false
+IS_REPLAY_ON_FAILURE = false
+
+batch_tag = "circles_batch_" *
+            Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
+PROJECT_DIR = dirname(@__DIR__)
+DEFAULT_STRUC_YAML_PATH = joinpath(PROJECT_DIR, "data/python_yamls/struc_geometry_julia_generated.yaml")
+DEFAULT_AERO_YAML_PATH = joinpath(PROJECT_DIR, "data/aero_geometry.yaml")
+DEFAULT_VSM_SETTINGS_PATH = joinpath(PROJECT_DIR, "data/vsm_settings.yaml")
+
+
+# =============================================================================
 # Circular flight simulation function
 # =============================================================================
 
@@ -38,7 +75,7 @@ function _unwrap_step(prev_uw, raw)
 end
 
 function course_rate_converged(course_uw, azimuth_uw, elevation,
-        time_buf, n; window_sec, rel_tol, dt)
+    time_buf, n; window_sec, rel_tol, dt)
     t_end = time_buf[n]
     i_lo = n
     while i_lo > 1 && time_buf[i_lo-1] >= t_end - window_sec
@@ -65,6 +102,92 @@ function course_rate_converged(course_uw, azimuth_uw, elevation,
     return (maxv - minv) / mean_abs < rel_tol
 end
 
+function _round_vec(v; digits=4)
+    return Tuple(round.(Float64.(collect(v)); digits=digits))
+end
+
+function _log_refine_vsm_diagnostics(sys, step, t, err)
+    wing = sys.wings[1]
+    err_msg = isnothing(err) ? "sim_step! returned false" :
+              sprint(showerror, err)
+    wing_points = [
+        p for p in sys.points
+        if p.type == SymbolicAWEModels.WING &&
+        p.wing_idx == wing.idx
+    ]
+    va_stats = [
+        (idx=p.idx, va_norm=norm(p.va_b),
+            va_b=_round_vec(p.va_b))
+        for p in wing_points
+    ]
+    low_va = filter(x -> !isfinite(x.va_norm) ||
+            x.va_norm < 0.5, va_stats)
+    sort!(low_va, by=x -> x.va_norm)
+    nonfinite_points = [
+        p.idx for p in wing_points
+        if any(x -> !isfinite(x), p.pos_w) ||
+        any(x -> !isfinite(x), p.vel_w) ||
+        any(x -> !isfinite(x), p.va_b)
+    ]
+    stretch_stats = [
+        (idx=s.idx, stretch=s.l0 != 0 ? (s.len - s.l0) / s.l0 : NaN,
+            len=s.len, l0=s.l0)
+        for s in sys.segments
+        if isfinite(s.len) && isfinite(s.l0)
+    ]
+    max_stretch = isempty(stretch_stats) ? NaN :
+                  maximum(abs(x.stretch) for x in stretch_stats)
+    min_va = isempty(va_stats) ? NaN :
+             minimum(x.va_norm for x in va_stats)
+    max_va = isempty(va_stats) ? NaN :
+             maximum(x.va_norm for x in va_stats)
+
+    @error "REFINE VSM failure diagnostics" step t err = err_msg wing_va_norm = norm(wing.va_b) wing_va_b = _round_vec(wing.va_b) elevation = rad2deg(wing.elevation) heading = rad2deg(wing.heading) course = rad2deg(wing.course) min_wing_point_va = min_va max_wing_point_va = max_va low_va_points = length(low_va) nonfinite_points max_segment_stretch = max_stretch left_l0 = sys.segments[V3_STEERING_LEFT_IDX].l0 right_l0 = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    for item in first(low_va, min(length(low_va), 8))
+        @warn "Low/non-finite wing-point apparent velocity" point = item.idx va_norm = item.va_norm va_b = item.va_b
+    end
+end
+
+function _try_log_failure_state!(logger, sys_state, sam, t)
+    try
+        log_state!(logger, sys_state, sam, t)
+        return true
+    catch err
+        @warn "Could not append failure state to log" err
+        return false
+    end
+end
+
+function _save_circle_failure_artifacts!(logger, sys_state, sam,
+    step, t, err; save_dir, run_tag, debug_on_failure,
+    replay_on_failure)
+
+    _log_refine_vsm_diagnostics(sam.sys_struct, step, t, err)
+    logged_failure_state =
+        _try_log_failure_state!(logger, sys_state, sam, t)
+    debug_on_failure || return nothing
+
+    tag = isempty(run_tag) ? "run" : run_tag
+    fail_name = "partial_circles_failure_$(tag)_" *
+                Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
+    save_log(logger, fail_name; path=save_dir)
+    fail_path = joinpath(save_dir, fail_name * ".arrow")
+    @info "Saved partial circular failure log" path = fail_path logged_failure_state
+
+    global _circle_failure_log, _circle_failure_step,
+    _circle_failure_error, _circle_failure_scene
+    _circle_failure_log = load_log(fail_name; path=save_dir)
+    _circle_failure_step = step
+    _circle_failure_error = err
+
+    if replay_on_failure
+        _circle_failure_scene = replay(_circle_failure_log,
+            sam.sys_struct; autoplay=false)
+        display(_circle_failure_scene)
+    end
+    return nothing
+end
+
 """
     run_circles(; kwargs...) -> (syslog, sam)
 
@@ -77,7 +200,7 @@ function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
     body_damping=[0.0, 0.0, 20.0],
     point_37_38_damping=[0.0, 20.0, 20.0],
-    up=0.4,
+    udp=0.4,
     ramp_time_us=25.0,
     us=0.1,
     v_wind=15.4, v_wind_base=15.0,
@@ -88,6 +211,10 @@ function run_circles(;
     stop_rel_tol=0.03,
     stop_check_every=nothing,
     early_stop=true,
+    remake_settle=IS_REMAKE_SETTLE,
+    visualize_settle=IS_VISUALIZE_SETTLE,
+    debug_on_failure=IS_DEBUG_ON_FAILURE,
+    replay_on_failure=IS_REPLAY_ON_FAILURE,
     save_subdir="", run_tag="")
 
     global sam, _settle_log
@@ -95,14 +222,14 @@ function run_circles(;
     elev_deg = isnothing(elevation) ? 70.0 : float(elevation)
     elev_rad = deg2rad(elev_deg)
     position = [tether_length * cos(elev_rad), 0.0,
-                tether_length * sin(elev_rad)]
+        tether_length * sin(elev_rad)]
     wind_vec = wind_vec_from_angles(
         v_wind, deg2rad(-90.0), 0.0)
 
     settle_config = V3SettleConfig(
-        source_struc_path="struc_geometry.yaml",
-        source_aero_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
+        source_struc_path=DEFAULT_STRUC_YAML_PATH,
+        source_aero_path=DEFAULT_AERO_YAML_PATH,
+        vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=v_wind,
         tether_length=tether_length,
         g_earth=g_earth,
@@ -110,29 +237,42 @@ function run_circles(;
         body_damping=body_damping .* 2.0,
         body_damping_overrides=[
             (37:38, point_37_38_damping .* 2.0)],
-        geom=V3GeomAdjustConfig(
-            reduce_te=true, tether_length=tether_length),
-        num_steps=400, num_substeps=5, dt=0.001,
-        start_depower=40.0,
-        course_correction_gain=0.0,
+        geom=V3GeomAdjustConfig(tether_length=tether_length),
+        num_steps=1500, num_substeps=5, dt=0.001,
+        decay_steps=1200,
+        start_depower=23.5,
+        course_correction_gain=0.02,
         course_correction_mode=:heading,
-        world_damping=0.0, min_damping=0.0,
+        world_damping=100.0, min_damping=0.0,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
         position=position,
         velocity=[0.0, 0.0, 0.0],
         heading=0.0,
-        steering=0.0, depower=up,
+        steering=0.0, depower=udp,
         wind_vec=wind_vec,
-        remake=false)
+        remake=remake_settle)
+    if visualize_settle
+        if isnothing(_settle_log)
+            @warn "No settle log to visualize. Set remake_settle=true if cached settled geometry was reused."
+        else
+            fig = plot(something(sam).sys_struct,
+                _settle_log; plot_tether=true)
+            display(fig)
+
+            scene = replay(_settle_log,
+                something(sam).sys_struct)
+            display(scene)
+        end
+    end
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
         "v_wind=$v_wind, lt=$tether_length")
     sys = something(sam).sys_struct
 
     set_v3_body_damping!(sys, body_damping,
-                         point_37_38_damping)
+        point_37_38_damping)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -147,6 +287,10 @@ function run_circles(;
     dt_c = n_c > 0 ? sim_time_circles / n_c : 0.0
     n_c > 0 || throw(ArgumentError(
         "Circular phase disabled. Set positive sim_time_circles and fps_circles."))
+    save_root = "processed_data"
+    save_dir = isempty(save_subdir) ? save_root :
+               joinpath(save_root, save_subdir)
+    isdir(save_dir) || mkpath(save_dir)
     logger, sys_state = create_logger(something(sam), n_c)
 
     course_uw = Vector{Float64}(undef, n_c)
@@ -190,10 +334,24 @@ function run_circles(;
 
         sys.set.v_wind = v_wind_base + vw_change * rf
 
-        if !sim_step!(something(sam);
-            set_values=[0.0], dt=dt_c, vsm_interval=1)
-            @error "Circular phase failed" step
-            break
+        try
+            if !sim_step!(something(sam);
+                set_values=[0.0], dt=dt_c, vsm_interval=1)
+                @error "Circular phase failed" step
+                _save_circle_failure_artifacts!(
+                    logger, sys_state, something(sam),
+                    step, t, nothing;
+                    save_dir, run_tag, debug_on_failure,
+                    replay_on_failure)
+                break
+            end
+        catch err
+            _save_circle_failure_artifacts!(
+                logger, sys_state, something(sam),
+                step, t, err;
+                save_dir, run_tag, debug_on_failure,
+                replay_on_failure)
+            rethrow(err)
         end
         log_state!(logger, sys_state, something(sam), t)
 
@@ -216,10 +374,10 @@ function run_circles(;
            t >= stop_window_sec &&
            (step % check_every == 0)
             if course_rate_converged(course_uw, azimuth_uw,
-                    elevation_v, time_buf, n_logged;
-                    window_sec=stop_window_sec,
-                    rel_tol=stop_rel_tol, dt=dt_c)
-                @info "Course rate converged - stopping early" t=round(t, digits=2) step n_c
+                elevation_v, time_buf, n_logged;
+                window_sec=stop_window_sec,
+                rel_tol=stop_rel_tol, dt=dt_c)
+                @info "Course rate converged - stopping early" t = round(t, digits=2) step n_c
                 break
             end
         end
@@ -229,30 +387,26 @@ function run_circles(;
 
     lt_tag = Int(round(tether_length))
     tmp_name = "tmp_run_refine_lt_$(lt_tag)"
-    @info "Saving temporary log" name=tmp_name
+    @info "Saving temporary log" name = tmp_name
     save_log(logger, tmp_name)
     syslog = load_log(tmp_name)
 
-    save_root = "processed_data"
-    save_dir = isempty(save_subdir) ? save_root :
-               joinpath(save_root, save_subdir)
-    isdir(save_dir) || mkpath(save_dir)
     ts = Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
-    up_t = Int(round(up * 100))
+    udp_t = Int(round(udp * 100))
     us_t = Int(round(us * 100))
     vw_t = Int(round(v_wind))
     el_t = elevation !== nothing ?
            Int(round(elevation)) : "yaml"
     g_t = g_earth !== nothing ?
           Int(round(g_earth * 10)) : "yaml"
-    ln = "circles__up_$(up_t)_us_$(us_t)" *
+    ln = "circles__udp_$(udp_t)_us_$(us_t)" *
          "_vw_$(vw_t)_lt_$(lt_tag)" *
          "_el_$(el_t)_g_$(g_t)"
     if !isempty(run_tag)
         ln *= "_" * run_tag
     end
     ln *= "_date_" * ts
-    @info "Saving run log" name=ln path=save_dir
+    @info "Saving run log" name = ln path = save_dir
     save_log(logger, ln; path=save_dir)
 
     return syslog, something(sam)
@@ -263,7 +417,7 @@ end
 # =============================================================================
 
 function generate_run_combos(defaults::NamedTuple,
-        sweeps=nothing, combine_all=nothing)
+    sweeps=nothing, combine_all=nothing)
     sw = sweeps === nothing ? NamedTuple() : sweeps
     ca = combine_all === nothing ? NamedTuple() : combine_all
     variants = NamedTuple[defaults]
@@ -290,26 +444,6 @@ function generate_run_combos(defaults::NamedTuple,
     return combos
 end
 
-defaults = (
-    elevation=70, g_earth=0.0,
-    us=0.15, up=0.33, vw=8.6, lt=200, kcu_mass=22.0,
-)
-
-sweeps = (
-    us=0.05:0.05:1.0,
-    up=0.05:0.05:1.0,
-    vw=8.0:1.0:20.0,
-    lt=50:50:300,
-    kcu_mass=10:10:40
-)
-
-combine_all = nothing
-# combine_all = (
-    # kcu_mass=[22.0, 44.0],
-# )
-
-batch_tag = "circles_2019_batch_" *
-            Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
 batch_dir = joinpath("processed_data", batch_tag)
 isdir(batch_dir) || mkpath(batch_dir)
 @info "Batch output directory" batch_dir
@@ -320,24 +454,32 @@ ramp_time_us = 2
 fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
+remake_settle = IS_REMAKE_SETTLE
+visualize_settle = IS_VISUALIZE_SETTLE
+debug_on_failure = true
+replay_on_failure = false
 
 combos = generate_run_combos(defaults, sweeps, combine_all)
-@info "Batch combos generated" n=length(combos)
+@info "Batch combos generated" n = length(combos)
 
 const failed_runs = NamedTuple[]
 
 for (run_id, p) in enumerate(combos)
     run_tag = "run_" * lpad(string(run_id), 3, '0')
-    @info "Starting run" run_id elevation=p.elevation g_earth=p.g_earth us=p.us up=p.up vw=p.vw lt=p.lt kcu_mass=p.kcu_mass
+    @info "Starting run" run_id elevation = p.elevation g_earth = p.g_earth us = p.us udp = p.udp vw = p.vw lt = p.lt kcu_mass = p.kcu_mass
     try
         run_circles(;
             v_wind=p.vw, v_wind_base=p.vw,
-            up=p.up, tether_length=p.lt,
+            udp=p.udp, tether_length=p.lt,
             elevation=p.elevation, g_earth=p.g_earth,
             kcu_mass=p.kcu_mass,
             body_damping, point_37_38_damping,
             sim_time_circles, fps_circles,
             ramp_time_us, us=p.us,
+            remake_settle,
+            visualize_settle,
+            debug_on_failure,
+            replay_on_failure,
             save_subdir=batch_tag,
             run_tag)
         @info "Completed" run_id
@@ -355,7 +497,7 @@ if !isempty(failed_runs)
         for fr in failed_runs
             println(io, "Run $(fr.run_id): " *
                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-                        "us=$(fr.us), up=$(fr.up), " *
+                        "us=$(fr.us), udp=$(fr.udp), " *
                         "vw=$(fr.vw), lt=$(fr.lt), " *
                         "kcu_mass=$(fr.kcu_mass)")
             println(io, "  Error: $(fr.error)")
@@ -364,7 +506,7 @@ if !isempty(failed_runs)
     @info "Wrote failure list" path = fp
 end
 
-@info "Batch 1 completed" total=length(combos) failed=length(failed_runs)
+@info "Batch 1 completed" total = length(combos) failed = length(failed_runs)
 
 #TODO: check updates from above to complete the below when you start using it
 # # =============================================================================
@@ -375,7 +517,7 @@ end
 #     20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
 # g_earth_vals = [0.0]
 # us_vals = [0.0]
-# up_vals = [0.42]
+# udp_vals = [0.42]
 # vw_vals = [7.8, 19.7]
 # lt_vals = [262]
 
@@ -384,15 +526,15 @@ end
 
 # failed_runs = NamedTuple[]
 
-# for (run_id, (elev, g, us, up, vw, lt)) in enumerate(
+# for (run_id, (elev, g, us, udp, vw, lt)) in enumerate(
 #     Iterators.product(elevation_vals, g_earth_vals,
-#         us_vals, up_vals, vw_vals, lt_vals))
+#         us_vals, udp_vals, vw_vals, lt_vals))
 #     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id elevation = elev g_earth = g us up vw lt
+#     @info "Starting run" run_id elevation = elev g_earth = g us udp vw lt
 #     try
 #         run_circles(;
 #             v_wind=vw, v_wind_base=vw,
-#             up=up, tether_length=lt,
+#             udp=udp, tether_length=lt,
 #             elevation=elev, g_earth=g,
 #             sim_time_circles, fps_circles,
 #             ramp_time_us, us=us,
@@ -402,7 +544,7 @@ end
 #         @error "Failed" run_id err
 #         push!(failed_runs, (run_id=run_id,
 #             elevation=elev, g_earth=g,
-#             us=us, up=up, vw=vw, lt=lt, error=err))
+#             us=us, udp=udp, vw=vw, lt=lt, error=err))
 #     end
 #     GC.gc()
 # end
@@ -414,7 +556,7 @@ end
 #         for fr in failed_runs
 #             println(io, "Run $(fr.run_id): " *
 #                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-#                         "us=$(fr.us), up=$(fr.up), " *
+#                         "us=$(fr.us), udp=$(fr.udp), " *
 #                         "vw=$(fr.vw), lt=$(fr.lt)")
 #             println(io, "  Error: $(fr.error)")
 #         end
@@ -424,5 +566,5 @@ end
 
 # n_total = length(collect(Iterators.product(
 #     elevation_vals, g_earth_vals,
-#     us_vals, up_vals, vw_vals, lt_vals)))
+#     us_vals, udp_vals, vw_vals, lt_vals)))
 # @info "Batch 2 completed" total = n_total failed = length(failed_runs)

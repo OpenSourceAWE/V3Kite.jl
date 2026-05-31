@@ -26,9 +26,22 @@ using REPL.TerminalMenus
 # Configuration
 # =============================================================================
 
+PROJECT_DIR = dirname(@__DIR__)
+
 DATA_DIR = joinpath(
     dirname(@__DIR__),
     "processed_data")
+
+# Set to a non-empty path to skip the menu and load directly.
+log_name = ""
+log_name =
+    "circles_batch_2026_05_30_12_11_15/" *
+    "circles__udp_30_us_15_vw_8_lt_270_el_30_g_0_run_001_date_2026_05_30_12_16_55"
+
+log_name = "2025_1536290_1536380_dp022_sl16_sr16_tip02_te095_sim"
+DEFAULT_STRUC_YAML_PATH = joinpath(PROJECT_DIR, "data/python_yamls/struc_geometry_julia_generated.yaml")
+DEFAULT_AERO_YAML_PATH = joinpath(PROJECT_DIR, "data/aero_geometry.yaml")
+DEFAULT_VSM_SETTINGS_PATH = joinpath(PROJECT_DIR, "data/vsm_settings.yaml")
 
 # =============================================================================
 # Helper functions
@@ -67,22 +80,58 @@ function resolve_log_file(log_name, base_dir)
 end
 
 function load_log_and_system(; log_name)
+    log_file, log_dir, log_path = resolve_log_file(
+        log_name, DATA_DIR)
+    @info "Resolved log file" log_path
+    lg = load_log(log_file; path=log_dir)
+
     m = match(
-        r"_up_([0-9]+)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
+        r"_(?:udp|up)_([0-9]+)_us_([0-9._-]+)_vw_([0-9]+)_lt_([0-9]+)",
         log_name)
-    m === nothing && error(
-        "Could not parse up/us/vw/lt from: $log_name")
-    up = parse(Float64, m.captures[1])
-    us_tokens = split(m.captures[2], "_")
-    us_vals = parse.(Float64, us_tokens)
-    v_wind = parse(Int, m.captures[3])
-    lt = parse(Int, m.captures[4])
-    @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
+    local udp::Float64
+    local us_vals::Vector{Float64}
+    local v_wind::Int
+    local lt::Int
+    if m !== nothing
+        udp = parse(Float64, m.captures[1])
+        us_tokens = split(m.captures[2], "_")
+        us_vals = parse.(Float64, us_tokens)
+        v_wind = parse(Int, m.captures[3])
+        lt = parse(Int, m.captures[4])
+        @info "Parsed tags" udp = udp / 100 us = us_vals ./ 100 v_wind lt
+    else
+        # Replay logs do not encode circles tags in the name,
+        # so infer reasonable values from the first logged state.
+        sl = hasproperty(lg, :syslog) ? lg.syslog : lg
+        isempty(sl) && error("Loaded log is empty: $log_name")
+        s1 = sl[1]
+
+        udp = hasproperty(s1, :depower) ?
+              round(Float64(s1.depower) * 100; digits=3) : 0.0
+        u0 = hasproperty(s1, :set_steering) ?
+             round(Float64(s1.set_steering) * 100; digits=3) : 0.0
+        us_vals = [u0]
+
+        if hasproperty(s1, :v_wind_gnd)
+            vw = s1.v_wind_gnd
+            v_wind = Int(round(hypot(vw[1], vw[2])))
+        else
+            v_wind = 10
+        end
+
+        if hasproperty(s1, :l_tether) && !isempty(s1.l_tether)
+            lt = Int(round(Float64(s1.l_tether[1])))
+        else
+            lt = 270
+        end
+
+        @info "Inferred tags from log" udp = udp / 100 us = us_vals ./ 100 v_wind lt
+    end
 
     config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
+        struc_yaml_path=DEFAULT_STRUC_YAML_PATH,
+        aero_yaml_path=DEFAULT_AERO_YAML_PATH,
+        vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=Float64(v_wind),
         tether_length=Float64(lt),
         wing_type=REFINE,
@@ -91,11 +140,7 @@ function load_log_and_system(; log_name)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
         reduce_te=true))
 
-    log_file, log_dir, log_path = resolve_log_file(
-        log_name, DATA_DIR)
-    @info "Resolved log file" log_path
-    lg = load_log(log_file; path=log_dir)
-    return lg, sam, up, us_vals, v_wind, lt
+    return lg, sam, udp, us_vals, v_wind, lt
 end
 
 # =============================================================================
@@ -622,11 +667,6 @@ end
 # Main execution
 # =============================================================================
 
-# Set to a non-empty path to skip the menu and load directly.
-log_name = ""
-# log_name =
-#     "circles_2019_batch_2026_02_23_15_09_48/" *
-#     "circles__up_18_us_0_vw_9_lt_268_el_50_g_0_run_001_date_2026_02_23_15_09_53"
 
 function last_timestamp_token(name::AbstractString)
     token = ""
@@ -685,11 +725,11 @@ if isempty(strip(log_name))
     @info "Selected log_name" log_name
 end
 
-lg, sam, up, us, v_wind, lt =
+lg, sam, udp, us, v_wind, lt =
     load_log_and_system(log_name=log_name)
 
 # Stretch analysis with commanded tape adjustments
-up_fraction = up / 100
+udp_fraction = udp / 100
 us_fraction = us / 100
 seg87_nom = Float64(
     sam.sys_struct.segments[V3_STEERING_LEFT_IDX].l0)
@@ -698,7 +738,7 @@ seg88_nom = Float64(
 seg89_nom = Float64(
     sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].l0)
 steering_tape_change = V3_STEERING_GAIN * us_fraction
-power_target_l0 = 0.2 + 5.0 * up_fraction
+power_target_l0 = udp_to_depower_tape_length_m(udp_fraction)
 segment_l0_adjustments = Dict(
     V3_STEERING_LEFT_IDX => steering_tape_change,
     V3_DEPOWER_IDX => power_target_l0 - seg88_nom,

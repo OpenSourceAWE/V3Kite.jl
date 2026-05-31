@@ -43,7 +43,7 @@ function run_zenith_circles(;
         sim_time_circles = 0.0, fps_circles = 1,
         body_damping = [0.0, 0.0, 20.0],
         point_37_38_damping = [0.0, 20.0, 20.0],
-        up = 0.4,
+        udp = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
         v_wind = 15.4, v_wind_base = 15.0,
@@ -69,7 +69,7 @@ function run_zenith_circles(;
     )
 
     settle_config = V3SettleConfig(
-        source_struc_path = "struc_geometry.yaml",
+        source_struc_path = "python_yamls/struc_geometry_julia_generated.yaml",
         source_aero_path = "aero_geometry.yaml",
         vsm_settings_path = "vsm_settings.yaml",
         v_wind = v_wind,
@@ -80,9 +80,7 @@ function run_zenith_circles(;
         body_damping_overrides = [
             (37:38, point_37_38_damping .* 2.0),
         ],
-        geom = V3GeomAdjustConfig(
-            reduce_te = true, tether_length = tether_length
-        ),
+        geom = V3GeomAdjustConfig(tether_length = tether_length),
         num_steps = 400, num_substeps = 5, dt = 0.001,
         start_depower = 40.0,
         course_correction_gain = 0.0,
@@ -94,7 +92,7 @@ function run_zenith_circles(;
         position = position,
         velocity = [0.0, 0.0, 0.0],
         heading = 0.0,
-        steering = 0.0, depower = up,
+        steering = 0.0, depower = udp,
         wind_vec = wind_vec,
         remake = false
     )
@@ -256,7 +254,7 @@ function run_zenith_circles(;
         joinpath(save_root, save_subdir)
     isdir(save_dir) || mkpath(save_dir)
     ts = Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
-    up_t = Int(round(up * 100))
+    udp_t = Int(round(udp * 100))
     us_t = Int(round(us * 100))
     vw_t = Int(round(v_wind))
     el_t = elevation !== nothing ?
@@ -265,7 +263,7 @@ function run_zenith_circles(;
         Int(round(g_earth * 10)) : "yaml"
     run_prefix = n_c > 0 ?
         "hold_at_zenith_then_circles" : "zenith_circle"
-    ln = "$(run_prefix)__up_$(up_t)_us_$(us_t)" *
+    ln = "$(run_prefix)__udp_$(udp_t)_us_$(us_t)" *
         "_vw_$(vw_t)_lt_$(lt_tag)" *
         "_el_$(el_t)_g_$(g_t)"
     if !isempty(run_tag)
@@ -285,7 +283,7 @@ end
 elevation_vals = [70]
 g_earth_vals = [0.0]
 us_vals = [0.1] #, 0.1, 0.15, 0.2]
-up_vals = [0.18]
+udp_vals = [0.18]
 # vw_vals = [8.6, 19.8]
 vw_vals = [8.6]
 lt_vals = [268]
@@ -309,18 +307,18 @@ point_37_38_damping = [0.0, 20.0, 20.0]
 
 const failed_runs = NamedTuple[]
 
-for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
+for (run_id, (elev, g, us, udp, vw, lt, kcu_mass_val)) in enumerate(
         Iterators.product(
             elevation_vals, g_earth_vals,
-            us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals
+            us_vals, udp_vals, vw_vals, lt_vals, kcu_mass_vals
         )
     )
     run_tag = "run_" * lpad(string(run_id), 3, '0')
-    @info "Starting run" run_id elevation = elev g_earth = g us up vw lt kcu_mass = kcu_mass_val
+    @info "Starting run" run_id elevation = elev g_earth = g us udp vw lt kcu_mass = kcu_mass_val
     try
         run_zenith_circles(;
             v_wind = vw, v_wind_base = vw,
-            up = up, tether_length = lt,
+            udp = udp, tether_length = lt,
             elevation = elev, g_earth = g,
             kcu_mass = kcu_mass_val,
             sim_time_zenith, fps_zenith,
@@ -338,7 +336,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             failed_runs, (
                 run_id = run_id,
                 elevation = elev, g_earth = g,
-                us = us, up = up, vw = vw, lt = lt,
+                us = us, udp = udp, vw = vw, lt = lt,
                 kcu_mass = kcu_mass_val, error = err,
             )
         )
@@ -353,7 +351,7 @@ if !isempty(failed_runs)
             println(
                 io, "Run $(fr.run_id): " *
                     "el=$(fr.elevation), g=$(fr.g_earth), " *
-                    "us=$(fr.us), up=$(fr.up), " *
+                    "us=$(fr.us), udp=$(fr.udp), " *
                     "vw=$(fr.vw), lt=$(fr.lt), " *
                     "kcu_mass=$(fr.kcu_mass)"
             )
@@ -367,7 +365,7 @@ n_total = length(
     collect(
         Iterators.product(
             elevation_vals, g_earth_vals,
-            us_vals, up_vals, vw_vals, lt_vals, kcu_mass_vals
+            us_vals, udp_vals, vw_vals, lt_vals, kcu_mass_vals
         )
     )
 )
@@ -382,7 +380,7 @@ n_total = length(
 #     20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
 # g_earth_vals = [0.0]
 # us_vals = [0.0]
-# up_vals = [0.42]
+# udp_vals = [0.42]
 # vw_vals = [7.8, 19.7]
 # lt_vals = [262]
 
@@ -392,18 +390,18 @@ n_total = length(
 # sim_time_zenith = 200.0
 # failed_runs = NamedTuple[]
 
-# for (run_id, (elev, g, us, up, vw, lt)) in enumerate(
+# for (run_id, (elev, g, us, udp, vw, lt)) in enumerate(
 #     Iterators.product(elevation_vals, g_earth_vals,
-#         us_vals, up_vals, vw_vals, lt_vals))
+#         us_vals, udp_vals, vw_vals, lt_vals))
 #     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id elevation = elev g_earth = g us up vw lt
+#     @info "Starting run" run_id elevation = elev g_earth = g us udp vw lt
 #     try
 #         run_zenith_circles(;
 #             v_wind=vw, v_wind_base=vw,
-#             up=up, tether_length=lt,
+#             udp=udp, tether_length=lt,
 #             elevation=elev, g_earth=g,
 #             sim_time_zenith, fps_zenith,
-#             start_ramp_time, ramp_time_up,
+#             start_ramp_time, ramp_time_udp,
 #             startup_damping_pattern, damping_pattern,
 #             startup_decay_time,
 #             max_us_zenith, target_azimuth=0.0,
@@ -415,7 +413,7 @@ n_total = length(
 #         @error "Failed" run_id err
 #         push!(failed_runs, (run_id=run_id,
 #             elevation=elev, g_earth=g,
-#             us=us, up=up, vw=vw, lt=lt, error=err))
+#             us=us, udp=udp, vw=vw, lt=lt, error=err))
 #     end
 #     GC.gc()
 # end
@@ -427,7 +425,7 @@ n_total = length(
 #         for fr in failed_runs
 #             println(io, "Run $(fr.run_id): " *
 #                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-#                         "us=$(fr.us), up=$(fr.up), " *
+#                         "us=$(fr.us), udp=$(fr.udp), " *
 #                         "vw=$(fr.vw), lt=$(fr.lt)")
 #             println(io, "  Error: $(fr.error)")
 #         end
@@ -437,5 +435,5 @@ n_total = length(
 
 # n_total = length(collect(Iterators.product(
 #     elevation_vals, g_earth_vals,
-#     us_vals, up_vals, vw_vals, lt_vals)))
+#     us_vals, udp_vals, vw_vals, lt_vals)))
 # @info "Batch 2 completed" total = n_total failed = length(failed_runs)

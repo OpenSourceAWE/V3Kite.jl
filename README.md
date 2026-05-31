@@ -27,7 +27,7 @@ config = V3SimConfig(
     sim_time = 60.0,      # seconds
     fps = 60,             # frames per second
     v_wind = 10.0,        # wind speed [m/s]
-    up = 40.0,            # depower percentage [0-100]
+    udp = 40.0,           # depower percentage [0-100]
     us = 0.0,             # steering percentage [-100, 100]
     wing_type = REFINE,   # or QUATERNION
 )
@@ -49,9 +49,11 @@ V3Kite uses a base + delta calibration pattern:
 | Parameter | Base Value | Description |
 |-----------|------------|-------------|
 | `V3_STEERING_L0_BASE` | 1.6 m | Neutral steering tape length |
-| `V3_DEPOWER_L0_BASE` | 0.2 m | Neutral depower tape length |
+| `V3_DEPOWER_L0_BASE` | 0.192 m | Neutral depower tape length |
 | `V3_STEERING_GAIN` | 1.4 m | Max differential at 100% steering |
-| `V3_DEPOWER_GAIN` | 5.0 m | Depower range for 0-100% |
+| `UDP_2025_QUADRATIC_A` | -1.7237 | 2025 UDP quadratic coefficient |
+| `UDP_2025_QUADRATIC_B` | 6.623795 | 2025 UDP linear coefficient |
+| `UDP_2025_QUADRATIC_C` | 0.192 m | 2025 UDP constant coefficient |
 
 ### Tape Reductions
 
@@ -64,7 +66,7 @@ through `V3GeomAdjustConfig`, not through global constants. Use
 ```julia
 # Using base values (no reduction)
 L_left, L_right = steering_percentage_to_lengths(50.0)
-L_depower = depower_percentage_to_length(40.0)
+L_depower = udp_to_depower_tape_length_m(0.40)
 
 # With custom l0_base (e.g. after reduction)
 L_left, L_right = steering_percentage_to_lengths(50.0; l0_base=1.4)
@@ -94,7 +96,7 @@ V3SimConfig(
     upwind_dir = -90.0,        # Wind direction [deg]
 
     # Control parameters
-    up = 40.0,                 # Depower [0-100%]
+    udp = 40.0,                # Depower [0-100%]
     us = 0.0,                  # Steering [-100, 100%]
     tether_length = 250.0,     # [m]
 

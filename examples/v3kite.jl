@@ -10,7 +10,7 @@ control for constant tether length, and 3D visualization.
 
 using Pkg
 if !Base.generating_output() &&
-        Base.active_project() != joinpath(@__DIR__, "Project.toml")
+   Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
@@ -24,14 +24,14 @@ using DiscretePIDs
 # Configuration
 # =============================================================================
 
-SIM_TIME = 60.0
-FPS = 60
+SIM_TIME = 10
+FPS = 600
 MAX_HEADING = 40.0    # degrees
 PERIOD = 30.0         # seconds
 V_WIND = 15.4
 TETHER_LENGTH = 250.0
-DEPOWER = 0.30        # fraction [0, 1]
-WORLD_DAMPING = 40.0  # initial world damping
+DEPOWER = 0.28        # fraction [0, 1]
+WORLD_DAMPING = 400.0  # initial world damping
 DAMPING_DECAY_STEPS = 200
 
 # PID gains
@@ -47,7 +47,7 @@ WINCH_D = 50.0
 # =============================================================================
 
 @info "V3 Kite Simulation Example"
-@info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
+@info "Calibration:" steering_l0 = V3_STEERING_L0_BASE depower_l0 = V3_DEPOWER_L0_BASE
 
 gc = V3GeomAdjustConfig()
 
@@ -59,7 +59,8 @@ set.wind_vec = [V_WIND, 0.0, 0.0]
 set.l_tether = TETHER_LENGTH
 set.profile_law = 0
 
-source_struc = joinpath(data_path, "struc_geometry.yaml")
+source_struc = joinpath(data_path,
+    "python_yamls/struc_geometry_julia_generated.yaml")
 source_aero = joinpath(data_path, "aero_geometry.yaml")
 vsm_path = joinpath(data_path, "vsm_settings.yaml")
 vsm_set = VortexStepMethod.VSMSettings(vsm_path; data_prefix=false)
@@ -87,9 +88,9 @@ angular_freq = 2pi / PERIOD
 max_steering = 0.15
 
 heading_pid = create_heading_pid(;
-    K = HEADING_P,
-    Ti = HEADING_I,
-    Td = HEADING_D,
+    K=HEADING_P,
+    Ti=HEADING_I,
+    Td=HEADING_D,
     dt, umin=-abs(max_steering),
     umax=abs(max_steering))
 
@@ -97,9 +98,9 @@ heading_pid = create_heading_pid(;
 nominal_tether_length = sys.tethers[1].len
 init_winch_torque!(sys)
 winch_pid = create_winch_pid(;
-    K = WINCH_P,
-    Ti = WINCH_I > 0 ? WINCH_P / WINCH_I : false,
-    Td = WINCH_D > 0 ? WINCH_D / WINCH_P : false,
+    K=WINCH_P,
+    Ti=WINCH_I > 0 ? WINCH_P / WINCH_I : false,
+    Td=WINCH_D > 0 ? WINCH_D / WINCH_P : false,
     dt)
 
 heading_setpoint = [0.0]
@@ -115,7 +116,7 @@ for step in 1:n_steps
     t = step * dt
 
     damping = max(WORLD_DAMPING *
-        (1.0 - step / DAMPING_DECAY_STEPS), 0.0)
+                  (1.0 - step / DAMPING_DECAY_STEPS), 0.0)
     SymbolicAWEModels.set_world_frame_damping(sys, damping)
 
     # PID heading control with sine wave setpoint
@@ -133,7 +134,7 @@ for step in 1:n_steps
     sys.winches[1].set_value = -wt
 
     if !sim_step!(sam;
-            set_values=[-wt], dt, vsm_interval=1)
+        set_values=[-wt], dt, vsm_interval=1)
         @error "Simulation failed" step
         break
     end
@@ -141,7 +142,7 @@ for step in 1:n_steps
 
     if should_report(step, n_steps)
         elapsed = time() - sim_start
-        @info "Step $step/$n_steps" times_realtime=round(t/elapsed, digits=2) damping=round(damping, digits=2)
+        @info "Step $step/$n_steps" times_realtime = round(t / elapsed, digits=2) damping = round(damping, digits=2)
     end
 end
 

@@ -31,7 +31,7 @@ AZIMUTH = 0.0          # degrees
 
 V_WIND = 7.6
 US = 0.1               # Steering fraction [-1, 1]
-UP = 0.25             # Depower fraction [0, 1]
+UDP = 0.25             # Depower fraction [0, 1]
 
 # Ramp timing
 RAMP_START_US = 3.0
@@ -62,7 +62,7 @@ settle_config = V3SettleConfig(
     num_steps = 400,
     num_substeps = 5,
     body_damping = [0.0, 0.0, 40.0],
-    start_depower = UP * 100.0 + 10.0,
+    start_depower = UDP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
@@ -72,7 +72,7 @@ gc = settle_config.geom
 @info "Settling V3 model..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = UP, wind_vec, remake=false)
+    steering = 0.0, depower = UDP, wind_vec, remake=false)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 sys.winches[1].brake = true
@@ -104,11 +104,11 @@ for step in 1:n_steps
 
     rf_us = ramp_factor(t, RAMP_START_US, RAMP_END_US)
     set_steering!(sys, rf_us * US, gc)
-    set_depower!(sys, UP, 0.0, gc)
+    set_depower!(sys, UDP, 0.0, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
-    push!(tape_depower_pct, UP * 100)
+    push!(tape_depower_pct, UDP * 100)
 
     if !sim_step!(sam; set_values=[0.0], dt, vsm_interval=1)
         @error "Simulation failed" step

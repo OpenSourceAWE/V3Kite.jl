@@ -36,7 +36,7 @@ using Dates
 generate_drag_adjusted_polars(1.0)
 
 const LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-const SECTION = "straight_right"
+const BASE_SECTION = "straight_right"
 const YEAR = 2025
 SETTLE = true
 DEPOWER_OFFSET_2019 = 7.0
@@ -72,7 +72,7 @@ else
 end
 depower_offset_pct = YEAR == 2019 ?
     DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025
-SECTION = "$(SECTION)_$(YEAR)"
+const SECTION = "$(BASE_SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
     end_utc = "15:36:38.0"

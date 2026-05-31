@@ -54,11 +54,14 @@ include("interface.jl")
 export V3_STEERING_L0_BASE, V3_DEPOWER_L0_BASE
 # Gains
 export V3_STEERING_GAIN, V3_DEPOWER_GAIN
+export UDP_2025_QUADRATIC_A, UDP_2025_QUADRATIC_B
+export UDP_2025_QUADRATIC_C
 # Segment indices
 export V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 export V3_DEPOWER_IDX
 # Conversion functions
 export steering_percentage_to_lengths
+export udp_to_depower_tape_length_m
 export depower_percentage_to_length
 export steering_length_to_percentage, depower_length_to_percentage
 export build_geom_suffix
