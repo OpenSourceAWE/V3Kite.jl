@@ -228,7 +228,7 @@ function run_circles(;
     report_performance(sim_time_circles, time() - sim_start)
 
     lt_tag = Int(round(tether_length))
-    tmp_name = "tmp_run_refine_lt_$(lt_tag)"
+    tmp_name = "tmp_run_particle_dynamics_lt_$(lt_tag)"
     @info "Saving temporary log" name=tmp_name
     save_log(logger, tmp_name)
     syslog = load_log(tmp_name)

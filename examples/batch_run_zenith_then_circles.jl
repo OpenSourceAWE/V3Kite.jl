@@ -248,8 +248,8 @@ function run_zenith_circles(;
 
     # Save
     lt_tag = Int(round(tether_length))
-    save_log(logger, "tmp_run_refine_lt_$(lt_tag)")
-    syslog = load_log("tmp_run_refine_lt_$(lt_tag)")
+    save_log(logger, "tmp_run_particle_dynamics_lt_$(lt_tag)")
+    syslog = load_log("tmp_run_particle_dynamics_lt_$(lt_tag)")
 
     save_root = "processed_data"
     save_dir = isempty(save_subdir) ? save_root :

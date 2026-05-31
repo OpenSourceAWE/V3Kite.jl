@@ -266,9 +266,9 @@ function V3Kite.plot_body_frame_local(sys_structs;
         segments = sys_struct.segments
         color = PLOT_COLORS[mod1(s_idx, length(PLOT_COLORS))]
 
-        # Update pos_b for REFINE wing points
+        # Update pos_b for PARTICLE_DYNAMICS wing points
         for wing in wings
-            if wing.wing_type == SymbolicAWEModels.REFINE
+            if wing.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
                 wing.pos_w .= points[1].pos_w
                 for point in points
@@ -716,9 +716,9 @@ function V3Kite.plot_twist_dist(sys_structs;
         color = PLOT_COLORS[
             mod1(s_idx, length(PLOT_COLORS))]
 
-        # Update pos_b for REFINE wing points
+        # Update pos_b for PARTICLE_DYNAMICS wing points
         for wing in sys_struct.wings
-            if wing.wing_type == SymbolicAWEModels.REFINE
+            if wing.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
                 wing.pos_w .= points[1].pos_w
                 for point in points

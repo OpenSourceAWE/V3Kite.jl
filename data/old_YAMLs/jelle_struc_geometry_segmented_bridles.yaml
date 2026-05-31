@@ -827,17 +827,17 @@ winches:
 ###########################
 # Wing aerodynamic bodies
 # headers: [id, type, point_idxs]
-# type: REFINE or QUATERNION
-# point_idxs: List of WING-type points (for REFINE: must be LE/TE pairs)
+# type: PARTICLE_DYNAMICS or QUATERNION
+# point_idxs: List of WING-type points (for PARTICLE_DYNAMICS: must be LE/TE pairs)
 
 wings:
   data:
     # QUATERNION wing: Rigid body with twist groups (auto-created from LE/TE pairs)
     # Points 2-21 form 10 LE/TE segment pairs (2,3), ..., (20,21)
     # For QUATERNION wings, use aero_z_offset to shift VSM panels in body frame z
-    # For REFINE wings, use point_idxs, origin_idx, z_ref_points, y_ref_points
+    # For PARTICLE_DYNAMICS wings, use point_idxs, origin_idx, z_ref_points, y_ref_points
     - idx: 1
-      type: REFINE
+      type: PARTICLE_DYNAMICS
       point_idxs:
         [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
       origin_idx: 1

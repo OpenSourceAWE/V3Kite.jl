@@ -53,7 +53,7 @@ Base.@kwdef mutable struct V3SimConfig
     damping_pattern::Vector{Float64} = [0.0, 0.0, 20.0]
 
     # Model options
-    wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.REFINE
+    wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
     remake_cache::Bool = false
 
     # Winch control
@@ -81,7 +81,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
         data_path = v3_data_path()
     end
 
-    wing_type_str = config.wing_type == SymbolicAWEModels.REFINE ? "REFINE" : "QUATERNION"
+    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "PARTICLE_DYNAMICS" : "RIGID_DYNAMICS"
     @info "Creating V3 kite model" wing_type=wing_type_str data_path struc_yaml=config.struc_yaml_path
 
     # Load settings
@@ -146,7 +146,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
     sam, sys = create_v3_model(config)
 
     # Initialize model
-    wing_type_str = config.wing_type == SymbolicAWEModels.REFINE ? "REFINE" : "QUATERNION"
+    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "PARTICLE_DYNAMICS" : "RIGID_DYNAMICS"
     @info "Initializing $wing_type_str model..."
     SymbolicAWEModels.init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
 
