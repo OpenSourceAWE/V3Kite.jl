@@ -1,3 +1,5 @@
+import SymbolicAWEModels: winch_force, tether_length
+
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
     set::Settings
