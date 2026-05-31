@@ -160,7 +160,7 @@ function settle_wing(config::V3SettleConfig, init_row;
                 rethrow(err)
             end
             try
-                syslog = load_log("settle_refine_wing")
+                syslog = load_log("settle_particle_dynamics_wing")
             catch
             end
         end
@@ -193,7 +193,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.REFINE, vsm_set)
+            wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -225,7 +225,7 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.REFINE, vsm_set)
+        wing_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
 
     if !isnothing(config.kcu_mass)
         sys.points[1].extra_mass = config.kcu_mass
@@ -247,7 +247,7 @@ function _setup_settling_model(config::V3SettleConfig;
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
 
-    @info "Settling REFINE wing" config.num_steps config.dt total_time=config.num_steps * config.dt
+    @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
     for winch in sys.winches
         winch.brake = true
@@ -389,7 +389,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     catch err
         if logger.index > 1
             @warn "Settling crashed, saving partial log" msg=sprint(showerror, err)
-            save_log(logger, "settle_refine_wing")
+            save_log(logger, "settle_particle_dynamics_wing")
         end
         rethrow(err)
     end
@@ -411,7 +411,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     serialize(dest_struc, sys)
 
     syslog = save_and_load_log(
-        logger, "settle_refine_wing")
+        logger, "settle_particle_dynamics_wing")
     @info "Settling complete" dest_struc
     return syslog
 end

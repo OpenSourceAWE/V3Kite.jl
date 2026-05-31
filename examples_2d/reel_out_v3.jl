@@ -71,7 +71,7 @@ vsm_set.wings[1].geometry_file = source_aero
 @info "Creating V3 model..."
 sys = load_sys_struct_from_yaml(source_struc;
     system_name=V3_MODEL_NAME, set,
-    wing_type=REFINE, vsm_set)
+    wing_type=PARTICLE_DYNAMICS, vsm_set)
 sys.points[1].extra_mass = 8.4   # KCU mass [kg]
 sam = SymbolicAWEModel(set, sys)
 

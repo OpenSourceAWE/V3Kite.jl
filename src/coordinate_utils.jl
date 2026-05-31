@@ -70,10 +70,10 @@ end
 """
     calc_R_b_w(sys_struct::SystemStructure)
 
-Calculate the body-to-world rotation matrix for REFINE wing type.
+Calculate the body-to-world rotation matrix for PARTICLE_DYNAMICS wing type.
 
 # Arguments
-- `sys_struct`: System structure with REFINE wing
+- `sys_struct`: System structure with PARTICLE_DYNAMICS wing
 
 # Returns
 - 3x3 rotation matrix R_b_w
