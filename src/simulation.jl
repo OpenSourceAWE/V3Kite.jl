@@ -7,7 +7,7 @@ Provides high-level functions for creating and running V3 kite simulations.
 """
 
 const V3_MODEL_NAME = "v3"
-const V3_QUAT_MODEL_NAME = "v3_quat"
+const V3_RIGID_DYNAMICS_MODEL_NAME = "v3_rigid_dynamics"
 
 """
     v3_data_path()
@@ -98,8 +98,8 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     vsm_set.wings[1].geometry_file = joinpath(data_path, config.aero_yaml_path)
 
     # Determine model name
-    model_name = config.wing_type == SymbolicAWEModels.QUATERNION ?
-        V3_QUAT_MODEL_NAME : V3_MODEL_NAME
+    model_name = config.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
+        V3_RIGID_DYNAMICS_MODEL_NAME : V3_MODEL_NAME
 
     # Load system structure (use absolute path)
     struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
