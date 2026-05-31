@@ -12,9 +12,9 @@ using PrecompileTools
     #         wing_type=PARTICLE_DYNAMICS, remake_cache=true)
     #     _sam, _ = create_v3_model(config)
 
-    #     config_quat = V3SimConfig(
-    #         wing_type=QUATERNION, remake_cache=true)
-    #     _sam_q, _ = create_v3_model(config_quat)
+    #     config_rigid_dynamics = V3SimConfig(
+    #         wing_type=RIGID_DYNAMICS, remake_cache=true)
+    #     _sam_q, _ = create_v3_model(config_rigid_dynamics)
     # catch e
     #     _can_precompile = false
     #     @info "V3Kite: skipping precompile workload" reason=e
@@ -28,7 +28,7 @@ using PrecompileTools
         #     init!(_sam; remake=false,
         #         ignore_l0=false, remake_vsm=true)
 
-        #     # QUATERNION wing — build + serialize, then
+        #     # RIGID_DYNAMICS wing — build + serialize, then
         #     # deserialize
         #     init!(_sam_q; remake=true,
         #         ignore_l0=false, remake_vsm=true)
