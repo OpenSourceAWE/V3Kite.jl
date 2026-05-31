@@ -69,3 +69,5 @@ examples_2d/LocalPreferences.toml
 settings.json
 .JETLSConfig.toml
 examples_2d/.CondaPkg/
+examples_2d/LocalPreferences.toml
+examples_2d/Project.toml
