@@ -109,9 +109,10 @@ julia --project -e 'using Pkg; Pkg.test()'
 
 ## Related Packages
 
-- [SymbolicAWEModels.jl](https://github.com/aenarete/SymbolicAWEModels.jl) — symbolic kite modeling
-- [VortexStepMethod.jl](https://github.com/aenarete/VortexStepMethod.jl) — aerodynamics
-- [KiteUtils.jl](https://github.com/aenarete/KiteUtils.jl) — shared utilities
+- [SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl) — symbolic kite modeling
+- [VortexStepMethod.jl](https://github.com/OpenSourceAWE/VortexStepMethod.jl) — aerodynamics
+- [AtmosphericModels.jl](https://github.com/OpenSourceAWE/AtmosphericModels.jl)
+- [KiteUtils.jl](https://github.com/OpenSourceAWE/KiteUtils.jl) — shared utilities
 
 ## License
 
