@@ -111,6 +111,10 @@ julia --project -e 'using Pkg; Pkg.test()'
 - [VortexStepMethod.jl](https://github.com/aenarete/VortexStepMethod.jl) — aerodynamics
 - [KiteUtils.jl](https://github.com/aenarete/KiteUtils.jl) — shared utilities
 
+## License
+
+This project is licensed under the MPL-2.0 License. The documentation is licensed under the CC-BY-4.0 License. Please see the below `Copyright notice`.
+
 ## Copyright notice
 
 Technische Universiteit Delft hereby disclaims all copyright interest in the package “V3Kite.jl” (model of the V3 kite) written by the Author(s).
@@ -118,7 +122,3 @@ Technische Universiteit Delft hereby disclaims all copyright interest in the pac
 Prof.dr. H.G.C. (Henri) Werij, Dean of Aerospace Engineering, Technische Universiteit Delft.
 
 See the copyright notices in the source files, and the list of authors in [AUTHORS.md](AUTHORS.md).
-
-## License
-
-MPL-2.0
