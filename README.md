@@ -1,5 +1,7 @@
 # V3Kite.jl
 
+[![Build Status](https://github.com/OpenSourceAWE/V3Kite.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/OpenSourceAWE/V3Kite.jl/actions/workflows/CI.yml?query=branch%3Amain)
+
 Julia package for simulation and validation of the TU Delft V3 leading edge
 inflatable (LEI) kite. Built on
 [SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl);
