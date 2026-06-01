@@ -33,6 +33,7 @@ the simulation options; bundled geometry and flight data live at
 
 > **First run is slow** (compilation + system build). Subsequent runs are
 > fast — keep the same REPL open across runs.
+
 You can make the first run much faster by using a custom system image. You can create it with the script `bin/create_system_image`. This requires up to 64GB RAM (for example 16GB physical RAM and a 48 GB swap file) and 30 min of time (on a laptop with a Ryzen 7840U CPU).
 
 ## Examples
