@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "V3Kite.jl"
+abstract: >
+  A Julia package for coupled aerodynamic-structural simulation and validation
+  of the TU Delft V3 leading-edge inflatable (LEI) kite.
+authors:
+  - family-names: Poland
+    given-names: Jelle A. W.
+    affiliation: "TU Delft"
+  - family-names: van de Lint
+    given-names: Bart
+    affiliation: "TU Delft"
+  - family-names: Fechner
+    given-names: Uwe
+license: MPL-2.0
+repository-code: "https://github.com/OpenSourceAWE/V3Kite.jl"
+date-released: "2026-01-01"
+preferred-citation:
+  type: conference-paper
+  title: "Coupled aerodynamic-structural simulation of a leading-edge inflatable kite: validating against flight test data"
+  authors:
+    - family-names: van de Lint
+      given-names: Bart
+    - family-names: Poland
+      given-names: Jelle A. W.
+  year: 2026
+  collection-title: "Journal of Physics: Conference Series"
+  volume: 3224
+  issue: 9
+  article-number: "092025"
+  doi: 10.1088/1742-6596/3224/9/092025
+  publisher:
+    name: "IOP Publishing"
+  license: "CC-BY-4.0"
+  url: "https://iopscience.iop.org/article/10.1088/1742-6596/3224/9/092025"
