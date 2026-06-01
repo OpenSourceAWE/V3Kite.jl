@@ -102,7 +102,7 @@ plot_body_frame_local(sys_struct; dir=:front)
 ## Testing
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.test()'
+julia --project -e 'using Pkg; Pkg.test()'
 ```
 
 ## Related Packages
