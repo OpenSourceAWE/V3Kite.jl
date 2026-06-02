@@ -56,6 +56,42 @@ interactive launcher with `examples/menu.jl`, or pick one from the table:
 Utilities (no simulation): `photogrammetry_aoa.jl`, `plot_wind_sources.jl`,
 `depower_drum_model.jl`.
 
+### Batch sweeps
+
+`batch_run_circles.jl` runs a grid of circular-flight sims (settle → ramp
+steering → early-stop on course-rate convergence), the study behind the second
+paper ([Citation](#citation)). Logs land in
+`processed_data/<batch_tag>/`; failures get listed in `failed_runs.txt`.
+Edit `defaults`/`sweeps`/`combine_all` at the bottom of the script to
+define the grid, then `include` it from the REPL:
+
+```julia
+include("examples/batch_run_circles.jl")
+include("examples/batch_load_circles.jl")
+```
+
+`batch_run_circles.jl` runs one full sim per grid point, so a large sweep can
+take a couple of hours.
+
+Keep working in the same REPL session (the one from Quick Start) — each fresh
+`julia` process re-runs precompilation, so staying in-session is much faster.
+`batch_load_circles.jl` prompts for a batch directory and emits
+`circles_batch_analysis.csv` plus the plot below.
+
+`|u_s · v_a|` vs `|χ̇|`, one dot per run, with each dot labelled by its swept
+value:
+
+<p align="center"><img src="docs/figures/circles_batch_usva_vs_course_rate.png" width="100%" alt="Batch scatter"></p>
+
+Legend — color marks which parameter was swept away from the baseline:
+
+- `defaults` — the baseline run (all parameters at their default).
+- `sweep us` — steering fraction.
+- `sweep up` — depower (power) fraction.
+- `sweep vw` — wind speed (m/s).
+- `sweep lt` — tether length (m).
+- `gk=… (defaults)` — turn-rate gain `G_k` fitted through the baseline run.
+
 ### Flight replay
 
 `flight_replay.jl` slices a maneuver from an EKF H5 by UTC, settles the wing
@@ -107,32 +143,6 @@ rows — e.g. `show_course`, `show_aoa`, `show_drag_coeff`, `show_lift_coeff`,
 `load_extra_points`. Depower tapes are calibrated on the straight-flight frame
 so the spanwise-mean angle of attack matches them.
 
-### Batch sweeps
-
-`batch_run_circles.jl` runs a grid of circular-flight sims (settle → ramp
-steering → early-stop on course-rate convergence). Logs land in
-`processed_data/<batch_tag>/`; failures get listed in `failed_runs.txt`.
-Edit `defaults`/`sweeps`/`combine_all` at the bottom of the script to
-define the grid, then `include` it from the REPL:
-
-```julia
-include("examples/batch_run_circles.jl")
-include("examples/batch_load_circles.jl")
-```
-
-`batch_run_circles.jl` runs one full sim per grid point, so a large sweep can
-take a couple of hours.
-
-Keep using the same REPL session you started for `flight_replay.jl` — each
-fresh `julia` process re-runs precompilation, so staying in-session is much
-faster. `batch_load_circles.jl` prompts for a batch directory and emits
-`circles_batch_analysis.csv` plus the plot below.
-
-`|u_s · v_a|` vs `|χ̇|`, one dot per run, colored by swept parameter; line is
-`G_k` fit on the default runs:
-
-<p align="center"><img src="docs/figures/circles_batch_usva_vs_course_rate.png" width="100%" alt="Batch scatter"></p>
-
 ## Calibration
 
 | Constant | Value | Meaning |
@@ -168,12 +178,19 @@ julia --project -e 'using Pkg; Pkg.test()'
 
 ## Citation
 
-If you use this package, please cite the paper it validates against:
+If you use this package, please cite both papers. The first covers the
+flight-test validation (see [Flight replay](#flight-replay)), the second the
+circular-flight simulations (see [Batch sweeps](#batch-sweeps)):
 
 > B. van de Lint and J. A. W. Poland, "Coupled aerodynamic-structural
 > simulation of a leading-edge inflatable kite: validating against flight test
 > data," *Journal of Physics: Conference Series*, vol. 3224, no. 9, p. 092025,
 > 2026. doi:[10.1088/1742-6596/3224/9/092025](https://iopscience.iop.org/article/10.1088/1742-6596/3224/9/092025)
+
+> J. A. W. Poland, B. van de Lint and R. Schmehl, "Dynamic aero-structural
+> coupled circular flight simulations of soft kites," *Journal of Physics:
+> Conference Series*, vol. 3224, no. 9, p. 092026, 2026.
+> doi:[10.1088/1742-6596/3224/9/092026](https://iopscience.iop.org/article/10.1088/1742-6596/3224/9/092026)
 
 ```bibtex
 @article{vandelint2026coupled,
@@ -187,6 +204,19 @@ If you use this package, please cite the paper it validates against:
   year      = {2026},
   publisher = {IOP Publishing},
   doi       = {10.1088/1742-6596/3224/9/092025},
+}
+
+@article{poland2026circular,
+  author    = {Poland, Jelle A. W. and van de Lint, Bart and Schmehl, Roland},
+  title     = {Dynamic aero-structural coupled circular flight simulations of
+               soft kites},
+  journal   = {Journal of Physics: Conference Series},
+  volume    = {3224},
+  number    = {9},
+  pages     = {092026},
+  year      = {2026},
+  publisher = {IOP Publishing},
+  doi       = {10.1088/1742-6596/3224/9/092026},
 }
 ```
 
