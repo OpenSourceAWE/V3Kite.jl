@@ -72,7 +72,7 @@ paper.
 
 #### Coupled model
 
-<img src="docs/figures/coupled_model_replay.png" width="60%" alt="Coupled model replay">
+<p align="center"><img src="docs/figures/coupled_model_replay.png" width="60%" alt="Coupled model replay"></p>
 
 VSM aerodynamics (10 sections, 36 panels, 19 polars at Re = 10⁶ with canopy
 billowing) coupled to a 44-point, 95-segment structural model with Dyneema
@@ -80,9 +80,9 @@ tethers. Symbolic ODEs via `ModelingToolkit.jl`, `FBDF` stiff solver.
 
 #### Trajectory and time series: drag slightly underestimated
 
-<img src="docs/figures/flight_replay_trajectory.png" width="60%" alt="Replay trajectory">
+<p align="center"><img src="docs/figures/flight_replay_trajectory.png" width="60%" alt="Replay trajectory"></p>
 
-<img src="docs/figures/flight_replay_panels.png" width="90%" alt="Replay panels">
+<p align="center"><img src="docs/figures/flight_replay_panels.png" width="90%" alt="Replay panels"></p>
 
 Orientations match closely at first; the simulated kite then accelerates a
 little, diverging in path through the turn. Course χ tracks well, but tether
@@ -95,7 +95,7 @@ turns, compensating for the kite's aerodynamic asymmetry.
 `G_k = χ̇ / (v_a · u_s)` relates course rate to airspeed and steering, fitted
 by least squares over the right turn:
 
-<img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course">
+<p align="center"><img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course"></p>
 
 #### Wing shape matches photogrammetry
 
@@ -104,10 +104,12 @@ photogrammetric mean angle of attack. Spanwise twist, simulation (blue) vs
 photogrammetry (orange), for straight flight (7182, left) and a right turn
 (7362, right):
 
+<p align="center">
 <table><tr>
 <td><img src="docs/figures/twist_dist_frame_7182.png" width="100%"></td>
 <td><img src="docs/figures/twist_dist_frame_7362.png" width="100%"></td>
 </tr></table>
+</p>
 
 The asymmetric twist from differential steering is reproduced; mean twist in
 the turn is slightly underestimated.
@@ -130,7 +132,7 @@ plots below.
 `|u_s · v_a|` vs `|χ̇|`, one dot per run, colored by swept parameter; line is
 `G_k` fit on the default runs:
 
-<img src="docs/figures/circles_batch_usva_vs_course_rate.png" width="100%" alt="Batch scatter">
+<p align="center"><img src="docs/figures/circles_batch_usva_vs_course_rate.png" width="100%" alt="Batch scatter"></p>
 
 ## Calibration
 
