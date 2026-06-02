@@ -72,7 +72,7 @@ paper.
 
 #### Coupled model
 
-<img src="docs/figures/coupled_model_replay.png" width="100%" alt="Coupled model replay">
+<img src="docs/figures/coupled_model_replay.png" width="60%" alt="Coupled model replay">
 
 VSM aerodynamics (10 sections, 36 panels, 19 polars at Re = 10⁶ with canopy
 billowing) coupled to a 44-point, 95-segment structural model with Dyneema
@@ -80,9 +80,9 @@ tethers. Symbolic ODEs via `ModelingToolkit.jl`, `FBDF` stiff solver.
 
 #### Trajectory and time series: drag slightly underestimated
 
-<img src="docs/figures/flight_replay_trajectory.png" width="100%" alt="Replay trajectory">
+<img src="docs/figures/flight_replay_trajectory.png" width="60%" alt="Replay trajectory">
 
-<img src="docs/figures/flight_replay_panels.png" width="100%" alt="Replay panels">
+<img src="docs/figures/flight_replay_panels.png" width="90%" alt="Replay panels">
 
 Orientations match closely at first; the simulated kite then accelerates a
 little, diverging in path through the turn. Course χ tracks well, but tether
@@ -95,7 +95,7 @@ turns, compensating for the kite's aerodynamic asymmetry.
 `G_k = χ̇ / (v_a · u_s)` relates course rate to airspeed and steering, fitted
 by least squares over the right turn:
 
-<img src="docs/figures/flight_replay_yaw_rate_course.png" width="100%" alt="Yaw rate vs course">
+<img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course">
 
 #### Wing shape matches photogrammetry
 
