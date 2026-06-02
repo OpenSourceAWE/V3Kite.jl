@@ -6,7 +6,7 @@
 Julia package for simulation and validation of the TU Delft V3 leading edge
 inflatable (LEI) kite. Built on
 [SymbolicAWEModels.jl](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl);
-ships calibration, model setup, CSV replay, and bundled V3 geometry.
+ships calibration, model setup, flight replay, and bundled V3 geometry.
 
 ## Installation
 
@@ -59,50 +59,36 @@ Utilities (no simulation): `photogrammetry_aoa.jl`, `plot_wind_sources.jl`,
 ### Flight replay
 
 `flight_replay.jl` slices a maneuver from an EKF H5 by UTC, settles the wing
-into the recorded conditions, then steps the simulator while feeding
-recorded steering/depower/tether inputs. A second `SymbolicAWEModel` driven
-straight from the EKF state is plotted alongside (solid: simulation, dashed:
-flight). Outputs land in `processed_data/`; PDFs go to `output/` when
-`SAVE_FIGS=true`. Toggles for maneuver, year, feedback gains, and tape
-reductions are at the top of the script.
-
-The figures below replay a 9-second straight-to-right-turn segment of the V3
-kite (Oct. 2025) from measured inputs — the validation from our Torque 2026
-paper.
-
-#### Coupled model
+into the recorded conditions, then steps the simulator while feeding recorded
+steering/depower/tether inputs. A second `SymbolicAWEModel` driven straight
+from the EKF state is replayed alongside. Outputs land in `processed_data/`;
+PDFs go to `output/` when `SAVE_FIGS=true`. Toggles for maneuver, year,
+feedback gains, and tape reductions are at the top of the script.
 
 <p align="center"><img src="docs/figures/coupled_model_replay.png" width="60%" alt="Coupled model replay"></p>
 
-VSM aerodynamics (10 sections, 36 panels, 19 polars at Re = 10⁶ with canopy
-billowing) coupled to a 44-point, 95-segment structural model with Dyneema
-tethers. Symbolic ODEs via `ModelingToolkit.jl`, `FBDF` stiff solver.
+```julia
+include("examples/flight_replay.jl")
+```
 
-#### Trajectory and time series: drag slightly underestimated
+The default run replays a 9 s straight-to-right-turn segment (V3 kite, Oct.
+2025), the validation case from the paper ([Citation](#citation)). Stay in the
+REPL afterwards: the script leaves a `plots` named tuple, so
+evaluating a field opens that figure (GLMakie). In every plot the **continuous
+line is the open-loop simulation** and the **dotted line is the flight data**.
+
+```julia
+plots.trajectory      # flight path, colored by kite speed
+plots.panels          # u_s, F_t, v_app, χ time series
+plots.yaw_fig_course  # turn rate vs |u_s · v_a|, with least-squares G_k fit
+plots.twist[7182]     # spanwise twist vs photogrammetry, keyed by video frame
+```
 
 <p align="center"><img src="docs/figures/flight_replay_trajectory.png" width="60%" alt="Replay trajectory"></p>
 
 <p align="center"><img src="docs/figures/flight_replay_panels.png" width="90%" alt="Replay panels"></p>
 
-Orientations match closely at first; the simulated kite then accelerates a
-little, diverging in path through the turn. Course χ tracks well, but tether
-force F_t and apparent wind v_app slightly exceed measured values — a minor
-underestimation of residual drag. A ~1.5° steering offset balances left/right
-turns, compensating for the kite's aerodynamic asymmetry.
-
-#### Turn rate gain agrees closely
-
-`G_k = χ̇ / (v_a · u_s)` relates course rate to airspeed and steering, fitted
-by least squares over the right turn:
-
 <p align="center"><img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course"></p>
-
-#### Wing shape matches photogrammetry
-
-Depower tapes are calibrated on the straight-flight frame (7182) to match the
-photogrammetric mean angle of attack. Spanwise twist, simulation (blue) vs
-photogrammetry (orange), for straight flight (7182, left) and a right turn
-(7362, right):
 
 <p align="center">
 <table><tr>
@@ -111,8 +97,15 @@ photogrammetry (orange), for straight flight (7182, left) and a right turn
 </tr></table>
 </p>
 
-The asymmetric twist from differential steering is reproduced; mean twist in
-the turn is slightly underestimated.
+**Add or remove panels.** The stacked time-series figure is built by
+`plot_2d_panels`; edit `panels_kwargs` near the bottom of the script to toggle
+rows — e.g. `show_course`, `show_aoa`, `show_drag_coeff`, `show_lift_coeff`,
+`show_lift_drag_ratio`.
+
+**Photogrammetry.** The twist overlays load from `frame_<N>.csv` files in
+`v3_data_path()`, auto-selected by the maneuver's UTC window and read via
+`load_extra_points`. Depower tapes are calibrated on the straight-flight frame
+so the spanwise-mean angle of attack matches them.
 
 ### Batch sweeps
 
@@ -120,14 +113,20 @@ the turn is slightly underestimated.
 steering → early-stop on course-rate convergence). Logs land in
 `processed_data/<batch_tag>/`; failures get listed in `failed_runs.txt`.
 Edit `defaults`/`sweeps`/`combine_all` at the bottom of the script to
-define the grid. Then:
+define the grid, then `include` it from the REPL:
 
-```bash
-julia --project=examples examples/batch_load_circles.jl
+```julia
+include("examples/batch_run_circles.jl")
+include("examples/batch_load_circles.jl")
 ```
 
-prompts for a batch directory and emits `circles_batch_analysis.csv` plus the
-plot below.
+`batch_run_circles.jl` runs one full sim per grid point, so a large sweep can
+take a couple of hours.
+
+Keep using the same REPL session you started for `flight_replay.jl` — each
+fresh `julia` process re-runs precompilation, so staying in-session is much
+faster. `batch_load_circles.jl` prompts for a batch directory and emits
+`circles_batch_analysis.csv` plus the plot below.
 
 `|u_s · v_a|` vs `|χ̇|`, one dot per run, colored by swept parameter; line is
 `G_k` fit on the default runs:
@@ -166,6 +165,32 @@ julia --project -e 'using Pkg; Pkg.test()'
 - [VortexStepMethod.jl](https://github.com/OpenSourceAWE/VortexStepMethod.jl) — aerodynamics
 - [AtmosphericModels.jl](https://github.com/OpenSourceAWE/AtmosphericModels.jl) — wind shear and turbulence models  
 - [KiteUtils.jl](https://github.com/OpenSourceAWE/KiteUtils.jl) — shared utilities
+
+## Citation
+
+If you use this package, please cite the paper it validates against:
+
+> B. van de Lint and J. A. W. Poland, "Coupled aerodynamic-structural
+> simulation of a leading-edge inflatable kite: validating against flight test
+> data," *Journal of Physics: Conference Series*, vol. 3224, no. 9, p. 092025,
+> 2026. doi:[10.1088/1742-6596/3224/9/092025](https://iopscience.iop.org/article/10.1088/1742-6596/3224/9/092025)
+
+```bibtex
+@article{vandelint2026coupled,
+  author    = {van de Lint, Bart and Poland, Jelle A. W.},
+  title     = {Coupled aerodynamic-structural simulation of a leading-edge
+               inflatable kite: validating against flight test data},
+  journal   = {Journal of Physics: Conference Series},
+  volume    = {3224},
+  number    = {9},
+  pages     = {092025},
+  year      = {2026},
+  publisher = {IOP Publishing},
+  doi       = {10.1088/1742-6596/3224/9/092025},
+}
+```
+
+See [`CITATION.cff`](CITATION.cff) for machine-readable metadata.
 
 ## License
 
