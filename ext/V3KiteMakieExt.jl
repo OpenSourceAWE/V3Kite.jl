@@ -268,7 +268,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
         # Update pos_b for PARTICLE_DYNAMICS wing points
         for wing in wings
-            if wing.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS
+            if wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
                 wing.pos_w .= points[1].pos_w
                 for point in points
@@ -718,7 +718,7 @@ function V3Kite.plot_twist_dist(sys_structs;
 
         # Update pos_b for PARTICLE_DYNAMICS wing points
         for wing in sys_struct.wings
-            if wing.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS
+            if wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS
                 R_w_b = V3Kite.calc_R_b_w(sys_struct)'
                 wing.pos_w .= points[1].pos_w
                 for point in points
