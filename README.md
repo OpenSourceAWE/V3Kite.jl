@@ -127,7 +127,7 @@ julia --project=examples examples/batch_load_circles.jl
 ```
 
 prompts for a batch directory and emits `circles_batch_analysis.csv` plus the
-plots below.
+plot below.
 
 `|u_s · v_a|` vs `|χ̇|`, one dot per run, colored by swept parameter; line is
 `G_k` fit on the default runs:
