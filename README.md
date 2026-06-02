@@ -61,10 +61,60 @@ Utilities (no simulation): `photogrammetry_aoa.jl`, `plot_wind_sources.jl`,
 `flight_replay.jl` slices a maneuver from an EKF H5 by UTC, settles the wing
 into the recorded conditions, then steps the simulator while feeding
 recorded steering/depower/tether inputs. A second `SymbolicAWEModel` driven
-straight from the EKF state is plotted alongside. Outputs land in
-`processed_data/`; PDFs go to `output/` when `SAVE_FIGS=true`. Toggles for
-maneuver, year, feedback gains, and tape reductions are at the top of the
-script.
+straight from the EKF state is plotted alongside (solid: simulation, dashed:
+flight). Outputs land in `processed_data/`; PDFs go to `output/` when
+`SAVE_FIGS=true`. Toggles for maneuver, year, feedback gains, and tape
+reductions are at the top of the script.
+
+The figures below replay a 9-second straight-to-right-turn segment of the V3
+kite (Oct. 2025) from measured inputs — the validation from our Torque 2026
+paper.
+
+#### Coupled model
+
+![Coupled model replay](docs/figures/coupled_model_replay.png)
+
+VSM aerodynamics (10 sections, 36 panels, 19 polars at Re = 10⁶ with canopy
+billowing) coupled to a 44-point, 95-segment structural model with Dyneema
+tethers. Symbolic ODEs via `ModelingToolkit.jl`, `FBDF` stiff solver.
+
+#### Trajectory and time series: drag slightly underestimated
+
+![Replay trajectory](docs/figures/flight_replay_trajectory.png)
+
+![Replay panels](docs/figures/flight_replay_panels.png)
+
+Orientations match closely at first; the simulated kite then accelerates a
+little, diverging in path through the turn. Course χ tracks well, but tether
+force F_t and apparent wind v_app slightly exceed measured values — a minor
+underestimation of residual drag. A ~1.5° steering offset balances left/right
+turns, compensating for the kite's aerodynamic asymmetry.
+
+#### Turn rate gain agrees closely
+
+`G_k = χ̇ / (v_a · u_s)` relates course rate to airspeed and steering, fitted
+by least squares over the right turn:
+
+| | Simulation | Flight data |
+|---|---|---|
+| `G_k` (course-based) | 0.202 | 0.239 |
+
+![Yaw rate vs course](docs/figures/flight_replay_yaw_rate_course.png)
+
+#### Wing shape matches photogrammetry
+
+Depower tapes are calibrated on the straight-flight frame (7182) to match the
+photogrammetric mean angle of attack. Spanwise twist, simulation (blue) vs
+photogrammetry (orange), for straight flight (7182, left) and a right turn
+(7362, right):
+
+<table><tr>
+<td><img src="docs/figures/twist_dist_frame_7182.png" width="100%"></td>
+<td><img src="docs/figures/twist_dist_frame_7362.png" width="100%"></td>
+</tr></table>
+
+The asymmetric twist from differential steering is reproduced; mean twist in
+the turn is slightly underestimated.
 
 ### Batch sweeps
 
@@ -78,8 +128,17 @@ define the grid. Then:
 julia --project=examples examples/batch_load_circles.jl
 ```
 
-prompts for a batch directory and emits `circles_batch_analysis.csv` plus a
-`|u_s · v_a|` vs `|χ̇|` scatter.
+prompts for a batch directory and emits `circles_batch_analysis.csv` plus the
+plots below.
+
+`|u_s · v_a|` vs `|χ̇|`, one dot per run, colored by swept parameter; line is
+`G_k` fit on the default runs:
+
+![Batch scatter](docs/figures/circles_batch_usva_vs_course_rate.png)
+
+Apparent wind `v_app` vs each sweep parameter, normalized by its default:
+
+![v_app sweeps](docs/figures/circles_batch_v_app_sweeps.png)
 
 ## Calibration
 
