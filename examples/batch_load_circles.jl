@@ -713,7 +713,8 @@ function main()
     @info "Saving plot" path=plot_path
     save(plot_path, fig)
     display(fig)
+    return fig
 end
 
-main()
+batch_fig = main()
 nothing
