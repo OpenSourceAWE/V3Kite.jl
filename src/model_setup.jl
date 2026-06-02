@@ -99,17 +99,24 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
 end
 
 """
-    set_v3_body_damping!(sys, body_damping, point_37_38_damping)
+    set_v3_body_damping!(sys, body_damping, body_damping_delta;
+                         baseline_points=1:38)
 
-Apply the V3 two-region body-frame damping pattern: `body_damping`
-on points 1:38 and the `point_37_38_damping` override on 37:38.
+Apply `body_damping` to `baseline_points`. If
+`body_damping_delta::Tuple{Vector{Int},Vector{Float64}}` is
+given as `(points, delta)`, the listed points get
+`body_damping .+ delta`. Pass `nothing` for no delta.
 """
 function set_v3_body_damping!(sys, body_damping,
-                              point_37_38_damping)
+                              body_damping_delta::Union{Nothing,Tuple};
+                              baseline_points=1:38)
     SymbolicAWEModels.set_body_frame_damping(
-        sys, body_damping, 1:38)
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, point_37_38_damping, 37:38)
+        sys, body_damping, baseline_points)
+    if !isnothing(body_damping_delta)
+        pts, delta = body_damping_delta
+        SymbolicAWEModels.set_body_frame_damping(
+            sys, body_damping .+ delta, pts)
+    end
     return nothing
 end
 

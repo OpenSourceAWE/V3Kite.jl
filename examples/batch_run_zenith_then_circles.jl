@@ -42,7 +42,7 @@ function run_zenith_circles(;
         sim_time_zenith = 10.0, fps_zenith = 1,
         sim_time_circles = 0.0, fps_circles = 1,
         body_damping = [0.0, 0.0, 20.0],
-        point_37_38_damping = [0.0, 20.0, 20.0],
+        body_damping_delta = ([37, 38], [0.0, 20.0, 20.0]),
         udp = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
@@ -77,15 +77,14 @@ function run_zenith_circles(;
         g_earth = g_earth,
         kcu_mass = kcu_mass,
         body_damping = body_damping .* 2.0,
-        body_damping_overrides = [
-            (37:38, point_37_38_damping .* 2.0),
-        ],
+        body_damping_delta = (body_damping_delta[1],
+            body_damping_delta[2] .* 2.0),
         geom = V3GeomAdjustConfig(tether_length = tether_length),
         num_steps = 400, num_substeps = 5, dt = 0.001,
         start_depower = 40.0,
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
-        world_damping = 0.0, min_damping = 0.0,
+        initial_damping = 0.0,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -104,7 +103,7 @@ function run_zenith_circles(;
 
     set_v3_body_damping!(
         sys, body_damping,
-        point_37_38_damping
+        body_damping_delta
     )
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
@@ -303,7 +302,7 @@ ramp_time_us = 2
 fps_zenith = 360
 fps_circles = 360
 body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 20.0, 20.0]
+body_damping_delta = ([37, 38], [0.0, 20.0, 20.0])
 
 const failed_runs = NamedTuple[]
 
@@ -322,7 +321,7 @@ for (run_id, (elev, g, us, udp, vw, lt, kcu_mass_val)) in enumerate(
             elevation = elev, g_earth = g,
             kcu_mass = kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            body_damping, point_37_38_damping,
+            body_damping, body_damping_delta,
             max_us_zenith, target_azimuth = 0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us = us,

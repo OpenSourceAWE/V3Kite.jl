@@ -43,7 +43,7 @@ REMAKE_SETTLE = true
 IS_VISUALIZE_SETTLE = false #TODO: new flag
 IS_WITH_ONE_SHOT_ADJUST_POS_VEL_ORIENT = false #TODO: new flag
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -16.0
+DEPOWER_OFFSET_2025 = -20.0
 STEERING_MULTIPLIER = 1.0
 EXTRA_WING_DRAG_COEFF = 0.0
 HEADING_KP = 0.0
@@ -59,7 +59,7 @@ BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-POINT_37_38_DAMPING = [0.0, 20.0, 20.0] # part of wing so is identical between old&new yaml
+BODY_DAMPING_DELTA = ([34, 35, 36, 37, 38, 39, 40], [0.0, 20.0, 20.0])
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 REPLAY_LOG_DIR = joinpath(dirname(@__DIR__), "processed_data")
@@ -274,19 +274,18 @@ function run_physics_replay(h5_path;
         source_struc_path=DEFAULT_STRUC_GEOM_YAML,
         source_aero_path=DEFAULT_AERO_GEOM_YAML,
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
-        world_damping=100.0,
+        initial_damping=[30, 60, 120],
         decay_steps=400,
         body_damping=BODY_DAMPING * 2.0,
-        body_damping_overrides=[
-            (37:38, POINT_37_38_DAMPING * 2.0)],
-        min_damping=0.0,
+        body_damping_delta=(BODY_DAMPING_DELTA[1],
+            BODY_DAMPING_DELTA[2] * 2.0),
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
         num_steps=800,
         num_substeps=5,
         start_depower=nothing,
-        course_correction_gain=0.02,
+        course_correction_gain=0.05,
         course_correction_mode=:heading,
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
@@ -401,7 +400,7 @@ function run_physics_replay(h5_path;
         last_report_time = replay_start
         last_report_sim = 0.0
         sys = sam.sys_struct
-        set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
+        set_v3_body_damping!(sys, BODY_DAMPING, BODY_DAMPING_DELTA)
         distribute_wing_mass!(sys, 11.0; dist=0.5)
         distribute_wing_drag!(sys,
             sys.wings[1].vsm_aero.projected_area,
