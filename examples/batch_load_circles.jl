@@ -558,7 +558,7 @@ function plot_usva_vs_course_rate(rows;
                    if isfinite(r.usva) &&
                       isfinite(r.course_rate)]
 
-    fig = Figure(size=(600, 400))
+    fig = Figure(size=(900, 600))
     ax = Axis(fig[1, 1];
         xlabel=L"|u_{\text{s}} \cdot v_{\text{a}}| \; [m/s]",
         ylabel=L"|\dot{\chi}| \; [rad/s]",
