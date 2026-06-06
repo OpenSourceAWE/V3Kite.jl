@@ -350,7 +350,6 @@ function run_physics_replay(h5_path;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
     data_sam = SymbolicAWEModel(set, data_struct)
-    data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam)
     data_state = SysState(data_sam)

@@ -112,7 +112,6 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     sam = SymbolicAWEModel(set, sys)
 
     if !isempty(sys.tethers)
-        sys.tethers[1].init_unstretched_len = config.tether_length
         sys.tethers[1].init_stretched_len = config.tether_length
     end
 

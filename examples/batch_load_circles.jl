@@ -673,17 +673,12 @@ function main()
     isempty(log_names) && error("No logs in: $batch_dir")
 
     rows = NamedTuple[]
-    sys_cache = Dict{Tuple{Int,Int},
-        SymbolicAWEModels.SystemStructure}()
+    sys = build_sys()
 
     for log_name in log_names
         tags = parse_up_us_vw_lt(log_name)
         tags === nothing && continue
         up, us, vw, lt = tags
-        sys = get!(sys_cache, (vw, lt)) do
-            build_sys(v_wind=Float64(vw),
-                tether_length=Float64(lt))
-        end
         lg = load_log(log_name; path=batch_dir)
         m = analyze_log(lg, sys)
         push!(rows, (
