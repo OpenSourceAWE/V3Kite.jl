@@ -304,7 +304,7 @@ groups:
 # winch_point moved to Winch in v0.8.0
 
 tethers:
-  headers: [idx, start_point, end_point, n_segments, material, diameter_mm, init_unstretched_length]
+  headers: [idx, start_point, end_point, n_segments, material, diameter_mm, init_stretched_length]
   data:
     - [1, 1, 39, 6, dyneema, .nan, 100.0]  # diameter_mm: .nan → use set.d_tether
 
