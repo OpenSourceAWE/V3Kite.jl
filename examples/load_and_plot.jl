@@ -106,12 +106,8 @@ end
 function print_and_plot_wing(lg, sam; is_print=false)
     lg_last = lg.syslog[end]
     wing = sam.sys_struct.wings[1]
-    origin_idx = wing.origin_idx
-    origin_w = [
-        lg_last.X[origin_idx],
-        lg_last.Y[origin_idx],
-        lg_last.Z[origin_idx],
-    ]
+    V3Kite.SymbolicAWEModels.update_from_sysstate!(sam.sys_struct, lg_last)
+    origin_w = collect(wing.pos_w)
     R_b_w = V3Kite.SymbolicAWEModels.quaternion_to_rotation_matrix(
         lg_last.orient)
     wing_point_idxs = [
