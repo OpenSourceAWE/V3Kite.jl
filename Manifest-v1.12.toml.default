@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.6"
+julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "44c40ea08500148d456d13555c9d834345a11329"
+project_hash = "e7c569115802222a03cc013751bddce0244f5d42"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -2158,9 +2158,9 @@ version = "0.2.8"
 
 [[deps.SymbolicAWEModels]]
 deps = ["AtmosphericModels", "CodecZlib", "ControlSystemsBase", "DataInterpolations", "Dates", "DocStringExtensions", "ForwardDiff", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "Logging", "ModelingToolkit", "NonlinearSolve", "NonlinearSolveQuasiNewton", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqNonlinearSolve", "Parameters", "Pkg", "PrecompileTools", "Printf", "RecipesBase", "SHA", "Serialization", "StaticArrays", "Statistics", "SteadyStateDiffEq", "Suppressor", "SymbolicIndexingInterface", "SymbolicUtils", "Symbolics", "TOML", "Tar", "Timers", "UnPack", "VortexStepMethod", "YAML"]
-git-tree-sha1 = "9417e6994c671720a86a7884a5af4ede8302e711"
+git-tree-sha1 = "a56c693cb58fb54f4f872c435af16b2b1f60aa83"
 uuid = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
-version = "0.10.0"
+version = "0.11.0"
 
     [deps.SymbolicAWEModels.extensions]
     SymbolicAWEModelsMakieExt = ["GeometryBasics", "Makie"]
