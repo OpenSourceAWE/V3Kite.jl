@@ -150,14 +150,6 @@ fi
 
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    # Avoid Tk backend issues on macOS (e.g. non-responsive close button in PyPlot windows).
-    # Keep user override if MPLBACKEND is already set.
-    if [[ -z "${MPLBACKEND:-}" ]]; then
-        export MPLBACKEND=qtagg
-    fi
-fi
-
 # Detect current git branch
 if [ -d .git ] || git rev-parse --git-dir > /dev/null 2>&1 ; then
     branch=$(git rev-parse --abbrev-ref HEAD | sed 's/\//-/g')
@@ -404,29 +396,6 @@ else
     echo "Removed manifest from examples/ (not needed for Julia ${julia_major})"
 fi
 
-# Instantiate sub-project: examples_2d
-if [[ $julia_major == "1.11" ]]; then
-    echo "Instantiating examples_2d project for Julia $julia_major..."
-    rm -f examples_2d/Manifest-v1.11.toml examples_2d/Manifest.toml
-    cp Manifest-v1.11.toml examples_2d/Manifest-v1.11.toml
-    _ec=0; run_resolve_with_retry "examples_2d" 0 || _ec=$?
-    if [[ $_ec -eq 2 ]]; then RETRIED_RESOLVES+=("examples_2d (1.11)")
-    elif [[ $_ec -ne 0 ]]; then FAILED_RESOLVES+=("examples_2d (1.11)"); fi
-    echo "Precompiling examples_2d project..."
-    julia --project=examples_2d -e 'using Pkg; Pkg.precompile()'
-else
-    echo "Julia $julia_major: instantiating examples_2d project..."
-    rm -f "examples_2d/Manifest-v${julia_major}.toml" examples_2d/Manifest.toml
-    _ec=0; run_resolve_with_retry "examples_2d" 0 || _ec=$?
-    if [[ $_ec -eq 2 ]]; then RETRIED_RESOLVES+=("examples_2d (1.12)")
-    elif [[ $_ec -ne 0 ]]; then FAILED_RESOLVES+=("examples_2d (1.12)"); fi
-    echo "Precompiling examples_2d project..."
-    julia --project=examples_2d -e 'using Pkg; Pkg.precompile()'
-    # Julia 1.12: do not keep a manifest in the examples_2d folder
-    rm -f "examples_2d/Manifest-v${julia_major}.toml" examples_2d/Manifest.toml
-    echo "Removed manifest from examples_2d/ (not needed for Julia ${julia_major})"
-fi
-
 echo
 if [[ ${#FAILED_RESOLVES[@]} -eq 0 && ${#RETRIED_RESOLVES[@]} -eq 0 ]]; then
     echo "Resolve/instantiate report: all resolve calls succeeded on the first attempt."
@@ -453,9 +422,7 @@ fi
 julia --startup-file=no --project -e "using Pkg; Pkg.resolve(), Pkg.instantiate(); Pkg.precompile()"
 julia --startup-file=no --project -e "using KiteUtils, V3Kite"
 julia --startup-file=no --project=examples -e "using Pkg; Pkg.resolve(), Pkg.instantiate(); Pkg.precompile()"
-julia --startup-file=no --project=examples -e "using V3Kite, GLMakie, VortexStepMethod, KiteUtils, CSV, DataFrames"
-julia --startup-file=no --project=examples_2d -e "using Pkg; Pkg.resolve(), Pkg.instantiate(); Pkg.precompile()"
-julia --startup-file=no --project=examples_2d -e "using V3Kite, VortexStepMethod, KiteUtils, CSV, DataFrames"
+julia --startup-file=no --project=examples -e "using V3Kite, GLMakie, MakieControlPlots, VortexStepMethod, KiteUtils, CSV, DataFrames"
 
 echo
 printf "\033[1;32mInstallation complete!\033[0m\n"

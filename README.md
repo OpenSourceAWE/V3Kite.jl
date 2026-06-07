@@ -44,7 +44,7 @@ interactive launcher with `examples/menu.jl`, or pick one from the table:
 | # | Script | What it does |
 |---|--------|--------------|
 | 1 | `v3kite.jl` | Hello-world: heading PID + 3D replay. Start here. |
-| 2 | `examples_2d/reel_out_v3.jl` | Single reel-out maneuver, 2D ControlPlots. |
+| 2 | `reel_out_v3.jl` | Single reel-out maneuver, 2D Makie plots. |
 | 3 | `realtime.jl` | Keyboard-controlled simulation (arrows steer/depower, ESC stops). |
 | 4 | `open_loop.jl` | Settle in power zone, then ramped open-loop steering. |
 | 5 | **`flight_replay.jl`** | Replays real EKF flight data through the simulator. See below. |

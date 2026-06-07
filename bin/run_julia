@@ -6,8 +6,6 @@ if [[ $(basename $(pwd)) == "bin" ]]; then
     cd ..
 fi
 
-. "bin/setup_env"  # Sets JULIA_PYTHONCALL_EXE (CondaPkg) or JULIA_CONDAPKG_BACKEND=Null (system Python).
-
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
 # --kaimon forces kaimon on and skips autodetection; remaining args go to Julia.

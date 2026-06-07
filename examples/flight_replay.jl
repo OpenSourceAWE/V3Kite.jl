@@ -18,6 +18,7 @@ using V3Kite
 using VortexStepMethod
 using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
+using GLMakie: save
 using CairoMakie
 GLMakie.activate!()
 using Statistics
@@ -132,7 +133,7 @@ function update_vel_from_csv!(sys, row,
 
     # Speed-controlled winch
     winch = sys.winches[1]
-    winch.speed_controlled = true
+    winch.brake = true
     winch.vel = row.tether_vel
     sys.tethers[1].len = row.tether_len
     sys.tethers[1].stretched_len = row.tether_len

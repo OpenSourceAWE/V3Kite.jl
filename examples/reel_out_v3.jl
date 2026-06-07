@@ -16,7 +16,7 @@ using V3Kite
 using V3Kite.KitePodModels
 using VortexStepMethod
 using LinearAlgebra
-using ControlPlots
+using MakieControlPlots
 using Printf
 toc("Loaded packages")
 
