@@ -29,6 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install GLMakie system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xorg-dev mesa-utils libgl1 freeglut3-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            xsettingsd x11-xserver-utils
+
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
@@ -40,6 +47,7 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           coverage: true
+          prefix: xvfb-run -a
 
       - uses: julia-actions/julia-processcoverage@v1
 
