@@ -30,7 +30,7 @@ using GLMakie
 PROJECT_DIR = dirname(@__DIR__)
 
 BATCH_DATA_PATH = joinpath(PROJECT_DIR, "processed_data",
-    "circles_batch_2026_05_30_22_18_57")
+    "circles_batch_2026_06_07_11_57_27")
 DEFAULT_STRUC_YAML_PATH = joinpath(PROJECT_DIR, "data/python_yamls/struc_geometry_julia_generated.yaml")
 DEFAULT_AERO_YAML_PATH = joinpath(PROJECT_DIR, "data/aero_geometry.yaml")
 DEFAULT_VSM_SETTINGS_PATH = joinpath(PROJECT_DIR, "data/vsm_settings.yaml")

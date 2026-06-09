@@ -36,6 +36,7 @@ Base.@kwdef mutable struct V3SettleConfig
     # Flight condition
     v_wind::Float64 = 10.72
     tether_length::Float64 = 240.0
+    d_tether::Union{Nothing,Float64} = nothing
     g_earth::Float64 = 9.81
     kcu_mass::Union{Nothing,Float64} = nothing
 
@@ -127,6 +128,9 @@ function settle_wing(config::V3SettleConfig, init_row;
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
               "_lt$(Int(round(config.tether_length)))" *
               "_g$(Int(round(config.g_earth * 10)))"
+    if !isnothing(config.d_tether)
+        suffix *= "_dt$(Int(round(config.d_tether * 10)))"
+    end
     if !isnothing(config.kcu_mass)
         suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
     end
@@ -173,6 +177,9 @@ function settle_wing(config::V3SettleConfig, init_row;
     set = Settings("system.yaml")
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
+    if !isnothing(config.d_tether)
+        set.d_tether = config.d_tether
+    end
     set.g_earth = config.g_earth
     set.profile_law = 0
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
@@ -217,6 +224,9 @@ function _setup_settling_model(config::V3SettleConfig;
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
+    if !isnothing(config.d_tether)
+        set.d_tether = config.d_tether
+    end
     set.profile_law = 0
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)

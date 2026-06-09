@@ -29,7 +29,8 @@ using Dates
 # these are 2019 and 2025 averages, except for elevation & udp that is.
 defaults = (
     elevation=35, g_earth=0.0,
-    us=0.05, udp=0.235, vw=8.0, lt=270, kcu_mass=22.65,
+    us=0.05, udp=0.235, vw=8.0, lt=270,
+    d_tether=13.5, kcu_mass=22.65,
 )
 sweeps = nothing
 # combine_all = (
@@ -204,7 +205,8 @@ function run_circles(;
     ramp_time_us=25.0,
     us=0.1,
     v_wind=15.4, v_wind_base=15.0,
-    tether_length=150.0, elevation=nothing,
+    tether_length=150.0, d_tether=nothing,
+    elevation=nothing,
     g_earth=9.81,
     kcu_mass=nothing,
     stop_window_sec=COURSE_RATE_WINDOW_SEC,
@@ -232,6 +234,7 @@ function run_circles(;
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=v_wind,
         tether_length=tether_length,
+        d_tether=d_tether,
         g_earth=g_earth,
         kcu_mass=kcu_mass,
         body_damping=body_damping .* 2.0,
@@ -395,12 +398,15 @@ function run_circles(;
     udp_t = Int(round(udp * 100))
     us_t = Int(round(us * 100))
     vw_t = Int(round(v_wind))
+    dt_t = isnothing(d_tether) ? "yaml" :
+           Int(round(d_tether * 10))
     el_t = elevation !== nothing ?
            Int(round(elevation)) : "yaml"
     g_t = g_earth !== nothing ?
           Int(round(g_earth * 10)) : "yaml"
     ln = "circles__udp_$(udp_t)_us_$(us_t)" *
          "_vw_$(vw_t)_lt_$(lt_tag)" *
+         "_dt_$(dt_t)" *
          "_el_$(el_t)_g_$(g_t)"
     if !isempty(run_tag)
         ln *= "_" * run_tag
@@ -415,6 +421,26 @@ end
 # =============================================================================
 # Batch sweep 1: 2019 kite parameters
 # =============================================================================
+defaults = (
+    elevation=35, g_earth=0.0,
+    us=0.05, udp=0.235, vw=8.4, lt=269,
+    d_tether=10, kcu_mass=22.0,)
+sweeps = nothing
+# combine_all = (
+#     us=[0.05, 0.1, 0.15],
+#     udp=[0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42],
+# )
+# #TODO: when you are done you will still need to do:
+# udp = [0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43]
+# us = 0.075
+#combine_all = (
+#    us=[0.05, 0.1, 0.125, 0.15],
+#    udp=[0.27, 0.31, 0.35, 0.39, 0.43],
+#)
+combine_all = (
+    us=[0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18],
+    udp=[0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43],
+)
 
 function generate_run_combos(defaults::NamedTuple,
     sweeps=nothing, combine_all=nothing)
@@ -466,11 +492,12 @@ const failed_runs = NamedTuple[]
 
 for (run_id, p) in enumerate(combos)
     run_tag = "run_" * lpad(string(run_id), 3, '0')
-    @info "Starting run" run_id elevation = p.elevation g_earth = p.g_earth us = p.us udp = p.udp vw = p.vw lt = p.lt kcu_mass = p.kcu_mass
+    @info "Starting run" run_id elevation = p.elevation g_earth = p.g_earth us = p.us udp = p.udp vw = p.vw lt = p.lt d_tether = p.d_tether kcu_mass = p.kcu_mass
     try
         run_circles(;
             v_wind=p.vw, v_wind_base=p.vw,
             udp=p.udp, tether_length=p.lt,
+            d_tether=p.d_tether,
             elevation=p.elevation, g_earth=p.g_earth,
             kcu_mass=p.kcu_mass,
             body_damping, point_37_38_damping,
@@ -499,6 +526,7 @@ if !isempty(failed_runs)
                         "el=$(fr.elevation), g=$(fr.g_earth), " *
                         "us=$(fr.us), udp=$(fr.udp), " *
                         "vw=$(fr.vw), lt=$(fr.lt), " *
+                        "d_tether=$(fr.d_tether), " *
                         "kcu_mass=$(fr.kcu_mass)")
             println(io, "  Error: $(fr.error)")
         end
@@ -508,63 +536,121 @@ end
 
 @info "Batch 1 completed" total = length(combos) failed = length(failed_runs)
 
-#TODO: check updates from above to complete the below when you start using it
-# # =============================================================================
-# # Batch sweep 2: 2025 kite parameters
-# # =============================================================================
 
-# elevation_vals = [
-#     20, 25, 30, 35, 45, 50, 55, 60, 65, 70, 75, 80, 85]
-# g_earth_vals = [0.0]
-# us_vals = [0.0]
-# udp_vals = [0.42]
-# vw_vals = [7.8, 19.7]
-# lt_vals = [262]
+# =============================================================================
+# Batch sweep 1: 2025 kite parameters
+# =============================================================================
+defaults = (
+    elevation=35, g_earth=0.0,
+    us=0.05, udp=0.235, vw=7.6, lt=271,
+    d_tether=13.5, kcu_mass=23.3,
+)
+sweeps = nothing
+# combine_all = (
+#     us=[0.05, 0.1, 0.15],
+#     udp=[0.18, 0.2, 0.22, 0.24, 0.26, 0.28, 0.3, 0.32, 0.34, 0.36, 0.38, 0.4, 0.42],
+# )
+# #TODO: when you are done you will still need to do:
+# udp = [0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43]
+# us = 0.075
+#combine_all = (
+#    us=[0.05, 0.1, 0.125, 0.15],
+#    udp=[0.27, 0.31, 0.35, 0.39, 0.43],
+#)
+combine_all = (
+    us=[0.04, 0.06, 0.08, 0.1, 0.12, 0.14, 0.16, 0.18],
+    udp=[0.19, 0.23, 0.27, 0.31, 0.35, 0.39, 0.43],
+)
+function generate_run_combos(defaults::NamedTuple,
+    sweeps=nothing, combine_all=nothing)
+    sw = sweeps === nothing ? NamedTuple() : sweeps
+    ca = combine_all === nothing ? NamedTuple() : combine_all
+    variants = NamedTuple[defaults]
+    for param in keys(sw)
+        for v in sw[param]
+            cand = merge(defaults,
+                NamedTuple{(param,)}((v,)))
+            isequal(cand, defaults) && continue
+            any(isequal(cand), variants) && continue
+            push!(variants, cand)
+        end
+    end
+    isempty(ca) && return variants
+    ca_keys = keys(ca)
+    ca_iter = Iterators.product(
+        (ca[k] for k in ca_keys)...)
+    combos = NamedTuple[]
+    for cav in ca_iter
+        ca_nt = NamedTuple{ca_keys}(cav)
+        for var in variants
+            push!(combos, merge(var, ca_nt))
+        end
+    end
+    return combos
+end
 
-# batch_tag = "circles_2025_batch_" *
-#             Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS")
+batch_dir = joinpath("processed_data", batch_tag)
+isdir(batch_dir) || mkpath(batch_dir)
+@info "Batch output directory" batch_dir
 
-# failed_runs = NamedTuple[]
+sim_time_circles = 200
+ramp_time_us = 2
 
-# for (run_id, (elev, g, us, udp, vw, lt)) in enumerate(
-#     Iterators.product(elevation_vals, g_earth_vals,
-#         us_vals, udp_vals, vw_vals, lt_vals))
-#     run_tag = "run_" * lpad(string(run_id), 3, '0')
-#     @info "Starting run" run_id elevation = elev g_earth = g us udp vw lt
-#     try
-#         run_circles(;
-#             v_wind=vw, v_wind_base=vw,
-#             udp=udp, tether_length=lt,
-#             elevation=elev, g_earth=g,
-#             sim_time_circles, fps_circles,
-#             ramp_time_us, us=us,
-#             save_subdir=batch_tag, run_tag)
-#         @info "Completed" run_id
-#     catch err
-#         @error "Failed" run_id err
-#         push!(failed_runs, (run_id=run_id,
-#             elevation=elev, g_earth=g,
-#             us=us, udp=udp, vw=vw, lt=lt, error=err))
-#     end
-#     GC.gc()
-# end
+fps_circles = 200
+body_damping = [0.0, 0.0, 20.0]
+point_37_38_damping = [0.0, 20.0, 20.0]
+remake_settle = IS_REMAKE_SETTLE
+visualize_settle = IS_VISUALIZE_SETTLE
+debug_on_failure = true
+replay_on_failure = false
 
-# if !isempty(failed_runs)
-#     fp = joinpath("processed_data",
-#         batch_tag, "failed_runs.txt")
-#     open(fp, "w") do io
-#         for fr in failed_runs
-#             println(io, "Run $(fr.run_id): " *
-#                         "el=$(fr.elevation), g=$(fr.g_earth), " *
-#                         "us=$(fr.us), udp=$(fr.udp), " *
-#                         "vw=$(fr.vw), lt=$(fr.lt)")
-#             println(io, "  Error: $(fr.error)")
-#         end
-#     end
-#     @info "Wrote failure list" path = fp
-# end
+combos = generate_run_combos(defaults, sweeps, combine_all)
+@info "Batch combos generated" n = length(combos)
 
-# n_total = length(collect(Iterators.product(
-#     elevation_vals, g_earth_vals,
-#     us_vals, udp_vals, vw_vals, lt_vals)))
-# @info "Batch 2 completed" total = n_total failed = length(failed_runs)
+const failed_runs = NamedTuple[]
+
+for (run_id, p) in enumerate(combos)
+    run_tag = "run_" * lpad(string(run_id), 3, '0')
+    @info "Starting run" run_id elevation = p.elevation g_earth = p.g_earth us = p.us udp = p.udp vw = p.vw lt = p.lt d_tether = p.d_tether kcu_mass = p.kcu_mass
+    try
+        run_circles(;
+            v_wind=p.vw, v_wind_base=p.vw,
+            udp=p.udp, tether_length=p.lt,
+            d_tether=p.d_tether,
+            elevation=p.elevation, g_earth=p.g_earth,
+            kcu_mass=p.kcu_mass,
+            body_damping, point_37_38_damping,
+            sim_time_circles, fps_circles,
+            ramp_time_us, us=p.us,
+            remake_settle,
+            visualize_settle,
+            debug_on_failure,
+            replay_on_failure,
+            save_subdir=batch_tag,
+            run_tag)
+        @info "Completed" run_id
+    catch err
+        @error "Failed" run_id err
+        push!(failed_runs, merge((run_id=run_id,), p,
+            (error=err,)))
+    end
+    GC.gc()
+end
+
+if !isempty(failed_runs)
+    fp = joinpath(batch_dir, "failed_runs.txt")
+    open(fp, "w") do io
+        for fr in failed_runs
+            println(io, "Run $(fr.run_id): " *
+                        "el=$(fr.elevation), g=$(fr.g_earth), " *
+                        "us=$(fr.us), udp=$(fr.udp), " *
+                        "vw=$(fr.vw), lt=$(fr.lt), " *
+                        "d_tether=$(fr.d_tether), " *
+                        "kcu_mass=$(fr.kcu_mass)")
+            println(io, "  Error: $(fr.error)")
+        end
+    end
+    @info "Wrote failure list" path = fp
+end
+
+@info "Batch 1 completed" total = length(combos) failed = length(failed_runs)

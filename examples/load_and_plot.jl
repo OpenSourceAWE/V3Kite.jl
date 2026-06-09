@@ -40,6 +40,7 @@ log_name =
     "circles__udp_30_us_15_vw_8_lt_270_el_30_g_0_run_001_date_2026_05_30_12_16_55"
 
 log_name = "2025_1536290_1536380_dp022_sl16_sr16_tip02_te095_sim"
+log_name = "circles_batch_2026_05_30_22_18_57/circles__udp_23_us_10_vw_8_lt_270_el_35_g_0_run_012_date_2026_05_30_23_11_19"
 DEFAULT_STRUC_YAML_PATH = joinpath(PROJECT_DIR, "data/python_yamls/struc_geometry_julia_generated.yaml")
 DEFAULT_AERO_YAML_PATH = joinpath(PROJECT_DIR, "data/aero_geometry.yaml")
 DEFAULT_VSM_SETTINGS_PATH = joinpath(PROJECT_DIR, "data/vsm_settings.yaml")
@@ -267,9 +268,9 @@ function plot_time_series(lg, sam)
         plot_azimuth=true, plot_winch_force=false,
         plot_set_values=false, plot_us=true,
         plot_tether_actual=false,
-        plot_turn_radius=true,
+        plot_turn_radius=false,
         turn_radius_ylims=(0.0, 40.0),
-        plot_cs=true, cs_ylims=(0.0, 0.02))
+        plot_cs=false, cs_ylims=(0.0, 0.02))
 end
 
 # =============================================================================
