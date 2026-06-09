@@ -558,7 +558,7 @@ function run_physics_replay(h5_path;
                 for (e, _) in current_exceptions())
         if is_interrupt
             @warn "Interrupted, stopping sim"
-        elseif err isa ErrorException
+        elseif err isa ErrorException || err isa AssertionError
             @warn "Sim aborted, keeping partial log" msg=err.msg
         else
             rethrow(err)
