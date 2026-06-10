@@ -200,7 +200,7 @@ circular-flight target.
 function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
     body_damping=[0.0, 0.0, 20.0],
-    point_37_38_damping=[0.0, 20.0, 20.0],
+    body_damping_delta=([37, 38], [0.0, 20.0, 20.0]),
     udp=0.4,
     ramp_time_us=25.0,
     us=0.1,
@@ -238,15 +238,15 @@ function run_circles(;
         g_earth=g_earth,
         kcu_mass=kcu_mass,
         body_damping=body_damping .* 2.0,
-        body_damping_overrides=[
-            (37:38, point_37_38_damping .* 2.0)],
+        body_damping_delta=(body_damping_delta[1],
+            body_damping_delta[2] .* 2.0),
         geom=V3GeomAdjustConfig(tether_length=tether_length),
         num_steps=1500, num_substeps=5, dt=0.001,
         decay_steps=1200,
         start_depower=23.5,
         course_correction_gain=0.02,
         course_correction_mode=:heading,
-        world_damping=100.0, min_damping=0.0,
+        initial_damping=100.0,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -275,7 +275,7 @@ function run_circles(;
     sys = something(sam).sys_struct
 
     set_v3_body_damping!(sys, body_damping,
-        point_37_38_damping)
+        body_damping_delta)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -479,7 +479,7 @@ ramp_time_us = 2
 
 fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 20.0, 20.0]
+body_damping_delta = ([37, 38], [0.0, 20.0, 20.0])
 remake_settle = IS_REMAKE_SETTLE
 visualize_settle = IS_VISUALIZE_SETTLE
 debug_on_failure = true
@@ -500,7 +500,7 @@ for (run_id, p) in enumerate(combos)
             d_tether=p.d_tether,
             elevation=p.elevation, g_earth=p.g_earth,
             kcu_mass=p.kcu_mass,
-            body_damping, point_37_38_damping,
+            body_damping, body_damping_delta,
             sim_time_circles, fps_circles,
             ramp_time_us, us=p.us,
             remake_settle,

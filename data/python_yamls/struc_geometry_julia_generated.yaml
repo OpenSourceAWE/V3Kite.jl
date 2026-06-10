@@ -620,7 +620,7 @@ segments:
     - [89, 37, 1, 1.6, 4.787307, dyneema, nothing, 0.01]
     - [90, 35, 1, 1.65, 4.787307, dyneema, nothing, 0.01]
     - [91, 38, 1, 1.6, 4.787307, dyneema, nothing, 0.01]
-    
+
 pulleys:
   headers: [idx, segment_i, segment_j, type]
   data:

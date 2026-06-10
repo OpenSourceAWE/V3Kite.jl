@@ -23,15 +23,15 @@ Base.@kwdef mutable struct V3SettleConfig
     num_substeps::Int = 1
     dt::Float64 = 0.01
 
-    # Damping
-    world_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 0.0]
-    min_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 0.0]
+    # Damping: body-frame damping ramps linearly from
+    # initial_damping at step 0 to body_damping at step
+    # decay_steps, then holds at body_damping. The delta
+    # is added on top for the listed points throughout.
+    initial_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 0.0]
     decay_steps::Int = 2000
     body_damping::Union{Float64,Vector{Float64}} = [0.0, 0.0, 20.0]
-    # Per-point overrides applied AFTER body_damping
-    body_damping_overrides::Vector{
-        Tuple{UnitRange{Int},Vector{Float64}}} =
-        Tuple{UnitRange{Int},Vector{Float64}}[]
+    body_damping_delta::Union{Nothing,
+        Tuple{Vector{Int},Vector{Float64}}} = nothing
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -242,13 +242,12 @@ function _setup_settling_model(config::V3SettleConfig;
         sys.points[1].extra_mass = config.kcu_mass
     end
 
-    SymbolicAWEModels.set_world_frame_damping(
-        sys, config.world_damping)
     SymbolicAWEModels.set_body_frame_damping(
-        sys, config.body_damping)
-    for (rng, damp) in config.body_damping_overrides
+        sys, config.initial_damping)
+    if !isnothing(config.body_damping_delta)
+        pts, delta = config.body_damping_delta
         SymbolicAWEModels.set_body_frame_damping(
-            sys, damp, rng)
+            sys, config.initial_damping .+ delta, pts)
     end
 
     sam = SymbolicAWEModel(set, sys)
@@ -318,11 +317,17 @@ function _run_power_zone_settling!(config::V3SettleConfig;
     failed = false
     try
         for step in 1:config.num_steps
-            damping = max(config.world_damping *
-                          (1.0 - step / config.decay_steps),
-                config.min_damping)
-            SymbolicAWEModels.set_world_frame_damping(
+            frac = min(step / config.decay_steps, 1.0)
+            damping = config.initial_damping .*
+                      (1.0 - frac) .+
+                      config.body_damping .* frac
+            SymbolicAWEModels.set_body_frame_damping(
                 sys, damping)
+            if !isnothing(config.body_damping_delta)
+                pts, delta = config.body_damping_delta
+                SymbolicAWEModels.set_body_frame_damping(
+                    sys, damping .+ delta, pts)
+            end
 
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)
@@ -357,7 +362,7 @@ function _run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep = sub damping = round(damping, digits=1) elevation = round(rad2deg(wing.elevation), digits=2) heading = round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep = sub damping = round.(damping; digits=1) elevation = round(rad2deg(wing.elevation), digits=2) heading = round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break
