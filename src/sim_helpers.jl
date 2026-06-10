@@ -275,6 +275,26 @@ function mean_te_segment_force(sam)
 end
 
 """
+    kcu_tether_force(sys) -> Float64
+
+Return the scalar tension [N] in the main tether segment attached
+to the KCU point. This is the kite-side counterpart of the ground
+winch force.
+"""
+function kcu_tether_force(sys)
+    isempty(sys.tethers) && return NaN
+    for tether in sys.tethers
+        for seg_idx in tether.segment_idxs
+            seg = sys.segments[seg_idx]
+            if 1 in seg.point_idxs
+                return abs(seg.force)
+            end
+        end
+    end
+    return NaN
+end
+
+"""
     chord_ref_mid(le_3, te_3, le_4, te_4; frac=0.3)
 
 Chord reference point averaged over both strut sides.
@@ -447,6 +467,7 @@ Computed variables:
   (from point drag forces)
 - `var_12`: geometric wing incidence (photogrammetry-style)
 - `var_13`: center-of-pressure x-coordinate (body frame)
+- `var_15`: KCU-side main tether force
 """
 function log_state!(logger, sys_state, sam, t;
         set_steering=nothing, depower=nothing,
@@ -470,6 +491,7 @@ function log_state!(logger, sys_state, sam, t;
     sys_state.var_12 = compute_wing_incidence(
         sam.sys_struct)
     sys_state.var_13 = compute_cop_x(sam)
+    sys_state.var_15 = kcu_tether_force(sam.sys_struct)
     if set_steering !== nothing
         sys_state.set_steering = set_steering
     end

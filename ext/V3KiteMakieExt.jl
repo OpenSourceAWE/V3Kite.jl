@@ -1588,11 +1588,15 @@ function V3Kite.plot_2d_panels(
         panel_height::Int=120,
         show_steering=nothing,
         show_winch_force=true,
+        show_kcu_tether_force=false,
         show_v_app=true,
         show_tether_len=false,
         show_drag_coeff=false,
         show_lift_coeff=false,
         show_lift_drag_ratio=false,
+        show_aero_forces=false,
+        force_ref_area=nothing,
+        force_rho=1.225,
         show_te_force=false,
         show_heading=false,
         show_course=false,
@@ -1620,15 +1624,23 @@ function V3Kite.plot_2d_panels(
     if show_steering && isnothing(tapes)
         error("tapes required for show_steering=true")
     end
+    if show_aero_forces
+        isnothing(force_ref_area) &&
+            error("force_ref_area required for show_aero_forces=true")
+        force_ref_area <= 0 &&
+            error("force_ref_area must be positive")
+    end
 
     has_euler = show_yaw || show_pitch || show_roll
     has_aoa = show_aoa && length(logs) >= 2
     n_panels = show_steering + show_depower +
         show_steering_tape + show_depower_tape +
-        show_winch_force + show_v_app +
+        show_winch_force + show_kcu_tether_force +
+        show_v_app +
         show_tether_len +
         show_drag_coeff + show_lift_coeff +
-        show_lift_drag_ratio + show_te_force +
+        show_lift_drag_ratio + show_aero_forces +
+        show_te_force +
         show_heading + show_course +
         show_elevation + show_azimuth +
         show_wing_vel + show_vw +
@@ -1788,6 +1800,27 @@ function V3Kite.plot_2d_panels(
             color=:gray70)
     end
 
+    if show_kcu_tether_force
+        cur_row += 1
+        ax_ktf = _twin_panel!(fig, cur_row,
+            L"F_{\text{t,KCU}} \; [kN]")
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            ft = [sl.var_15[k] / 1000 for k in rng]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_ktf
+            lines!(target,
+                collect(sl.time)[rng], ft;
+                linewidth=lw, linestyle=ls,
+                color=:black)
+        end
+        hlines!(ax_ktf, [0]; linewidth=0.5,
+            color=:gray70)
+    end
+
     if show_v_app
         cur_row += 1
         ax_va = _twin_panel!(fig, cur_row,
@@ -1904,6 +1937,46 @@ function V3Kite.plot_2d_panels(
         end
         hlines!(ax_ld, [0]; linewidth=0.5,
             color=:gray70)
+    end
+
+    if show_aero_forces
+        cur_row += 1
+        ax_af = _twin_panel!(fig, cur_row,
+            L"F_{\text{aero}} \; [kN]")
+        force_colors = [:black, :orange, :red]
+        force_labels = ["lift", "wing drag", "total drag"]
+        A_ref = Float64(force_ref_area)
+        rho = Float64(force_rho)
+        for (i, lg) in enumerate(logs)
+            sl = lg.syslog
+            rng = log_ranges[i]
+            lw = i == 1 ? 2.0 : 1.5
+            ls = i == 1 ? :solid : :dash
+            target = (use_twin && i == 2) ?
+                top_axes[end] : ax_af
+            t = collect(sl.time)[rng]
+            qA = 0.5 .* rho .*
+                collect(sl.v_app)[rng].^2 .* A_ref
+            lift = collect(sl.var_02)[rng] .* qA ./ 1000
+            wing_drag = collect(sl.var_01)[rng] .* qA ./ 1000
+            total_drag = (
+                collect(sl.var_01)[rng] .+
+                collect(sl.var_09)[rng] .+
+                collect(sl.var_10)[rng] .+
+                collect(sl.var_11)[rng]) .* qA ./ 1000
+            for (vals, c, lab) in zip(
+                    (lift, wing_drag, total_drag),
+                    force_colors, force_labels)
+                lines!(target, t, vals;
+                    linewidth=lw, linestyle=ls,
+                    color=c,
+                    label=(i == 1 ? lab : nothing))
+            end
+        end
+        hlines!(ax_af, [0]; linewidth=0.5,
+            color=:gray70)
+        axislegend(ax_af; position=:rt,
+            labelsize=12, framevisible=false)
     end
 
     if show_te_force

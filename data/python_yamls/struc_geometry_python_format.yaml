@@ -5,7 +5,7 @@ bridle_point_node: [0, 0, 0] #[x,y,z] --> location of kcu
 
 ## Mass
 pulley_mass: !!float 0.09 #[kg] # 0.54 kg measured pulley mass / 6 modeled pulleys
-kcu_mass: !!float 8.4 #[kg]
+kcu_mass: !!float 23.3 #[kg]
 
 ## Material properties
 dyneema:
@@ -118,38 +118,38 @@ wing_elements:
   headers: [name, l0, k, c, m, linktype]
   data:
     # leading-edge tube (LE[i] -- LE[i+1])
-    - [le_1, 0.823587, 5e5, 0, 0.198246, 'default']
-    - [le_2, 1.323306, 5e5, 0, 0.283456, 'default']
-    - [le_3, 1.327631, 5e5, 0, 0.352104, 'default']
-    - [le_4, 1.323177, 5e5, 0, 0.33133, 'default']
-    - [le_5, 1.328433, 2e4, 0, 0.570114, 'default']
+    - [le_1, 0.823587, 5e5, 0, 0.277598, 'default']
+    - [le_2, 1.323306, 5e5, 0, 0.396915, 'default']
+    - [le_3, 1.327631, 5e5, 0, 0.49304, 'default']
+    - [le_4, 1.323177, 5e5, 0, 0.463951, 'default']
+    - [le_5, 1.328433, 2e4, 0, 0.798313, 'default']
 
     # struts (chords)
-    - [strut_1, 0.999577, 5e5, 0, 0.110969, 'default']
-    - [strut_2, 1.531813, 5e5, 0, 0.177951, 'default']
-    - [strut_3, 1.993940, 5e5, 0, 0.250388, 'default']
-    - [strut_4, 2.219829, 5e5, 0, 0.293164, 'default']
-    - [strut_5, 2.327805, 5e5, 0, 0.222268, 'default']
+    - [strut_1, 0.999577, 5e5, 0, 0.155386, 'default']
+    - [strut_2, 1.531813, 5e5, 0, 0.249179, 'default']
+    - [strut_3, 1.993940, 5e5, 0, 0.350611, 'default']
+    - [strut_4, 2.219829, 5e5, 0, 0.410509, 'default']
+    - [strut_5, 2.327805, 5e5, 0, 0.311235, 'default']
 
     # trailing-edge wire (TE[i] -- TE[i+1])
     #TODO: all lengths made 5% shorter to match photogrammetry
-    - [te_1, 0.834955, 5e4, 0, 0.090673, 'default'] #TODO: changed from 0.878900 to 0.878900 * 0.95 to match photogrammetry
-    - [te_2, 1.253307, 5e4, 0, 0.144882, 'noncompressive'] #TODO: changed from 1.319270 to 1.319270 * 0.95 to match photogrammetry
-    - [te_3, 1.247346, 5e4, 0, 0.191448, 'noncompressive'] #TODO: changed from 1.312996 to 1.312996 * 0.95 to match photogrammetry
-    - [te_4, 1.246386, 5e4, 0, 0.184103, 'noncompressive'] #TODO: changed from 1.311985 to 1.311985 * 0.95 to match photogrammetry
-    - [te_5, 1.255996, 5e4, 0, 0.31896, 'noncompressive'] #TODO: changed from 1.322148 to 1.322148 * 0.95 to match photogrammetry
+    - [te_1, 0.834955, 5e4, 0, 0.126967, 'default'] #TODO: changed from 0.878900 to 0.878900 * 0.95 to match photogrammetry
+    - [te_2, 1.253307, 5e4, 0, 0.202874, 'noncompressive'] #TODO: changed from 1.319270 to 1.319270 * 0.95 to match photogrammetry
+    - [te_3, 1.247346, 5e4, 0, 0.268079, 'noncompressive'] #TODO: changed from 1.312996 to 1.312996 * 0.95 to match photogrammetry
+    - [te_4, 1.246386, 5e4, 0, 0.257794, 'noncompressive'] #TODO: changed from 1.311985 to 1.311985 * 0.95 to match photogrammetry
+    - [te_5, 1.255996, 5e4, 0, 0.44663, 'noncompressive'] #TODO: changed from 1.322148 to 1.322148 * 0.95 to match photogrammetry
 
     # diagonal springs (both directions per panel)
-    - [dia_1a, 1.210114, 5e4, 0, 0.14446, 'default']
-    - [dia_1b, 1.722184, 5e4, 0, 0.14446, 'default']
-    - [dia_2a, 2.203625, 5e4, 0, 0.21417, 'noncompressive']
-    - [dia_2b, 2.178107, 5e4, 0, 0.21417, 'noncompressive']
-    - [dia_3a, 2.457808, 5e4, 0, 0.271776, 'noncompressive']
-    - [dia_3b, 2.509586, 5e4, 0, 0.271776, 'noncompressive']
-    - [dia_4a, 2.612162, 5e4, 0, 0.257716, 'noncompressive']
-    - [dia_4b, 2.642586, 5e4, 0, 0.257716, 'noncompressive']
-    - [dia_5a, 2.678631, 5e4, 0, 0.444536, 'noncompressive']
-    - [dia_5b, 2.678631, 5e4, 0, 0.444536, 'noncompressive']
+    - [dia_1a, 1.210114, 5e4, 0, 0.202283, 'default']
+    - [dia_1b, 1.722184, 5e4, 0, 0.202283, 'default']
+    - [dia_2a, 2.203625, 5e4, 0, 0.299896, 'noncompressive']
+    - [dia_2b, 2.178107, 5e4, 0, 0.299896, 'noncompressive']
+    - [dia_3a, 2.457808, 5e4, 0, 0.38056, 'noncompressive']
+    - [dia_3b, 2.509586, 5e4, 0, 0.38056, 'noncompressive']
+    - [dia_4a, 2.612162, 5e4, 0, 0.360872, 'noncompressive']
+    - [dia_4b, 2.642586, 5e4, 0, 0.360872, 'noncompressive']
+    - [dia_5a, 2.678631, 5e4, 0, 0.62247, 'noncompressive']
+    - [dia_5b, 2.678631, 5e4, 0, 0.62247, 'noncompressive']
 
 #############################
 ## Bridle ###################

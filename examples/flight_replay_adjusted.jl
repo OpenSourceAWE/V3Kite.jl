@@ -41,15 +41,15 @@ YEAR = 2025
 SETTLE = true
 REMAKE_SETTLE = true
 IS_VISUALIZE_SETTLE = false #TODO: new flag
-IS_WITH_ONE_SHOT_ADJUST_POS_VEL_ORIENT = false #TODO: new flag
+IS_WITH_ONE_SHOT_ADJUST_POS_VEL_ORIENT = true #TODO: new flag
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -16.0
-STEERING_MULTIPLIER = 1.0
-EXTRA_WING_DRAG_COEFF = 0.0
+DEPOWER_OFFSET_2025 = -18.0
+STEERING_MULTIPLIER = 1.0 #TODO: 1.0 -> 1.1
+EXTRA_WING_DRAG_COEFF = 0.07 #0.07 is defendable from: https://wes.copernicus.org/articles/11/1097/2026/wes-11-1097-2026.pdf
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
-STEERING_OFFSET = 1.5 #TODO: steering offset, used to be 1.5%, now set to 0.
+STEERING_OFFSET = 0 #TODO: steering offset, 1.5% -> 0.
 DISTANCE_BASED_STEERING = false
 REDUCE_STEERING = false #TODO: set to false
 STEERING_REDUCTION = 0.2
@@ -63,8 +63,11 @@ POINT_37_38_DAMPING = [0.0, 20.0, 20.0] # part of wing so is identical between o
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 REPLAY_LOG_DIR = joinpath(dirname(@__DIR__), "processed_data")
-WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
-WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
+# incoming wind field
+SETTLE_WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
+SETTLE_WIND_SOURCE_DIR = :ekf  # :ekf or :lidar (also vert)
+REPLAY_WIND_SOURCE_SPEED = :lidar   # :ekf or :lidar
+REPLAY_WIND_SOURCE_DIR = :lidar   # :ekf or :lidar (also vert)
 # input yaml files
 DEFAULT_STRUC_GEOM_YAML = "python_yamls/struc_geometry_julia_generated.yaml"
 DEFAULT_AERO_GEOM_YAML = "aero_geometry.yaml"
@@ -182,7 +185,9 @@ function run_physics_replay(h5_path;
 
     is_2019 = occursin("2019", basename(h5_path))
 
-    function make_row(raw)
+    function make_row(raw;
+        wind_source_speed=REPLAY_WIND_SOURCE_SPEED,
+        wind_source_dir=REPLAY_WIND_SOURCE_DIR)
         dp = raw.kcu_actual_depower
         if is_2019
             dp = 0.2564 - 0.0768 * dp / 100.0
@@ -200,8 +205,8 @@ function run_physics_replay(h5_path;
         wind_vec_lidar = compute_wind_vec(raw, alt;
             speed_source=:lidar, dir_source=:lidar)
         wind_vec = compute_wind_vec(raw, alt;
-            speed_source=WIND_SOURCE_SPEED,
-            dir_source=WIND_SOURCE_DIR)
+            speed_source=wind_source_speed,
+            dir_source=wind_source_dir)
         wh = sqrt(wind_vec[1]^2 + wind_vec[2]^2)
         wv = wind_vec[3]
         wdir = atan(wind_vec[2], wind_vec[1])
@@ -242,7 +247,7 @@ function run_physics_replay(h5_path;
                 -wdir - π / 2),
             wind_speed_vertical=wv,
             R_b_w=R_b_w,
-            v_app=raw.ekf_kite_apparent_windspeed,
+            v_app=norm(kite_vel - wind_vec), #TODO: changed from raw.ekf_kite_apparent_windspeed
             drag_coeff=raw.ekf_wing_drag_coefficient,
             lift_coeff=raw.ekf_wing_lift_coefficient,
             tether_drag_coeff=
@@ -260,15 +265,22 @@ function run_physics_replay(h5_path;
         )
     end
 
-    function get_row(data, step)
+    function get_row(data, step;
+        wind_source_speed=REPLAY_WIND_SOURCE_SPEED,
+        wind_source_dir=REPLAY_WIND_SOURCE_DIR)
         ks = keys(data)
         raw = NamedTuple{ks}(
             Tuple(data[k][step] for k in ks))
-        return make_row(raw)
+        return make_row(raw;
+            wind_source_speed=wind_source_speed,
+            wind_source_dir=wind_source_dir)
     end
 
     # Settle wing with first CSV conditions
     row1 = get_row(data, 1)
+    settle_row1 = get_row(data, 1;
+        wind_source_speed=SETTLE_WIND_SOURCE_SPEED,
+        wind_source_dir=SETTLE_WIND_SOURCE_DIR)
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         source_struc_path=DEFAULT_STRUC_GEOM_YAML,
@@ -280,14 +292,14 @@ function run_physics_replay(h5_path;
         body_damping_overrides=[
             (37:38, POINT_37_38_DAMPING * 2.0)],
         min_damping=0.0,
-        v_wind=row1.v_app,
+        v_wind=settle_row1.v_app,
         tether_length=tether_len,
         dt=0.001,
         num_steps=800,
         num_substeps=5,
-        start_depower=nothing,
-        course_correction_gain=0.02,
-        course_correction_mode=:heading,
+        start_depower=nothing, #TODO: changed from row1.depower * 100.0 + 10.0 -> now set to nothing to disable
+        course_correction_gain=0.02, #TODO: changed from 0.05 -> 0.02
+        course_correction_mode=:heading, #TODO: changed course --> heading
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
             reduce_depower=false,
@@ -319,7 +331,7 @@ function run_physics_replay(h5_path;
 
         if SETTLE
             sam, settle_log, settle_failed =
-                settle_wing(settle_config, row1;
+                settle_wing(settle_config, settle_row1;
                     remake=REMAKE_SETTLE)
             if IS_VISUALIZE_SETTLE
                 if isnothing(settle_log)
@@ -402,7 +414,6 @@ function run_physics_replay(h5_path;
         last_report_sim = 0.0
         sys = sam.sys_struct
         set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
-        distribute_wing_mass!(sys, 11.0; dist=0.5)
         distribute_wing_drag!(sys,
             sys.wings[1].vsm_aero.projected_area,
             EXTRA_WING_DRAG_COEFF)
@@ -444,6 +455,7 @@ function run_physics_replay(h5_path;
             data_state.set_steering = row.steering
             data_state.depower = row.depower
             data_state.var_14 = row.video_frame
+            data_state.var_15 = row.tether_force
             log!(data_logger, data_state)
         end
 
@@ -710,14 +722,22 @@ function create_replay_plots(;
         frame_indexes=frame_syslog_idxs)
     panels_kwargs = (;
         tapes=_tapes, labels=_labels,
-        show_aoa=false, labelsize=20,
+        show_aoa=true,
+        labelsize=20,
         twin_time_axes=distance_based_steering,
         frame_indexes=frame_syslog_idxs,
+        show_kcu_tether_force=true,
         show_heading=false,
         show_course=true,
-        show_drag_coeff=false,
-        show_lift_coeff=false,
-        show_lift_drag_ratio=false)
+        show_drag_coeff=true,
+        show_lift_coeff=true,
+        show_lift_drag_ratio=true,
+        show_aero_forces=true,
+        force_ref_area=VortexStepMethod.calculate_projected_area(
+            sys_struct.wings[1].vsm_wing),
+        show_wing_vel=false,
+        show_vw=false,
+    )
     yaw_heading_kwargs = (;
         source=:heading,
         min_steering=0.05,

@@ -104,7 +104,7 @@ export compute_kite_aoa, compute_bridle_euler
 export compute_wing_incidence
 export compute_bridle_pitch_angle
 export chord_ref_mid
-export mean_te_segment_force
+export mean_te_segment_force, kcu_tether_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
