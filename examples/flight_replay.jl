@@ -57,7 +57,7 @@ BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-BODY_DAMPING_DELTA = ([37, 38], [0.0, 20.0, 20.0])
+POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
@@ -264,10 +264,11 @@ function run_physics_replay(h5_path;
     row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
-        initial_damping=0.0,
+        world_damping=0.0,
         body_damping=BODY_DAMPING*2.0,
-        body_damping_delta=(BODY_DAMPING_DELTA[1],
-            BODY_DAMPING_DELTA[2]*2.0),
+        body_damping_overrides=[
+            (37:38, POINT_37_38_DAMPING*2.0)],
+        min_damping=0.0,
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
@@ -360,7 +361,7 @@ function run_physics_replay(h5_path;
     last_report_time = replay_start
     last_report_sim = 0.0
     sys = sam.sys_struct
-    set_v3_body_damping!(sys, BODY_DAMPING, BODY_DAMPING_DELTA)
+    set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
     distribute_wing_mass!(sys, 11.0; dist=0.5)
     distribute_wing_drag!(sys,
         sys.wings[1].vsm_aero.projected_area,

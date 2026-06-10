@@ -37,7 +37,7 @@ Main flow:
 | `BODY_DAMPING` | Vector{Float} | damping coefficients | `[0.0, 0.0, 20.0]` | Body-frame damping pattern for points 1:38. |
 | `AOA_OFFSET_A` | Float | deg/% | `-0.6831` | Slope of photogrammetry-based wing AoA correction. |
 | `AOA_OFFSET_B` | Float | deg | `28.74` | Intercept of photogrammetry-based wing AoA correction. |
-| `BODY_DAMPING_DELTA` | `Tuple{Vector{Int}, Vector{Float}}` | (point indices, damping) | `([37, 38], [0.0, 20.0, 20.0])` | Body-frame damping override for the listed points. |
+| `POINT_37_38_DAMPING` | Vector{Float} | damping coefficients | `[0.0, 20.0, 20.0]` | Damping override for points 37:38. |
 | `SAVE_FIGS` | Bool | - | `true` | Save PDF outputs for trajectory/panels/body-frame/twist plots. |
 | `FIGURES_DIR` | String/Path | path | `joinpath(@__DIR__, "..", "output")` | Destination directory for exported figures. |
 | `WIND_SOURCE_SPEED` | Symbol | - | `:ekf` | Source for wind magnitude (`:ekf` or `:lidar`). |
@@ -107,7 +107,7 @@ $$
 
 - `SETTLE = true` runs `settle_wing(...)` before replay.
 - `BODY_DAMPING` applies to points 1:38.
-- `BODY_DAMPING_DELTA` overrides the listed point indices.
+- `POINT_37_38_DAMPING` overrides points 37:38.
 - In settle config, these damping vectors are multiplied by 2.0 during initialization.
 
 ### 5) Aerodynamics and wind model choices

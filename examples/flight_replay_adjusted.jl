@@ -59,7 +59,7 @@ BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-BODY_DAMPING_DELTA = ([34, 35, 36, 37, 38, 39, 40], [0.0, 20.0, 20.0])
+POINT_37_38_DAMPING = [0.0, 20.0, 20.0] # part of wing so is identical between old&new yaml
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 REPLAY_LOG_DIR = joinpath(dirname(@__DIR__), "processed_data")
@@ -286,11 +286,9 @@ function run_physics_replay(h5_path;
         source_struc_path=DEFAULT_STRUC_GEOM_YAML,
         source_aero_path=DEFAULT_AERO_GEOM_YAML,
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
-        initial_damping=[30, 60, 120],
+        world_damping=100.0,
         decay_steps=400,
         body_damping=BODY_DAMPING * 2.0,
-        body_damping_delta=(BODY_DAMPING_DELTA[1],
-            BODY_DAMPING_DELTA[2] * 2.0),
         body_damping_overrides=[
             (37:38, POINT_37_38_DAMPING * 2.0)],
         min_damping=0.0,
