@@ -32,6 +32,7 @@ Base.@kwdef mutable struct V3SettleConfig
     body_damping_overrides::Vector{
         Tuple{UnitRange{Int},Vector{Float64}}} =
         Tuple{UnitRange{Int},Vector{Float64}}[]
+    min_body_damping::Union{Nothing,Float64,Vector{Float64}} = nothing
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -189,9 +190,21 @@ function settle_wing(config::V3SettleConfig, init_row;
         sys = deserialize(dest_struc)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, remake_vsm=true,
-            reinit_sys=false)
+        try
+            SymbolicAWEModels.init!(sam;
+                remake=false, remake_vsm=true,
+                reinit_sys=false)
+        catch err
+            err isa InterruptException && rethrow(err)
+            @warn "Loading settled geometry failed; settle log kept for replay" exception = (err, catch_backtrace())
+            settle_failed = true
+            if isnothing(syslog)
+                try
+                    syslog = load_log("settle_refine_wing")
+                catch
+                end
+            end
+        end
     else
         @info "Loading source geometry" source_struc
         vsm_path = joinpath(
@@ -201,7 +214,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.REFINE, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -236,7 +249,7 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        wing_type=SymbolicAWEModels.REFINE, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
 
     if !isnothing(config.kcu_mass)
         sys.points[1].extra_mass = config.kcu_mass
@@ -253,7 +266,6 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
-    sys.tethers[1].init_unstretched_len = gc.tether_length
     sys.tethers[1].init_stretched_len = gc.tether_length
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)
@@ -323,6 +335,18 @@ function _run_power_zone_settling!(config::V3SettleConfig;
                 config.min_damping)
             SymbolicAWEModels.set_world_frame_damping(
                 sys, damping)
+
+            if !isnothing(config.min_body_damping)
+                body = max.(config.body_damping .*
+                            (1.0 - step / config.decay_steps),
+                    config.min_body_damping)
+                SymbolicAWEModels.set_body_frame_damping(
+                    sys, body)
+                for (rng, damp) in config.body_damping_overrides
+                    SymbolicAWEModels.set_body_frame_damping(
+                        sys, damp, rng)
+                end
+            end
 
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)

@@ -32,7 +32,7 @@ import KiteUtils: calc_elevation, calc_heading
 export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
 export init!, next_step!, update_sys_state!, log!, save_log, load_log, replay
-export REFINE, QUATERNION, WING
+export PARTICLE_DYNAMICS, RIGID_DYNAMICS, WING
 export Settings
 export SymbolicAWEModels
 export record, replay
@@ -71,6 +71,7 @@ export get_depower, set_depower!
 
 # Model setup exports
 export V3GeomAdjustConfig, apply_geom_adjustments!
+export l0_diffs_to_move_point
 export distribute_wing_drag!, distribute_wing_mass!
 export set_v3_body_damping!
 export generate_drag_adjusted_polars

@@ -54,6 +54,30 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 end
 
 """
+    l0_diffs_to_move_point(sys, point_idx, target_idx) -> Dict{Int,Float64}
+
+Rest-length changes (`Δl0`) for every segment connected to
+`point_idx` that would place it on top of point `target_idx`,
+keeping each segment's other endpoint fixed.
+
+For each connected segment, `Δl0` is the distance from its
+fixed endpoint to the target position minus the current `l0`.
+Returns a mapping from segment index to `Δl0`.
+"""
+function l0_diffs_to_move_point(sys, point_idx, target_idx)
+    target = sys.points[target_idx].pos_w
+    diffs = Dict{Int,Float64}()
+    for seg in sys.segments
+        a, b = seg.point_idxs
+        a == point_idx || b == point_idx || continue
+        other = a == point_idx ? b : a
+        new_l0 = norm(sys.points[other].pos_w - target)
+        diffs[seg.idx] = new_l0 - seg.l0
+    end
+    return diffs
+end
+
+"""
     distribute_wing_drag!(sys, area, drag_coeff)
 
 Divide `area` equally over all wing points and set each

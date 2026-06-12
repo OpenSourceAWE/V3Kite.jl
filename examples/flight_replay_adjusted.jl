@@ -36,20 +36,19 @@ using Dates
 generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-BASE_SECTION = "straight_right"
+BASE_SECTION = "straight_left"
 YEAR = 2025
 SETTLE = true
 REMAKE_SETTLE = true
-IS_VISUALIZE_SETTLE = false #TODO: new flag
-IS_WITH_ONE_SHOT_ADJUST_POS_VEL_ORIENT = true #TODO: new flag
+IS_WITH_ONE_SHOT_ADJUST_POS_VEL_ORIENT = false # TODO: new flag
 DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -18.0
-STEERING_MULTIPLIER = 1.0 #TODO: 1.0 -> 1.1
-EXTRA_WING_DRAG_COEFF = 0.07 #0.07 is defendable from: https://wes.copernicus.org/articles/11/1097/2026/wes-11-1097-2026.pdf
+DEPOWER_OFFSET_2025 = -20.0
+STEERING_MULTIPLIER = 1.0 # TODO: 1.0 -> 1.1
+EXTRA_WING_DRAG_COEFF = 0.0 # 0.07 is defendable from: https://wes.copernicus.org/articles/11/1097/2026/wes-11-1097-2026.pdf
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
-STEERING_OFFSET = 0 #TODO: steering offset, 1.5% -> 0.
+STEERING_OFFSET = 1.5 #TODO: steering offset, 1.5% -> 0.
 DISTANCE_BASED_STEERING = false
 REDUCE_STEERING = false #TODO: set to false
 STEERING_REDUCTION = 0.2
@@ -59,15 +58,13 @@ BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-POINT_37_38_DAMPING = [0.0, 20.0, 20.0] # part of wing so is identical between old&new yaml
+POINT_37_38_DAMPING = [0.0, 0.0, 20.0] # part of wing so is identical between old&new yaml
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 REPLAY_LOG_DIR = joinpath(dirname(@__DIR__), "processed_data")
 # incoming wind field
-SETTLE_WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
-SETTLE_WIND_SOURCE_DIR = :ekf  # :ekf or :lidar (also vert)
-REPLAY_WIND_SOURCE_SPEED = :lidar   # :ekf or :lidar
-REPLAY_WIND_SOURCE_DIR = :lidar   # :ekf or :lidar (also vert)
+WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
+WIND_SOURCE_DIR = :lidar   # :ekf or :lidar (also vert)
 # input yaml files
 DEFAULT_STRUC_GEOM_YAML = "python_yamls/struc_geometry_julia_generated.yaml"
 DEFAULT_AERO_GEOM_YAML = "aero_geometry.yaml"
@@ -186,8 +183,8 @@ function run_physics_replay(h5_path;
     is_2019 = occursin("2019", basename(h5_path))
 
     function make_row(raw;
-        wind_source_speed=REPLAY_WIND_SOURCE_SPEED,
-        wind_source_dir=REPLAY_WIND_SOURCE_DIR)
+        wind_source_speed=WIND_SOURCE_SPEED,
+        wind_source_dir=WIND_SOURCE_DIR)
         dp = raw.kcu_actual_depower
         if is_2019
             dp = 0.2564 - 0.0768 * dp / 100.0
@@ -266,8 +263,8 @@ function run_physics_replay(h5_path;
     end
 
     function get_row(data, step;
-        wind_source_speed=REPLAY_WIND_SOURCE_SPEED,
-        wind_source_dir=REPLAY_WIND_SOURCE_DIR)
+        wind_source_speed=WIND_SOURCE_SPEED,
+        wind_source_dir=WIND_SOURCE_DIR)
         ks = keys(data)
         raw = NamedTuple{ks}(
             Tuple(data[k][step] for k in ks))
@@ -278,28 +275,26 @@ function run_physics_replay(h5_path;
 
     # Settle wing with first CSV conditions
     row1 = get_row(data, 1)
-    settle_row1 = get_row(data, 1;
-        wind_source_speed=SETTLE_WIND_SOURCE_SPEED,
-        wind_source_dir=SETTLE_WIND_SOURCE_DIR)
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         source_struc_path=DEFAULT_STRUC_GEOM_YAML,
         source_aero_path=DEFAULT_AERO_GEOM_YAML,
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
-        world_damping=100.0,
+        world_damping=0.0,
         decay_steps=400,
-        body_damping=BODY_DAMPING * 2.0,
+        body_damping=BODY_DAMPING * 10.0,
+        min_body_damping=BODY_DAMPING,
         body_damping_overrides=[
             (37:38, POINT_37_38_DAMPING * 2.0)],
         min_damping=0.0,
-        v_wind=settle_row1.v_app,
+        v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.001,
-        num_steps=800,
+        num_steps=400,
         num_substeps=5,
-        start_depower=nothing, #TODO: changed from row1.depower * 100.0 + 10.0 -> now set to nothing to disable
+        start_depower=row1.depower*100+20, #TODO: changed from row1.depower * 100.0 + 10.0 -> now set to nothing to disable
         course_correction_gain=0.02, #TODO: changed from 0.05 -> 0.02
-        course_correction_mode=:heading, #TODO: changed course --> heading
+        course_correction_mode=:course, #TODO: changed course --> heading
         geom=V3GeomAdjustConfig(
             reduce_tip=REDUCE_TIP, reduce_te=true,
             reduce_depower=false,
@@ -331,21 +326,8 @@ function run_physics_replay(h5_path;
 
         if SETTLE
             sam, settle_log, settle_failed =
-                settle_wing(settle_config, settle_row1;
+                settle_wing(settle_config, row1;
                     remake=REMAKE_SETTLE)
-            if IS_VISUALIZE_SETTLE
-                if isnothing(settle_log)
-                    @warn "No settle log to visualize. Set REMAKE_SETTLE=true if cached settled geometry was reused."
-                elseif !isnothing(sam)
-                    settle_fig = plot(sam.sys_struct,
-                        settle_log; plot_tether=true)
-                    display(settle_fig)
-
-                    settle_scene = replay(settle_log,
-                        sam.sys_struct)
-                    display(settle_scene)
-                end
-            end
             if settle_failed
                 @warn "Settling failed — skipping sim"
                 base_name = build_replay_name(h5_path,
@@ -366,7 +348,7 @@ function run_physics_replay(h5_path;
             gc = settle_config.geom
             sys = load_sys_struct_from_yaml(source_struc;
                 system_name=V3_MODEL_NAME, set,
-                wing_type=SymbolicAWEModels.REFINE, vsm_set)
+                dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
             sam = SymbolicAWEModel(set, sys)
             apply_geom_adjustments!(sys, gc)
             SymbolicAWEModels.init!(sam;
@@ -400,9 +382,9 @@ function run_physics_replay(h5_path;
         # CSV reference model
         data_struct = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            wing_type=SymbolicAWEModels.REFINE, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         data_sam = SymbolicAWEModel(set, data_struct)
-        data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
+        data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
         data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
         init!(data_sam)
         data_state = SysState(data_sam)
@@ -609,9 +591,11 @@ function run_physics_replay(h5_path;
         is_interrupt = err isa InterruptException ||
                        any(e isa InterruptException
                            for (e, _) in current_exceptions())
+        is_unstable = err isa AssertionError &&
+                      occursin("Solver unstable", err.msg)
         if is_interrupt
             @warn "Interrupted, stopping sim"
-        elseif err isa ErrorException
+        elseif err isa ErrorException || is_unstable
             @warn "Sim aborted, keeping partial log" msg = err.msg
         else
             rethrow(err)
@@ -729,10 +713,10 @@ function create_replay_plots(;
         show_kcu_tether_force=true,
         show_heading=false,
         show_course=true,
-        show_drag_coeff=true,
-        show_lift_coeff=true,
-        show_lift_drag_ratio=true,
-        show_aero_forces=true,
+        show_drag_coeff=false,
+        show_lift_coeff=false,
+        show_lift_drag_ratio=false,
+        show_aero_forces=false,
         force_ref_area=VortexStepMethod.calculate_projected_area(
             sys_struct.wings[1].vsm_wing),
         show_wing_vel=false,

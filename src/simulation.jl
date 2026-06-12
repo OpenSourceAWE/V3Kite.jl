@@ -53,7 +53,7 @@ Base.@kwdef mutable struct V3SimConfig
     damping_pattern::Vector{Float64} = [0.0, 0.0, 20.0]
 
     # Model options
-    wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.REFINE
+    wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
     remake_cache::Bool = false
 
     # Winch control
@@ -81,7 +81,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
         data_path = v3_data_path()
     end
 
-    wing_type_str = config.wing_type == SymbolicAWEModels.REFINE ? "REFINE" : "QUATERNION"
+    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "REFINE" : "QUATERNION"
     @info "Creating V3 kite model" wing_type=wing_type_str data_path struc_yaml=config.struc_yaml_path
 
     # Load settings
@@ -98,13 +98,13 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     vsm_set.wings[1].geometry_file = joinpath(data_path, config.aero_yaml_path)
 
     # Determine model name
-    model_name = config.wing_type == SymbolicAWEModels.QUATERNION ?
+    model_name = config.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
         V3_QUAT_MODEL_NAME : V3_MODEL_NAME
 
     # Load system structure (use absolute path)
     struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
     sys = load_sys_struct_from_yaml(struc_yaml_full;
-        system_name=model_name, set, wing_type=config.wing_type, vsm_set)
+        system_name=model_name, set, dynamics_type=config.wing_type, vsm_set)
 
     # Initialize damping
     SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)
@@ -112,7 +112,6 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
     sam = SymbolicAWEModel(set, sys)
 
     if !isempty(sys.tethers)
-        sys.tethers[1].init_unstretched_len = config.tether_length
         sys.tethers[1].init_stretched_len = config.tether_length
     end
 
@@ -146,7 +145,7 @@ function run_v3_simulation(config::V3SimConfig; show_progress=true)
     sam, sys = create_v3_model(config)
 
     # Initialize model
-    wing_type_str = config.wing_type == SymbolicAWEModels.REFINE ? "REFINE" : "QUATERNION"
+    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "REFINE" : "QUATERNION"
     @info "Initializing $wing_type_str model..."
     SymbolicAWEModels.init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
 

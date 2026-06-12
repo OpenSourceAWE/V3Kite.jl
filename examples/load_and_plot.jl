@@ -136,7 +136,7 @@ function load_log_and_system(; log_name)
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=Float64(v_wind),
         tether_length=Float64(lt),
-        wing_type=REFINE,
+        wing_type=PARTICLE_DYNAMICS,
     )
     sam, sys = create_v3_model(config)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(

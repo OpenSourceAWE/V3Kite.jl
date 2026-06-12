@@ -63,7 +63,7 @@ function build_sys(; v_wind=10.0, tether_length=150.0)
         vsm_settings_path=DEFAULT_VSM_SETTINGS_PATH,
         v_wind=v_wind,
         tether_length=tether_length,
-        wing_type=REFINE,
+        wing_type=PARTICLE_DYNAMICS,
     )
     _, sys = create_v3_model(config)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
