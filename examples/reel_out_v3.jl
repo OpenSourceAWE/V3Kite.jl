@@ -35,6 +35,7 @@ STATISTIC = false
 ALPHA_ZERO = 8.8 
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
+AERO_MODE = ContinuousAero()
 # end of user parameter section #
 
 data_path = v3_data_path()
@@ -71,7 +72,8 @@ vsm_set.wings[1].geometry_file = source_aero
 @info "Creating V3 model..."
 sys = load_sys_struct_from_yaml(source_struc;
     system_name=V3_MODEL_NAME, set,
-    dynamics_type=PARTICLE_DYNAMICS, vsm_set)
+    dynamics_type=PARTICLE_DYNAMICS, vsm_set,
+    aero_mode=AERO_MODE)
 sys.points[1].extra_mass = 8.4   # KCU mass [kg]
 sam = SymbolicAWEModel(set, sys)
 

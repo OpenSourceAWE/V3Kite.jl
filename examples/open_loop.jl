@@ -40,6 +40,7 @@ RAMP_END_US = 5.0
 
 SIM_TIME = 60.0
 FPS = 120
+AERO_MODE = ContinuousAero()
 
 # =============================================================================
 # Settling setup (matches flight_replay)
@@ -67,6 +68,7 @@ settle_config = V3SettleConfig(
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 gc = settle_config.geom
 

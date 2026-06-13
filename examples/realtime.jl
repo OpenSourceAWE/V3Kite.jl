@@ -45,6 +45,7 @@ STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 SIM_TIME = 60.0
 FPS = 120
 DISPLAY_FPS = 10
+AERO_MODE = ContinuousAero()
 vector_scale = 1.0
 
 # Keyboard control
@@ -82,6 +83,7 @@ settle_config = V3SettleConfig(
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 gc = settle_config.geom
 

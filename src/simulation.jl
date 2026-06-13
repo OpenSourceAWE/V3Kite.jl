@@ -54,6 +54,8 @@ Base.@kwdef mutable struct V3SimConfig
 
     # Model options
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
+    # `nothing` resolves by wing_type: ContinuousAero for particle, default for rigid
+    aero_mode::Union{Nothing, SymbolicAWEModels.AbstractAeroModel} = nothing
     remake_cache::Bool = false
 
     # Winch control
@@ -103,8 +105,16 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
 
     # Load system structure (use absolute path)
     struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
+    aero_mode = if !isnothing(config.aero_mode)
+        config.aero_mode
+    elseif config.wing_type == SymbolicAWEModels.RIGID_DYNAMICS
+        nothing
+    else
+        SymbolicAWEModels.ContinuousAero()
+    end
     sys = load_sys_struct_from_yaml(struc_yaml_full;
-        system_name=model_name, set, dynamics_type=config.wing_type, vsm_set)
+        system_name=model_name, set, dynamics_type=config.wing_type,
+        vsm_set, aero_mode)
 
     # Initialize damping
     SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)

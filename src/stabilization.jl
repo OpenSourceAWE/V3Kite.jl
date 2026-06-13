@@ -55,6 +55,8 @@ Base.@kwdef mutable struct V3SettleConfig
     course_correction_mode::Symbol = :course
 
     # Model options
+    aero_mode::SymbolicAWEModels.AbstractAeroModel =
+        SymbolicAWEModels.ContinuousAero()
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
@@ -193,7 +195,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+            aero_mode=config.aero_mode)
         sam = SymbolicAWEModel(set, sys)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -225,7 +228,8 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+        aero_mode=config.aero_mode)
 
     if !isnothing(config.kcu_mass)
         sys.points[1].extra_mass = config.kcu_mass

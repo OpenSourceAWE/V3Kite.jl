@@ -39,13 +39,14 @@ generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
 N_SUBSTEPS = 20
-SECTION = "straight_right"
+SECTION = "straight_left"
 YEAR = 2025
 SETTLE = true
+AERO_MODE = ContinuousAero()
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
-EXTRA_WING_DRAG_COEFF = 0.0
+EXTRA_WING_DRAG_COEFF = 0.07
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
@@ -63,7 +64,7 @@ POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
-WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
+WIND_SOURCE_DIR = :lidar   # :ekf or :lidar (also vert)
 
 # Maneuver selection
 datadir = joinpath(artifact"flight_data", "flight_data")
@@ -284,7 +285,8 @@ function run_physics_replay(h5_path;
             steering_reduction=STEERING_REDUCTION,
             tip_reduction=TIP_REDUCTION,
             depower_offset=depower_offset_pct / 100.0),
-        fix_sphere_idxs=[])
+        fix_sphere_idxs=[],
+        aero_mode=AERO_MODE)
     settle_log = nothing
     sam = nothing
     data_sam = nothing
@@ -329,7 +331,8 @@ function run_physics_replay(h5_path;
         gc = settle_config.geom
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+            aero_mode=AERO_MODE)
         sam = SymbolicAWEModel(set, sys)
         apply_geom_adjustments!(sys, gc)
         SymbolicAWEModels.init!(sam;
@@ -349,7 +352,8 @@ function run_physics_replay(h5_path;
     # CSV reference model
     data_struct = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+        aero_mode=AERO_MODE)
     data_sam = SymbolicAWEModel(set, data_struct)
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam)
@@ -868,9 +872,9 @@ if LOAD_FROM_DISK
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
     sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set)
+        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
     data_sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set)
+        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
 else
     sam, syslog, data_sam, datalog, data,
         settle_config, settle_log, dt,

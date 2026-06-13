@@ -573,7 +573,7 @@ end
 
 """
     build_replay_sys_struct(set, geom, source_struc,
-        vsm_set) -> (sam, sys_struct)
+        vsm_set; aero_mode) -> (sam, sys_struct)
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
@@ -582,10 +582,12 @@ branch of `flight_replay.jl` so plotting can be done after
 deserializing a syslog.
 """
 function build_replay_sys_struct(set,
-        geom::V3GeomAdjustConfig, source_struc, vsm_set)
+        geom::V3GeomAdjustConfig, source_struc, vsm_set;
+        aero_mode=SymbolicAWEModels.ContinuousAero())
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+        aero_mode)
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, geom)
     SymbolicAWEModels.init!(sam;
