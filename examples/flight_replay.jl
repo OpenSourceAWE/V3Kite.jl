@@ -25,6 +25,7 @@ using Statistics
 using Rotations
 using UnPack
 using LinearAlgebra
+using LazyArtifacts
 using OrdinaryDiffEqBDF
 using KiteUtils
 
@@ -65,12 +66,11 @@ WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
 WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
 
 # Maneuver selection
+datadir = joinpath(artifact"flight_data", "flight_data")
 if YEAR == 2025
-    h5_path = joinpath(v3_data_path(),
-        "flight_data", "ekf_awe_2025-10-09.h5")
+    h5_path = joinpath(datadir, "ekf_awe_2025-10-09.h5")
 else
-    h5_path = joinpath(v3_data_path(),
-        "flight_data", "ekf_awe_2019-10-08.h5")
+    h5_path = joinpath(datadir, "ekf_awe_2019-10-08.h5")
 end
 depower_offset_pct = YEAR == 2019 ?
     DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025

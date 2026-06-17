@@ -43,7 +43,6 @@ data/settings_v9e.yaml
 cspell.config.yaml
 Manifest-v1.11.toml
 Manifest-v1.10.toml
-Artifacts.toml
 data/settings_v9f.yaml
 Manifest-v1.10.toml.bak
 Manifest-v1.11.toml.bak
@@ -68,3 +67,4 @@ docs/src/.$kite_power_tools.drawio.bkp
 /refs
 settings.json
 .JETLSConfig.toml
+examples_2d/LocalPreferences.toml

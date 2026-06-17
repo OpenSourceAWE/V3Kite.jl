@@ -17,13 +17,14 @@ using V3Kite
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
+using LazyArtifacts
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
-h5_path = joinpath(v3_data_path(),
-    "flight_data", "ekf_awe_2025-10-09.h5")
+datadir = joinpath(artifact"flight_data", "flight_data")
+h5_path = joinpath(datadir, "ekf_awe_2025-10-09.h5")
 start_utc = "15:36:29.0"
 end_utc   = "15:40:29.0"
 
