@@ -65,7 +65,7 @@ WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
 WIND_SOURCE_DIR = :ekf   # :ekf or :lidar (also vert)
 
 # Maneuver selection
-datadir = @artifact "flight_data"
+datadir = joinpath(artifact"flight_data", "flight_data")
 if YEAR == 2025
     h5_path = joinpath(datadir, "ekf_awe_2025-10-09.h5")
 else
