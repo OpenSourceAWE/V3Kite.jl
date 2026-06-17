@@ -23,7 +23,7 @@ using LazyArtifacts
 # Configuration
 # =============================================================================
 
-datadir = @artifact "flight_data"
+datadir = joinpath(artifact"flight_data", "flight_data")
 h5_path = joinpath(datadir, "ekf_awe_2025-10-09.h5")
 start_utc = "15:36:29.0"
 end_utc   = "15:40:29.0"
