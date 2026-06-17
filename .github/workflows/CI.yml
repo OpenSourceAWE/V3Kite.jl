@@ -18,9 +18,6 @@ jobs:
     name: Julia ${{ matrix.version }} — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    env:
-      DISPLAY: ':99'
-      LIBGL_ALWAYS_SOFTWARE: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -32,29 +29,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install GLMakie system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xorg-dev mesa-utils libgl1 freeglut3-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            xsettingsd x11-xserver-utils
+
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
 
       - uses: julia-actions/cache@v2
 
-      - name: Install Xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Start Xvfb
-        run: |
-          Xvfb :99 -screen 0 1280x1024x24 &
-
       - uses: julia-actions/julia-buildpkg@v1
 
       - uses: julia-actions/julia-runtest@v1
         with:
           coverage: true
-        env:
-          # Keep GR headless in CI
-          GKSwstype: '100'
+          prefix: xvfb-run -a
 
       - uses: julia-actions/julia-processcoverage@v1
 

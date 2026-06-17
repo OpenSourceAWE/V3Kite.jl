@@ -242,7 +242,6 @@ function _setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
-    sys.tethers[1].init_unstretched_len = gc.tether_length
     sys.tethers[1].init_stretched_len = gc.tether_length
     SymbolicAWEModels.init!(
         sam; remake=false, ignore_l0=false, remake_vsm=true)

@@ -18,6 +18,7 @@ using V3Kite
 using VortexStepMethod
 using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
+using GLMakie: save
 using CairoMakie
 GLMakie.activate!()
 using Statistics
@@ -132,7 +133,7 @@ function update_vel_from_csv!(sys, row,
 
     # Speed-controlled winch
     winch = sys.winches[1]
-    winch.speed_controlled = true
+    winch.brake = true
     winch.vel = row.tether_vel
     sys.tethers[1].len = row.tether_len
     sys.tethers[1].stretched_len = row.tether_len
@@ -350,7 +351,6 @@ function run_physics_replay(h5_path;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
     data_sam = SymbolicAWEModel(set, data_struct)
-    data_sam.sys_struct.tethers[1].init_unstretched_len = tether_len
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam)
     data_state = SysState(data_sam)
@@ -558,7 +558,7 @@ function run_physics_replay(h5_path;
                 for (e, _) in current_exceptions())
         if is_interrupt
             @warn "Interrupted, stopping sim"
-        elseif err isa ErrorException
+        elseif err isa ErrorException || err isa AssertionError
             @warn "Sim aborted, keeping partial log" msg=err.msg
         else
             rethrow(err)
