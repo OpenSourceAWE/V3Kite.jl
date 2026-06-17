@@ -10,11 +10,12 @@ and the tether vector from photogrammetry data for each frame CSV.
 
 using V3Kite, LinearAlgebra, GLMakie, CairoMakie
 GLMakie.activate!()
+using LazyArtifacts
 
 # Load flight data for depower lookup
 data_path = v3_data_path()
-h5_path = joinpath(data_path,
-    "flight_data", "ekf_awe_2025-10-09.h5")
+datadir = @artifact "flight_data"
+h5_path = joinpath(datadir, "ekf_awe_2025-10-09.h5")
 full_data = load_flight_data(h5_path)
 flight_data, _ = limit_by_utc(full_data, "15:30:00")
 
