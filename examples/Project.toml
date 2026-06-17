@@ -1,10 +1,11 @@
 [deps]
-CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DiscretePIDs = "c1363496-6848-4723-8758-079b737f6baf"
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 KiteUtils = "90980105-b163-44e5-ba9f-8b1c83bb0533"
+LazyArtifacts = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
 OrdinaryDiffEqBDF = "6ad6398a-0878-4a85-9266-38940aa047c8"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
@@ -13,8 +14,8 @@ UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 V3Kite = "4caac9c8-c726-438f-ab10-3553e918eab1"
 VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 
+[sources]
+V3Kite = {path = ".."}
+
 [extras]
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
-
-[sources.V3Kite]
-path = ".."
