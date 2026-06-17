@@ -85,7 +85,7 @@ function calc_R_b_w(sys_struct::SymbolicAWEModels.SystemStructure)
         points,
         wing.z_ref_points,
         wing.y_ref_points,
-        wing.idx
+        wing.origin
     )
     return R_b_w
 end

@@ -2,6 +2,7 @@
 /LocalPreferences*
 processed_data
 ideas.txt
+*.log
 *.pdf
 *.old
 *.mp4
@@ -65,9 +66,5 @@ docs/src/.$kite_power_tools.drawio.bkp
 /hooks
 /objects
 /refs
-examples_2d/LocalPreferences.toml
 settings.json
 .JETLSConfig.toml
-examples_2d/.CondaPkg/
-examples_2d/LocalPreferences.toml
-examples_2d/Project.toml

@@ -76,7 +76,7 @@ dt = SIM_TIME / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
 # Heading PID (outputs steering tape delta in m)
-nominal_steering = get_steering(sys, gc)
+nominal_steering = V3Kite.get_steering(sys, gc)
 max_heading_rad = deg2rad(MAX_HEADING)
 angular_freq = 2pi / PERIOD
 max_steering = 0.15
