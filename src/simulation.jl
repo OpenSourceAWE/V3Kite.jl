@@ -117,7 +117,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
         vsm_set, aero_mode)
 
     # Initialize damping
-    SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern, 1:38)
+    set_body_frame_damping!(sys, config.damping_pattern)
 
     sam = SymbolicAWEModel(set, sys)
 

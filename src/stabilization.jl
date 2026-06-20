@@ -237,8 +237,7 @@ function _setup_settling_model(config::V3SettleConfig;
 
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_damping)
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, config.body_damping)
+    set_body_frame_damping!(sys, config.body_damping)
     for (rng, damp) in config.body_damping_overrides
         SymbolicAWEModels.set_body_frame_damping(
             sys, damp, rng)

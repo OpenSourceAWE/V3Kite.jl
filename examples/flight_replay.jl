@@ -38,8 +38,8 @@ using Dates
 generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-N_SUBSTEPS = 20
-SECTION = "straight_left"
+N_SUBSTEPS = 1
+SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
 AERO_MODE = ContinuousAero()
@@ -56,11 +56,11 @@ REDUCE_STEERING = true
 STEERING_REDUCTION = 0.2
 REDUCE_TIP = true
 TIP_REDUCTION = 0.2
-BODY_DAMPING = [0.0, 0.0, 20.0]
+BODY_DAMPING = [0.0, 0.0, 0.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-POINT_37_38_DAMPING = [0.0, 20.0, 20.0]
+POINT_37_38_DAMPING = [0.0, 0.0, 0.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
