@@ -137,6 +137,34 @@ function compute_lift(sam)
 end
 
 """
+    compute_tether_drag(sam) -> Float64
+
+Total parasitic drag force [N] from all non-WING points
+(tether, bridle, and KCU), projected onto the kite
+apparent-wind direction. The force-form counterpart of
+`compute_tether_drag_coeff` and friends; combined with the
+wing drag from `compute_drag`, this gives the total system
+drag (see `total_drag`).
+"""
+function compute_tether_drag(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return 0.0
+    va_hat_b = va_b / v_app
+    R_b_w = calc_R_b_w(sys)
+    va_hat_w = R_b_w * va_hat_b
+
+    drag_w = zeros(3)
+    for p in sys.points
+        p.type == WING && continue
+        drag_w .+= p.drag_force
+    end
+    return dot(drag_w, va_hat_w)
+end
+
+"""
     compute_lift_coeff(sam) -> Float64
 
 Compute the lift coefficient from the first wing's aero force
