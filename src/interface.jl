@@ -36,6 +36,23 @@ function lift_drag(s::V3KITE)
 end
 
 """
+    total_drag(s::V3KITE) -> (wing_drag, tether_drag, total)
+
+Return the total drag force [N] decomposed into:
+- `wing_drag`: wing aerodynamic drag (VSM + wing-point parasitic)
+- `tether_drag`: tether, bridle and KCU parasitic drag
+- `total`: sum of both
+
+Mirrors `HybridWings.total_drag`; used for the L/D_wing vs.
+L/D_eff comparison in examples/parking.jl.
+"""
+function total_drag(s::V3KITE)
+    wing_drag = compute_drag(s.sam)
+    tether_drag = compute_tether_drag(s.sam)
+    return (wing_drag, tether_drag, wing_drag + tether_drag)
+end
+
+"""
     unstretched_length(s::V3KITE) -> Float64
 
 Return the current unstretched tether length [m].
