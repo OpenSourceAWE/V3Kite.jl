@@ -44,8 +44,6 @@ FPS           = 50       # Simulation/log frames per second (dt = 20 ms)
 const PLOT    = true
 REPLAY_LOG    = true     # Interactive 3D replay after simulation
 
-# ========================================================== #
-
 # ==================== SETTLING ==================== #
 
 el_rad = deg2rad(ELEVATION)
