@@ -131,7 +131,7 @@ for step in 1:n_steps
 
     if should_report(step, n_steps)
         elapsed = time() - sim_start_time
-        @info "Step $step/$n_steps (t=$(round(t, digits=2))s)" times_realtime=round(t / elapsed, digits=2)
+        @info "Step $step/$n_steps (t=$(round(t, digits=2))s), times_rt = $(round(t / elapsed, digits=2))"
     end
 end
 
