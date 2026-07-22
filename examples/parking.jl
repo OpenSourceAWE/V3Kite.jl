@@ -40,7 +40,7 @@ ELEVATION     = 72.0     # Initial elevation angle [deg]
 AZIMUTH       = 0.0      # Initial azimuth angle [deg]
 REL_DEPOWER   = 0.25      # Depower setting held during parking [-]
 TETHER_DIAM   = 5.0      # Tether diameter for this example [mm]
-FPS           = 100      # Simulation/log frames per second (dt = 10 ms)
+FPS           = 50      # Simulation/log frames per second (dt = 20 ms)
 const PLOT    = true
 REPLAY_LOG    = true     # Interactive 3D replay after simulation
 
