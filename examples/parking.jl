@@ -116,15 +116,11 @@ dt = SIM_TIME / n_steps
 
 logger, sys_state = create_logger(sam, n_steps)
 
-# Plot data collected each step via the V3KITE query interface.
-v_reelout_log   = Float64[]
-winch_force_log = Float64[]
-elevation_log   = Float64[]
-heading_log     = Float64[]
-aoa_log         = Float64[]
-rel_depower_log = Float64[]
-ld_wing_log     = Float64[]   # L/D  (wing lift / wing drag)
-ld_eff_log      = Float64[]   # L/D_eff (wing lift / total drag)
+# All plot data is stored in the syslog. Most quantities land in
+# standard SysState fields (v_reelout, winch_force, elevation, heading)
+# or in the computed slots filled by `log_state!` (AoA → var_04). The
+# two L/D ratios have no standard field, so this example puts them in
+# the free slots var_15 / var_16 before each `log_state!` call.
 
 @info "Starting simulation with n_steps=$n_steps, dt=$dt"
 sim_start_time = time()
@@ -132,22 +128,15 @@ sim_start_time = time()
 for step in 1:n_steps
     t = step * dt
 
-    lift, _ = lift_drag(v3kite)
-    wing_drag, _, total_d = total_drag(v3kite)
-
-    push!(v_reelout_log,   reel_out_speed(v3kite))
-    push!(winch_force_log, winch_force(v3kite))
-    push!(elevation_log,   rad2deg(calc_elevation(v3kite)))
-    push!(heading_log,     rad2deg(calc_heading(v3kite)))
-    push!(aoa_log,         rad2deg(compute_kite_aoa(sys)))
-    push!(rel_depower_log, REL_DEPOWER)
-    push!(ld_wing_log,     lift / wing_drag)
-    push!(ld_eff_log,      lift / total_d)
-
     if !sim_step!(sam; set_values = [0.0], dt, vsm_interval = 1)
         @error "Simulation failed" step
         break
     end
+
+    lift, _ = lift_drag(v3kite)
+    wing_drag, _, total_d = total_drag(v3kite)
+    sys_state.var_15 = lift / wing_drag   # L/D  (wing lift / wing drag)
+    sys_state.var_16 = lift / total_d     # L/D_eff (wing lift / total drag)
 
     log_state!(logger, sys_state, sam, t)
 
@@ -166,10 +155,11 @@ save_log(logger, log_name)
 syslog = load_log(log_name)
 sl = syslog.syslog
 
-# Trim the plot vectors to the number of logged steps (the loop may
-# have stopped early on a failed step).
-n_logged = min(length(sl.time), length(v_reelout_log) + 1)
-t_plot = sl.time[2:n_logged]   # skip the t=0 initial log entry
+# Skip the t=0 initial log entry (var slots are only filled from the
+# first simulation step onward). The syslog already has the right
+# length even if the loop stopped early on a failed step.
+rng = 2:length(sl.time)
+t_plot = sl.time[rng]
 
 # ==================== PLOTTING ==================== #
 
@@ -177,13 +167,13 @@ if PLOT
     @info "Plotting results..."
     p = plotx(
         t_plot,
-        v_reelout_log[1:n_logged-1],
-        winch_force_log[1:n_logged-1],
-        elevation_log[1:n_logged-1],
-        heading_log[1:n_logged-1],
-        aoa_log[1:n_logged-1],
-        rel_depower_log[1:n_logged-1],
-        (ld_wing_log[1:n_logged-1], ld_eff_log[1:n_logged-1]);
+        first.(sl.v_reelout[rng]),         # winch 1 reel-out speed
+        first.(sl.winch_force[rng]),       # winch 1 force
+        rad2deg.(sl.elevation[rng]),
+        rad2deg.(sl.heading[rng]),
+        rad2deg.(sl.var_04[rng]),          # kite AoA
+        fill(REL_DEPOWER, length(rng)),    # depower held constant
+        (sl.var_15[rng], sl.var_16[rng]);  # L/D_wing, L/D_eff
         xlabel = L"\mathrm{time}~[\mathrm{s}]",
         ysize = 16,
         legendsize = 16,
