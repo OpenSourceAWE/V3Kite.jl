@@ -38,8 +38,9 @@ V_WIND        = 10.0     # Ground wind speed at 6 m height [m/s]
 TETHER_LENGTH = 150.0    # Initial tether length [m]
 ELEVATION     = 72.0     # Initial elevation angle [deg]
 AZIMUTH       = 0.0      # Initial azimuth angle [deg]
-REL_DEPOWER   = 0.3      # Depower setting held during parking [-]
-FPS           = 120      # Simulation/log frames per second
+REL_DEPOWER   = 0.25      # Depower setting held during parking [-]
+TETHER_DIAM   = 5.0      # Tether diameter for this example [mm]
+FPS           = 100      # Simulation/log frames per second (dt = 10 ms)
 const PLOT    = true
 REPLAY_LOG    = true     # Interactive 3D replay after simulation
 
@@ -77,6 +78,27 @@ sam, settle_log, settle_failed = settle_wing(settle_config;
     steering = 0.0, depower = REL_DEPOWER, wind_vec, remake = false)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
+
+# ---- Local tether-diameter override (this example only) ----
+# `sam.set` is this instance's Settings (built from system.yaml inside
+# settle_wing, not the on-disk data/settings.yaml), so mutating it here
+# affects only this run. We set the new diameter and propagate it to the
+# main tether's segments. The DAE reads segment diameter/stiffness live
+# (@register_symbolic), so this takes effect without rebuilding the
+# model. Stiffness and damping scale with the cross-sectional area
+# (∝ diameter²) to keep the tether physically consistent.
+d_tether_old = sam.set.d_tether
+d_ratio = TETHER_DIAM / d_tether_old
+sam.set.d_tether = TETHER_DIAM
+for tether in sys.tethers
+    for seg_idx in tether.segment_idxs
+        seg = sys.segments[seg_idx]
+        seg.diameter       *= d_ratio        # drag area ∝ d, mass ∝ d²
+        seg.unit_stiffness *= d_ratio^2      # E·A ∝ d²
+        seg.unit_damping   *= d_ratio^2
+    end
+end
+@info "Tether diameter set to $(TETHER_DIAM) mm (was $(round(d_tether_old, digits=1)) mm)"
 
 # Brake the winch: park at constant tether length (no reel-out).
 sys.winches[1].brake = true
