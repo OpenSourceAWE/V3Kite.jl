@@ -104,7 +104,7 @@ rel_depower_log = Float64[]
 ld_wing_log     = Float64[]   # L/D  (wing lift / wing drag)
 ld_eff_log      = Float64[]   # L/D_eff (wing lift / total drag)
 
-@info "Starting simulation" n_steps dt
+@info "Starting simulation with n_steps=$n_steps, dt=$dt"
 sim_start_time = time()
 
 for step in 1:n_steps

@@ -573,7 +573,7 @@ function report_performance(sim_time, wall_time; label="")
     times_rt = sim_time / wall_time
     msg = isempty(label) ? "Simulation completed" :
         "Simulation completed: $label"
-    @info msg wall_time=round(wall_time, digits=2) times_realtime=round(times_rt, digits=2)
+    @info "$msg (wall_time=$(round(wall_time, digits=2)) s, times_realtime=$(round(times_rt, digits=2)))"
     return nothing
 end
 
