@@ -33,6 +33,7 @@ toc("Loaded packages")
 
 # ==================== USER PARAMETERS ==================== #
 
+PROJECT =        "system_cabauw.yaml" 
 SIM_TIME      = 10.0     # Total simulation time [s]
 V_WIND        = 10.0     # Ground wind speed at 6 m height [m/s]
 TETHER_LENGTH = 150.0    # Initial tether length [m]
@@ -58,6 +59,7 @@ heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
 settle_config = V3SettleConfig(
+    system_yaml = PROJECT,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.001,
@@ -76,27 +78,6 @@ sam, settle_log, settle_failed = settle_wing(settle_config;
     steering = 0.0, depower = REL_DEPOWER, wind_vec, remake = false)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
-
-# ---- Local tether-diameter override (this example only) ----
-# `sam.set` is this instance's Settings (built from system.yaml inside
-# settle_wing, not the on-disk data/settings.yaml), so mutating it here
-# affects only this run. We set the new diameter and propagate it to the
-# main tether's segments. The DAE reads segment diameter/stiffness live
-# (@register_symbolic), so this takes effect without rebuilding the
-# model. Stiffness and damping scale with the cross-sectional area
-# (∝ diameter²) to keep the tether physically consistent.
-d_tether_old = sam.set.d_tether
-d_ratio = TETHER_DIAM / d_tether_old
-sam.set.d_tether = TETHER_DIAM
-for tether in sys.tethers
-    for seg_idx in tether.segment_idxs
-        seg = sys.segments[seg_idx]
-        seg.diameter       *= d_ratio        # drag area ∝ d, mass ∝ d²
-        seg.unit_stiffness *= d_ratio^2      # E·A ∝ d²
-        seg.unit_damping   *= d_ratio^2
-    end
-end
-@info "Tether diameter set to $(TETHER_DIAM) mm (was $(round(d_tether_old, digits=1)) mm)"
 
 # Brake the winch: park at constant tether length (no reel-out).
 sys.winches[1].brake = true
@@ -205,5 +186,7 @@ if REPLAY_LOG
     scene = replay(syslog, sam.sys_struct; show_panes = false)
     display(scene)
 end
+
+@info "Wind speed at kite height: $(round(norm(v_wind_kite(v3kite)), digits=2)) m/s"
 
 nothing
