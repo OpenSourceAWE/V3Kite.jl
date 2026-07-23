@@ -25,6 +25,13 @@ kite:
   mass: 11.0 # kite mass [kg]
   quasi_static: false # whether to use quasi static kite points or not
 
+kcu:
+  # KCU actuator tape rate limits fed to the KCU model. Without finite values
+  # the actuator would freeze (defaults of 0). All other KCU fields fall back
+  # to the KiteUtils defaults.
+  v_depower:  0.075 # depower-tape rate limit [1/s]
+  v_steering: 0.2   # steering-tape rate limit [1/s]
+
 tether:
   # Bosch et al. 2014 used k = AE/L = 4.52E3 N/m for the bridles of the V3
   # Bosch et al. 2014 used C = 251.7 Ns/m for bridles of the V3
