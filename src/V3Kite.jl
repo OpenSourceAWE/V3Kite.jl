@@ -25,6 +25,7 @@ using HDF5
 using Serialization
 using Parameters
 using StaticArrays
+using YAML
 
 import KiteUtils: calc_elevation, calc_heading
 
@@ -47,6 +48,7 @@ include("photogrammetry.jl")
 include("sim_helpers.jl")
 include("simulation.jl")
 include("stabilization.jl")
+include("wc_settings.jl")
 include("interface.jl")
 
 # Calibration exports
@@ -111,6 +113,9 @@ export find_frame_syslog_idxs, build_replay_sys_struct
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
+
+# Winch-controller settings export
+export WC_Settings
 
 # Interface exports
 export init, step!

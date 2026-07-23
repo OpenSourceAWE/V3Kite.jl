@@ -1,23 +1,11 @@
 import SymbolicAWEModels: winch_force, tether_length
 
 # ===================== Winch position controller ===================== #
-# Default gains for the cascaded winch length controller (see
-# `_winch_position_torque!`). These are new parameters with no historical
-# counterpart; tune on `examples/simple_parking.jl` (constant-length
-# parking) and, per CLAUDE.md, change them by at most 10 % per iteration.
-
-"Outer proportional gain: tether length error [m] → reel-out speed setpoint [1/s]"
-const WINCH_POS_KP::Float64 = 0.5
-"Inner speed-loop proportional gain: speed error [m/s] → winch torque [N·m·s/m]"
-const WINCH_SPEED_K::Float64 = 30.0
-"Inner speed-loop integral time [s] (larger = weaker integral action)"
-const WINCH_SPEED_TI::Float64 = 2.0
-"Saturation of the inner speed loop's torque correction [N·m]"
-const WINCH_TORQUE_LIMIT::Float64 = 500.0
-"Depower-tape rate limit fed to the KCU actuator model [1/s]"
-const KCU_V_DEPOWER::Float64 = 0.075
-"Steering-tape rate limit fed to the KCU actuator model [1/s]"
-const KCU_V_STEERING::Float64 = 0.2
+# Gains for the cascaded winch length controller (see `_winch_position_torque!`)
+# are stored in a `WC_Settings` struct loaded from `data/wc_settings.yaml`
+# (see `src/wc_settings.jl`), not hard-coded here. The KCU actuator tape rate
+# limits (`v_depower`/`v_steering`) live in the `kcu:` section of
+# `data/settings.yaml` and are loaded into `Settings` like any other field.
 
 """
     WinchPosController
@@ -33,7 +21,7 @@ Base.@kwdef mutable struct WinchPosController
     "Inner speed PI controller; output is a winch torque correction [N·m]"
     speed_pid::DiscretePID
     "Outer proportional gain, length error [m] → speed setpoint [m/s]"
-    kp_pos::Float64 = WINCH_POS_KP
+    kp_pos::Float64 = WC_Settings().winch_pos_kp
     "Rate-limited speed setpoint carried between steps [m/s]"
     v_sp_prev::Float64 = 0.0
 end
@@ -421,7 +409,7 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), remake=false) -> V3KITE
+         gc=V3GeomAdjustConfig(), wc=nothing, remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -432,7 +420,12 @@ settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
 is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 [s] size the logger and step count, falling back to `1/set.sample_freq` and
 `set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
-re-settling (ignoring the `data/settled_*.bin` cache).
+re-settling (ignoring the `data/settled_*.bin` cache). `wc` holds the winch
+length-controller gains; when `nothing` (the default) they are loaded from the
+file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
+`system_yaml` names the system-YAML file (default `"system.yaml"`) that points
+at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
+alternate config.
 
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
@@ -445,11 +438,16 @@ function init(v_wind_gnd, l_tether;
               dt = nothing,
               sim_time = nothing,
               gc = V3GeomAdjustConfig(),
+              wc = nothing,
+              system_yaml = "system.yaml",
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
+    # Winch-controller settings fall back to the file named in the `wc_settings`
+    # field of system.yaml (needs the data path set above).
+    isnothing(wc) && (wc = WC_Settings(wc_settings(system_yaml)))
     if isnothing(elevation)
-        elevation = Settings("system.yaml").elevation
+        elevation = Settings(system_yaml).elevation
     end
     el_rad = deg2rad(elevation)
     wind_vec = _wind_vec(v_wind_gnd, upwind_dir)
@@ -467,6 +465,7 @@ function init(v_wind_gnd, l_tether;
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
         geom = gc,
+        system_yaml = system_yaml,
     )
     @info "init: settling V3 model at rel_depower = $depower_setpoint..."
     sam, _, settle_failed = settle_wing(settle_config;
@@ -480,10 +479,8 @@ function init(v_wind_gnd, l_tether;
 
     set = sam.set
     set.wind_vec = wind_vec
-    # The V3 settings.yaml has no `kcu:` section, so give the KCU model finite
-    # tape speeds (otherwise the defaults of 0 would freeze the actuator).
-    set.v_depower = KCU_V_DEPOWER
-    set.v_steering = KCU_V_STEERING
+    # `set.v_depower`/`set.v_steering` come from the `kcu:` section of
+    # data/settings.yaml (loaded via Settings in settle_wing).
     set.cs_4p = 1.0
 
     isnothing(dt) && (dt = 1 / set.sample_freq)
@@ -498,11 +495,11 @@ function init(v_wind_gnd, l_tether;
     kcu.steering = 0.0
 
     # Winch position controller (inner speed PI, torque output).
-    speed_pid = DiscretePID(; K = WINCH_SPEED_K, Ti = WINCH_SPEED_TI,
+    speed_pid = DiscretePID(; K = wc.winch_speed_k, Ti = wc.winch_speed_ti,
         Td = false, Ts = dt,
-        umin = -WINCH_TORQUE_LIMIT, umax = WINCH_TORQUE_LIMIT)
+        umin = -wc.winch_torque_limit, umax = wc.winch_torque_limit)
     winch_ctrl = WinchPosController(speed_pid = speed_pid,
-        kp_pos = WINCH_POS_KP, v_sp_prev = sys.winches[1].vel)
+        kp_pos = wc.winch_pos_kp, v_sp_prev = sys.winches[1].vel)
 
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
