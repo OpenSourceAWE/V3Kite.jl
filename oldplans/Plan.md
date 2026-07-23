@@ -33,7 +33,7 @@ equivalent yet):
   `compute_kcu_drag_coeff` in sim_helpers.jl, but returns a force [N]
   instead of a coefficient.
 - `total_drag(s::V3KITE)` in interface.jl: `(wing_drag, tether_drag,
-  wing_drag + tether_drag)`, mirroring HybridWings' `total_drag`.
+  wing_drag + tether_drag)`.
 
 # Depower / winch behavior
 Bake REL_DEPOWER into settle_wing (depower=REL_DEPOWER, steering=0.0),

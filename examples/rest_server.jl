@@ -3,7 +3,7 @@
 
 """
 REST interface for driving a V3Kite simulation from Matlab, Python or any
-HTTP client, ported from `HybridWings.jl/examples/rest_server.jl`. Covers the
+HTTP client. Covers the
 parking example (`examples/simple_parking.jl`): `init` + `step!` with
 `rel_depower`/`rel_steering`/`set_length`, plus saving the log.
 

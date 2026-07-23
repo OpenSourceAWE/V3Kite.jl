@@ -75,7 +75,7 @@ wrapped finite difference of the heading over the model's integrator clock.
 The previous heading and time are stored on the `V3KITE` (on the integrator
 clock), so the result is immune to callers restamping `ss.time` with a log
 time between calls. On the first call (or if the integrator time did not
-advance) `heading_rate` is left unchanged. Mirrors the HybridWings method.
+advance) `heading_rate` is left unchanged.
 """
 function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
     update_sys_state!(ss, s.sam, zoom)  # sets ss.time to the integrator time
@@ -108,7 +108,7 @@ Return the total drag force [N] decomposed into:
 - `tether_drag`: tether, bridle and KCU parasitic drag
 - `total`: sum of both
 
-Mirrors `HybridWings.total_drag`; used for the L/D_wing vs.
+Used for the L/D_wing vs.
 L/D_eff comparison in examples/parking.jl.
 """
 function total_drag(s::V3KITE)
@@ -362,7 +362,7 @@ end
 # ============================ High-level interface ============================ #
 # Two functions, `init` and `step!`, wrap the settle/simulate/log boilerplate
 # (cf. examples/parking.jl) so that an example reduces to `init` plus a loop of
-# `step!` calls, mirroring HybridWings.jl.
+# `step!` calls.
 
 """
     _wind_vec(v_wind_gnd, upwind_dir) -> Vector{Float64}

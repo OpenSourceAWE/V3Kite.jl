@@ -1,13 +1,13 @@
 # Implement high-level interface
 
 A high-level interface using two functions, `init()` and `step!()`, shall be
-implemented, similar to HybridWings.jl. It wraps the existing
+implemented. It wraps the existing
 settle/simulate/log boilerplate (see `examples/parking.jl`) so that an example
 reduces to `init` + a loop of `step!` calls.
 
 ## Design decisions (resolved)
 
-1. **`init`, not `init!`**: like HybridWings, `init(v_wind_gnd, l_tether; ...)`
+1. **`init`, not `init!`**: `init(v_wind_gnd, l_tether; ...)`
    builds and returns a ready `V3KITE` instance. No pre-constructed model is
    passed in, and there is no clash with the re-exported
    `SymbolicAWEModels.init!`.
@@ -29,7 +29,7 @@ reduces to `init` + a loop of `step!` calls.
 
 ## New/extended fields of `V3KITE`
 
-Mutable runtime state stored on the struct by `init` (mirrors `HybridWing`):
+Mutable runtime state stored on the struct by `init`:
 
 - `gc::V3GeomAdjustConfig` — geometry config used by the tape conversions
 - `dt::Float64` — time step [s]
@@ -37,7 +37,7 @@ Mutable runtime state stored on the struct by `init` (mirrors `HybridWing`):
 - `logger::Union{Logger, Nothing}` — log of the run
 - `steps::Int` — total number of simulation steps
 - `t_prev::Float64`, `heading_prev::Float64` — for the `heading_rate`
-  finite difference in `update_sys_state!` (as in HybridWings)
+  finite difference in `update_sys_state!`
 - `last_step_time::Float64` — for realtime-factor progress prints
 - position-controller state (integrator/limited setpoint, see below)
 
@@ -52,8 +52,7 @@ Keyword:
 
 - `elevation = nothing`        # initial elevation [deg]; fallback: settings
 - `upwind_dir = -π/2`          # wind direction [rad]
-- `depower_setpoint = 0.25`    # initial rel_depower in [0, 1] (NOT meters,
-                               # unlike HybridWings)
+- `depower_setpoint = 0.25`    # initial rel_depower in [0, 1] (NOT meters)
 - `dt = nothing`               # fallback: `1/set.sample_freq`
 - `sim_time = nothing`         # fallback: `set.sim_time`; sizes logger/steps
 - `gc = V3GeomAdjustConfig()`  # geometry adjustments
@@ -101,8 +100,7 @@ length setpoint into a winch torque.
 
 ## Example
 
-Implement `examples/simple_parking.jl`, analogous to the HybridWings example
-of the same name: user parameters (SIM_TIME, V_WIND, TETHER_LENGTH,
+Implement `examples/simple_parking.jl`: user parameters (SIM_TIME, V_WIND, TETHER_LENGTH,
 DEPOWER_SETPOINT), `init`, a loop calling
 `step!(s; rel_depower, set_length = l0)`, save the log ("tmp_run").
 The existing `examples/parking.jl` stays as the manual (braked-winch)
