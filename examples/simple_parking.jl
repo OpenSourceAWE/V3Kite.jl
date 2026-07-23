@@ -20,11 +20,13 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using LinearAlgebra: norm
 
 @info "simple_parking.jl: parking the V3 kite via the init/step! interface."
 
 # ==================== USER PARAMETERS ==================== #
 
+PROJECT =        "system_cabauw.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
 V_WIND           = 10.0     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
@@ -33,7 +35,7 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 # ======================== INIT =========================== #
 
 s = init(V_WIND, TETHER_LENGTH;
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
@@ -52,5 +54,7 @@ end
 
 @info "Save the log"
 save_log(s.logger, "tmp_run")
+
+@info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 
 nothing

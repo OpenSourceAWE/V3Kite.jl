@@ -1,0 +1,3 @@
+system:
+    sim_settings: "settings_cabauw.yaml"
+    wc_settings: "wc_settings.yaml"
