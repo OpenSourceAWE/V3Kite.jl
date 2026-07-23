@@ -36,7 +36,7 @@ s = init(V_WIND, TETHER_LENGTH;
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME)
 
 # Constant-length setpoint: the tether length just after settling.
-l0 = unstretched_length(s)
+l0 = s.sys_state.l_tether[1]
 
 # ==================== SIMULATION LOOP ==================== #
 
