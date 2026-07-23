@@ -8,13 +8,9 @@ built on the high-level `init()`/`step!()` interface, in the style of
 
 `simple_sinus.jl` is to the heading-tracking loop of `examples/v3kite.jl` what
 `simple_parking.jl` is to `parking.jl`: same maneuver, rebuilt on
-`init`/`step!`. The HybridWings example `examples/simple_sinus.jl` (in
-`~/repos/HybridWings.jl`) is the template for the **structure** only
-(parameter block, loop, RMS printout, plots) — its `HeadingController`
-cascade (feedforward, azimuth-rate damping, period-scheduled constants,
-front/back channels) is A1-15-specific tuning and must NOT be ported. The V3
-controller comes from `v3kite.jl`: a plain `create_heading_pid`
-(`src/sim_helpers.jl`) driving the single steering channel.
+`init`/`step!`. The controller comes from `v3kite.jl`: a plain
+`create_heading_pid` (`src/sim_helpers.jl`) driving the single steering
+channel.
 
 ## Design decisions
 
@@ -42,12 +38,11 @@ controller comes from `v3kite.jl`: a plain `create_heading_pid`
 4. **Log name**: save to `"tmp_sinus"` so the parking log `"tmp_run"` is not
    clobbered.
 5. **Plotting**: separate `simple_sinus_plots.jl` following the local
-   convention (simple_parking_plots.jl), NOT inline plotting as in
-   HybridWings. The plots script recomputes the setpoint from `sl.time` and
-   its own `MAX_HEADING`/`HEADING_PERIOD` constants (kept in sync with the
-   sim script, like `DEPOWER_SETPOINT` in simple_parking_plots.jl) — no spare
-   var needed. `var_15`/`var_16` (L/D wing / L/D eff) are already filled by
-   `step!`.
+   convention (simple_parking_plots.jl). The plots script recomputes the
+   setpoint from `sl.time` and its own `MAX_HEADING`/`HEADING_PERIOD`
+   constants (kept in sync with the sim script, like `DEPOWER_SETPOINT` in
+   simple_parking_plots.jl) — no spare var needed. `var_15`/`var_16` (L/D
+   wing / L/D eff) are already filled by `step!`.
 
 ## Files
 
@@ -71,7 +66,7 @@ controller comes from `v3kite.jl`: a plain `create_heading_pid`
   set_length = l0)`.
 - After the loop: `save_log(s.logger, "tmp_sinus")`, then print the heading
   tracking RMS error over the settled part (skip the first
-  `HEADING_PERIOD`), as in the HybridWings example.
+  `HEADING_PERIOD`).
 
 ### examples/simple_sinus_plots.jl
 
