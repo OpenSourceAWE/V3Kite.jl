@@ -128,7 +128,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))" *
-        "_g$(Int(round(config.g_earth * 10)))"
+        "_g$(Int(round(config.g_earth * 10)))" *
+        "_sys$(splitext(basename(config.system_yaml))[1])"
     if !isnothing(config.kcu_mass)
         suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
     end
