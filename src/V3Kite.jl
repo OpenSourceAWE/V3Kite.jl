@@ -113,6 +113,7 @@ export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 
 # Interface exports
+export init, step!
 export lift_drag, total_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height, cl_cd, winch_force, reel_out_speed, states, spring_forces
 export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir, calc_heading, calc_course
 export kite_ref_frame, calc_orient_quat, orient_euler

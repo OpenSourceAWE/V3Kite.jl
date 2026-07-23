@@ -1,5 +1,43 @@
 import SymbolicAWEModels: winch_force, tether_length
 
+# ===================== Winch position controller ===================== #
+# Default gains for the cascaded winch length controller (see
+# `_winch_position_torque!`). These are new parameters with no historical
+# counterpart; tune on `examples/simple_parking.jl` (constant-length
+# parking) and, per CLAUDE.md, change them by at most 10 % per iteration.
+
+"Outer proportional gain: tether length error [m] → reel-out speed setpoint [1/s]"
+const WINCH_POS_KP::Float64 = 0.5
+"Inner speed-loop proportional gain: speed error [m/s] → winch torque [N·m·s/m]"
+const WINCH_SPEED_K::Float64 = 30.0
+"Inner speed-loop integral time [s] (larger = weaker integral action)"
+const WINCH_SPEED_TI::Float64 = 2.0
+"Saturation of the inner speed loop's torque correction [N·m]"
+const WINCH_TORQUE_LIMIT::Float64 = 500.0
+"Depower-tape rate limit fed to the KCU actuator model [1/s]"
+const KCU_V_DEPOWER::Float64 = 0.075
+"Steering-tape rate limit fed to the KCU actuator model [1/s]"
+const KCU_V_STEERING::Float64 = 0.2
+
+"""
+    WinchPosController
+
+Runtime state of the cascaded winch length controller: an outer
+proportional loop on the tether length error produces a speed setpoint
+(saturated by `speed_limit` and rate-limited by `acceleration_limit` in
+`step!`), and an inner PI loop (`speed_pid`) on the speed error produces a
+winch-torque correction added to a force feed-forward. `v_sp_prev` carries
+the rate-limited speed setpoint between steps.
+"""
+Base.@kwdef mutable struct WinchPosController
+    "Inner speed PI controller; output is a winch torque correction [N·m]"
+    speed_pid::DiscretePID
+    "Outer proportional gain, length error [m] → speed setpoint [m/s]"
+    kp_pos::Float64 = WINCH_POS_KP
+    "Rate-limited speed setpoint carried between steps [m/s]"
+    v_sp_prev::Float64 = 0.0
+end
+
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
     set::Settings
@@ -8,7 +46,24 @@ import SymbolicAWEModels: winch_force, tether_length
     sam::SymbolicAWEModel
     "Reference to the atmospheric model as implemented in the package AtmosphericModels"
     am::AtmosphericModel = AtmosphericModel(set)
-    
+    "Geometry config used by the depower/steering tape conversions"
+    gc::V3GeomAdjustConfig = V3GeomAdjustConfig()
+    "Time step of the high-level `step!` loop [s]"
+    dt::Float64 = NaN
+    "Current simulation state, updated in place every `step!`"
+    sys_state::Union{SysState, Nothing} = nothing
+    "Log of the simulation run"
+    logger::Union{Logger, Nothing} = nothing
+    "Total number of simulation steps sized by `init`"
+    steps::Int = 0
+    "Integrator time at the previous `update_sys_state!` call [s]"
+    t_prev::Float64 = NaN
+    "Heading at the previous `update_sys_state!` call [rad]"
+    heading_prev::Float64 = NaN
+    "Wall-clock time at the previous realtime-factor print, `NaN` before the first [s]"
+    last_step_time::Float64 = NaN
+    "Winch length-controller state, set up by `init`"
+    winch_ctrl::Union{WinchPosController, Nothing} = nothing
 end
 
 function Base.getproperty(s::V3KITE, name::Symbol)
@@ -19,8 +74,30 @@ function Base.getproperty(s::V3KITE, name::Symbol)
 end
 
 function Base.propertynames(::V3KITE, private::Bool=false)
-    props = (:set, :kcu, :sam, :am, :sys)
-    return private ? props : props
+    return (fieldnames(V3KITE)..., :sys)
+end
+
+"""
+    update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
+
+Update `ss` from the model (the `SymbolicAWEModel` method) and additionally
+fill the `heading_rate` [rad/s] that method leaves at zero, computed as a
+wrapped finite difference of the heading over the model's integrator clock.
+
+The previous heading and time are stored on the `V3KITE` (on the integrator
+clock), so the result is immune to callers restamping `ss.time` with a log
+time between calls. On the first call (or if the integrator time did not
+advance) `heading_rate` is left unchanged. Mirrors the HybridWings method.
+"""
+function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
+    update_sys_state!(ss, s.sam, zoom)  # sets ss.time to the integrator time
+    dt = ss.time - s.t_prev
+    if dt > 0
+        ss.heading_rate = wrap_to_pi(ss.heading - s.heading_prev) / dt
+    end
+    s.t_prev = ss.time
+    s.heading_prev = ss.heading
+    return nothing
 end
 
 # Output functions
@@ -292,4 +369,230 @@ function spring_forces(s::V3KITE)
         forces[i] = s.sam.sys_struct.segments[seg_idx].force
     end
     return forces
+end
+
+# ============================ High-level interface ============================ #
+# Two functions, `init` and `step!`, wrap the settle/simulate/log boilerplate
+# (cf. examples/parking.jl) so that an example reduces to `init` plus a loop of
+# `step!` calls, mirroring HybridWings.jl.
+
+"""
+    _wind_vec(v_wind_gnd, upwind_dir) -> Vector{Float64}
+
+Ground-level wind vector [m/s] (ENU) from a wind speed `v_wind_gnd` [m/s] and
+an `upwind_dir` [rad]. Inverse of `upwind_dir(v_wind_gnd)`; the default
+`upwind_dir = -π/2` gives wind blowing towards +x, i.e. `[v_wind_gnd, 0, 0]`.
+"""
+function _wind_vec(v_wind_gnd, upwind_dir)
+    wind_dir = -upwind_dir - π/2
+    return [v_wind_gnd * cos(wind_dir), v_wind_gnd * sin(wind_dir), 0.0]
+end
+
+"""
+    _winch_position_torque!(s::V3KITE, set_length, speed_limit,
+                            acceleration_limit) -> torque
+
+Cascaded winch length controller. Outer proportional loop on the tether
+length error (`set_length - unstretched_length(s)`) yields a reel-out speed
+setpoint, clamped to `±speed_limit` [m/s] and rate-limited by
+`acceleration_limit` [m/s²]. The inner PI loop (`s.winch_ctrl.speed_pid`) on
+the speed error yields a winch-torque correction, added to a force
+feed-forward `force_to_torque(winch_force(s), s.sys)` (the steady/gravity
+holding torque from the measured winch force). Returns the winch set torque
+[N·m], applied directly as in `examples/reel_out_v3.jl`: at parking
+equilibrium (speed setpoint 0, measured speed 0) the correction vanishes and
+the output is exactly the holding torque.
+"""
+function _winch_position_torque!(s::V3KITE, set_length, speed_limit,
+                                 acceleration_limit)
+    ctrl = s.winch_ctrl
+    # Outer P loop: length error → speed setpoint.
+    v_sp = ctrl.kp_pos * (set_length - unstretched_length(s))
+    v_sp = clamp(v_sp, -speed_limit, speed_limit)
+    dv_max = acceleration_limit * s.dt
+    v_sp = clamp(v_sp, ctrl.v_sp_prev - dv_max, ctrl.v_sp_prev + dv_max)
+    ctrl.v_sp_prev = v_sp
+    # Inner PI loop: speed error → torque correction.
+    dtau = ctrl.speed_pid(v_sp, reel_out_speed(s), 0.0)
+    tau_ff = force_to_torque(winch_force(s), s.sys)
+    return tau_ff + dtau
+end
+
+"""
+    init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
+         depower_setpoint=0.25, dt=nothing, sim_time=nothing,
+         gc=V3GeomAdjustConfig(), remake=false) -> V3KITE
+
+Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
+for a `step!` simulation loop (see `examples/simple_parking.jl`).
+
+`v_wind_gnd` is the ground wind speed at the reference height [m/s] and
+`l_tether` the initial tether length [m]. `elevation` [deg] falls back to the
+settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
+is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
+[s] size the logger and step count, falling back to `1/set.sample_freq` and
+`set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
+re-settling (ignoring the `data/settled_*.bin` cache).
+
+The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
+winch position controller, the logger, `sys_state`, and `steps` are stored on
+the returned instance, and the winch is left un-braked.
+"""
+function init(v_wind_gnd, l_tether;
+              elevation = nothing,
+              upwind_dir = -π/2,
+              depower_setpoint = 0.25,
+              dt = nothing,
+              sim_time = nothing,
+              gc = V3GeomAdjustConfig(),
+              remake = false)
+    # Elevation fallback comes from the on-disk settings.
+    set_data_path(v3_data_path())
+    if isnothing(elevation)
+        elevation = Settings("system.yaml").elevation
+    end
+    el_rad = deg2rad(elevation)
+    wind_vec = _wind_vec(v_wind_gnd, upwind_dir)
+
+    # ---- Settling (see examples/parking.jl) ----
+    position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
+    settle_config = V3SettleConfig(
+        v_wind = v_wind_gnd,
+        tether_length = l_tether,
+        dt = 0.001,
+        num_steps = 400,
+        num_substeps = 5,
+        body_damping = [0.0, 0.0, 40.0],
+        start_depower = depower_setpoint * 100.0 + 10.0,
+        course_correction_mode = :heading,
+        course_correction_gain = 0.05,
+        geom = gc,
+    )
+    @info "init: settling V3 model at rel_depower = $depower_setpoint..."
+    sam, _, settle_failed = settle_wing(settle_config;
+        position, velocity = [0.0, 0.0, 0.0], heading = 0.0,
+        steering = 0.0, depower = depower_setpoint, wind_vec, remake)
+    settle_failed && error("Settling failed")
+    sys = sam.sys_struct
+
+    # Un-brake the winch (the settled binary is serialized with brake=true).
+    sys.winches[1].brake = false
+
+    set = sam.set
+    set.wind_vec = wind_vec
+    # The V3 settings.yaml has no `kcu:` section, so give the KCU model finite
+    # tape speeds (otherwise the defaults of 0 would freeze the actuator).
+    set.v_depower = KCU_V_DEPOWER
+    set.v_steering = KCU_V_STEERING
+    set.cs_4p = 1.0
+
+    isnothing(dt) && (dt = 1 / set.sample_freq)
+    isnothing(sim_time) && (sim_time = set.sim_time)
+
+    # KCU: start at the settled depower/steering so the first step introduces
+    # no geometry jump.
+    kcu = KCU(set)
+    kcu.set_depower = depower_setpoint
+    kcu.depower = depower_setpoint
+    kcu.set_steering = 0.0
+    kcu.steering = 0.0
+
+    # Winch position controller (inner speed PI, torque output).
+    speed_pid = DiscretePID(; K = WINCH_SPEED_K, Ti = WINCH_SPEED_TI,
+        Td = false, Ts = dt,
+        umin = -WINCH_TORQUE_LIMIT, umax = WINCH_TORQUE_LIMIT)
+    winch_ctrl = WinchPosController(speed_pid = speed_pid,
+        kp_pos = WINCH_POS_KP, v_sp_prev = sys.winches[1].vel)
+
+    steps = Int(round(sim_time / dt))
+    logger, sys_state = create_logger(sam, steps)
+
+    return V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
+        sys_state = sys_state, logger = logger, steps = steps,
+        winch_ctrl = winch_ctrl)
+end
+
+"""
+    step!(s::V3KITE; rel_depower=0.0, rel_steering=0.0,
+          v_wind_gnd=nothing, upwind_dir=nothing,
+          set_torque=nothing, set_length=nothing,
+          speed_limit=Inf, acceleration_limit=Inf, prn=false)
+
+Advance the simulation by `s.dt`, update `s.sys_state` (including
+`heading_rate`), and log it.
+
+`rel_depower` (`0..1`) and `rel_steering` (`-1..1`) are routed through the KCU
+actuator model (finite tape speed) before being applied to the geometry.
+`v_wind_gnd` [m/s] and/or `upwind_dir` [rad], if given, update the live wind
+vector `set.wind_vec` (read by the DAE via `get_wind_vec`) before the step.
+
+The single winch runs in exactly one mode per step: if `set_length` [m] is
+given, the cascaded position controller (`speed_limit` [m/s],
+`acceleration_limit` [m/s²]) converts it to a set torque; otherwise
+`set_torque` [N·m] is passed through; if neither is given, the measured
+holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
+is reported every 100 steps.
+"""
+function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
+               v_wind_gnd = nothing, upwind_dir = nothing,
+               set_torque = nothing, set_length = nothing,
+               speed_limit = Inf, acceleration_limit = Inf, prn = false)
+    dt = s.dt
+    t = s.sys_state.time + dt
+
+    # Optional live wind update (read by the DAE via get_wind_vec).
+    if v_wind_gnd !== nothing || upwind_dir !== nothing
+        v = s.set.wind_vec
+        vw = v_wind_gnd === nothing ? norm(v) : v_wind_gnd
+        ud = upwind_dir === nothing ? -(atan(v[2], v[1]) + π/2) : upwind_dir
+        s.set.wind_vec = _wind_vec(vw, ud)
+    end
+
+    # KCU actuator dynamics: command → finite-speed tape motion → geometry.
+    # The KCU getters must be qualified: V3Kite's calibration.jl defines
+    # get_depower/get_steering(sys, config), which shadow the KitePodModels
+    # (kcu) methods of the same name.
+    set_depower_steering(s.kcu, rel_depower, rel_steering)
+    KitePodModels.on_timer(s.kcu, dt)
+    dp = KitePodModels.get_depower(s.kcu)
+    st = KitePodModels.get_steering(s.kcu)
+    set_depower!(s.sys, dp, st, s.gc)
+    set_steering!(s.sys, st, s.gc)
+
+    # Winch: exactly one of position / torque / hold.
+    torque = if set_length !== nothing
+        _winch_position_torque!(s, set_length, speed_limit, acceleration_limit)
+    elseif set_torque !== nothing
+        set_torque
+    else
+        force_to_torque(winch_force(s), s.sys)
+    end
+
+    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval = 1)
+        error("next_step! failed at t=$(round(t, digits=3)) s")
+    end
+
+    update_sys_state!(s.sys_state, s)
+    s.sys_state.time = t
+    s.sys_state.set_steering = st
+    lift, wing_drag = lift_drag(s)
+    _, _, total_d = total_drag(s)
+    s.sys_state.var_15 = wing_drag > 1e-6 ? lift / wing_drag : 0.0
+    s.sys_state.var_16 = total_d > 1e-6 ? lift / total_d : 0.0
+    log!(s.logger, s.sys_state)
+
+    if prn
+        @info "t=$(round(t, digits=2)) s" lift=round(lift, digits=1) wing_drag=round(wing_drag, digits=1) F_winch=round(winch_force(s), digits=1) v_ro=round(reel_out_speed(s), digits=3)
+    end
+
+    i = Int(round(t / dt))
+    if i % 100 == 0
+        now = time()
+        if !isnan(s.last_step_time)
+            rtf = (100 * dt) / (now - s.last_step_time)
+            @info "step $i / $(s.steps), $(round(rtf, digits=2)) times realtime"
+        end
+        s.last_step_time = now
+    end
+    return nothing
 end
