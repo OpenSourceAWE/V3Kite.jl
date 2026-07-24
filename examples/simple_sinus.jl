@@ -45,7 +45,7 @@ HEADING_P = 1.1             # +10% from the v3kite.jl baseline (was 1.0; RMS 1.1
 HEADING_I = false
 HEADING_D = 0.15            # damps the initial u_s overshoot/ringing (was 0.0)
 HEADING_D_RAMP_TIME = 30.0  # ramp HEADING_D down to 0 over this many seconds
-MAX_STEERING = 0.175        # +10% (was 0.15)
+MAX_STEERING = 0.175        # +17% (was 0.15)
 
 # ======================== INIT =========================== #
 
@@ -64,14 +64,11 @@ angular_freq = 2pi / HEADING_PERIOD
 
 # ==================== SIMULATION LOOP ==================== #
 
-heading_setpoint = Float64[]      # sinusoidal setpoint [rad]
-sizehint!(heading_setpoint, s.steps)
-
 try
     for _ in 1:s.steps
         t = s.sys_state.time + s.dt
         target = max_heading_rad * sin(angular_freq * t)
-        push!(heading_setpoint, target)
+        s.sys_state.bearing = target
         set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_D_RAMP_TIME)))
         rel_steering = heading_pid(target, s.sys_state.heading, 0.0)
         # Position mode: `set_length` holds the mean tether length.
@@ -88,13 +85,11 @@ save_log(s.logger, "tmp_sinus")
 # Tracking error over the settled part (skip the first period).
 syslog = load_log("tmp_sinus")
 sl = syslog.syslog
-n_logged = min(length(heading_setpoint), length(sl.time) - 1)
-time_vec = sl.time[2:n_logged+1]
-settled = findall(t -> t >= HEADING_PERIOD, time_vec)
+settled = findall(t -> t >= HEADING_PERIOD, sl.time)
 if !isempty(settled)
-    track_err = rad2deg.(sl.heading[settled .+ 1] .- heading_setpoint[settled])
+    track_err = rad2deg.(sl.heading[settled] .- sl.bearing[settled])
     @printf("Heading tracking RMS error (t ≥ %.0f s): %.2f°\n",
-            time_vec[settled[1]], sqrt(mean(track_err .^ 2)))
+            sl.time[settled[1]], sqrt(mean(track_err .^ 2)))
 end
 
 nothing
