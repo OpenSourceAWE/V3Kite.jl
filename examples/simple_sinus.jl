@@ -24,6 +24,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using DiscretePIDs: set_Td!
 using Statistics
 using Printf
 
@@ -40,10 +41,11 @@ MAX_HEADING      = 40.0     # Heading setpoint amplitude [deg]
 HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
-HEADING_P = 1.1        # +10% from the v3kite.jl baseline (was 1.0; RMS 1.1° there)
+HEADING_P = 1.1             # +10% from the v3kite.jl baseline (was 1.0; RMS 1.1° there)
 HEADING_I = false
-HEADING_D = 0.0
-MAX_STEERING = 0.165   # +10% (was 0.15)
+HEADING_D = 0.15            # damps the initial u_s overshoot/ringing (was 0.0)
+HEADING_D_RAMP_TIME = 30.0  # ramp HEADING_D down to 0 over this many seconds
+MAX_STEERING = 0.175        # +10% (was 0.15)
 
 # ======================== INIT =========================== #
 
@@ -70,6 +72,7 @@ try
         t = s.sys_state.time + s.dt
         target = max_heading_rad * sin(angular_freq * t)
         push!(heading_setpoint, target)
+        set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_D_RAMP_TIME)))
         rel_steering = heading_pid(target, s.sys_state.heading, 0.0)
         # Position mode: `set_length` holds the mean tether length.
         step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
