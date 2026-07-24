@@ -88,7 +88,7 @@ while idx < steps
         "full_state",  FULL_STATE), opts);
     idx = idx + double(resp.n);
     rec = rec + 1;
-    % resp holds only the last sub-step's state at top level.
+    % resp holds only the last sub-step s state at top level.
     time(rec)        = resp.time;
     elevation(rec)   = resp.elevation;
     heading(rec)      = resp.heading;
