@@ -1,7 +1,7 @@
 import SymbolicAWEModels: winch_force, tether_length
 
 # ===================== Winch position controller ===================== #
-# Gains for the cascaded winch length controller (see `_winch_position_torque!`)
+# Gains for the cascaded winch length controller (see `winch_position_torque!`)
 # are stored in a `WC_Settings` struct loaded from `data/wc_settings.yaml`
 # (see `src/wc_settings.jl`), not hard-coded here. The KCU actuator tape rate
 # limits (`v_depower`/`v_steering`) live in the `kcu:` section of
@@ -377,7 +377,7 @@ function _wind_vec(v_wind_gnd, upwind_dir)
 end
 
 """
-    _winch_position_torque!(s::V3KITE, set_length, speed_limit,
+    winch_position_torque!(s::V3KITE, set_length, speed_limit,
                             acceleration_limit) -> torque
 
 Cascaded winch length controller. Outer proportional loop on the tether
@@ -391,7 +391,7 @@ holding torque from the measured winch force). Returns the winch set torque
 equilibrium (speed setpoint 0, measured speed 0) the correction vanishes and
 the output is exactly the holding torque.
 """
-function _winch_position_torque!(s::V3KITE, set_length, speed_limit,
+function winch_position_torque!(s::V3KITE, set_length, speed_limit,
                                  acceleration_limit)
     ctrl = s.winch_ctrl
     # Outer P loop: length error → speed setpoint.
@@ -558,7 +558,7 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     # Winch: exactly one of position / torque / hold.
     torque = if set_length !== nothing
-        _winch_position_torque!(s, set_length, speed_limit, acceleration_limit)
+        winch_position_torque!(s, set_length, speed_limit, acceleration_limit)
     elseif set_torque !== nothing
         set_torque
     else
