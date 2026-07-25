@@ -70,13 +70,17 @@ end
     update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
 
 Update `ss` from the model (the `SymbolicAWEModel` method) and additionally
-fill the `heading_rate` [rad/s] that method leaves at zero, computed as a
-wrapped finite difference of the heading over the model's integrator clock.
+fill in two fields that method leaves wrong/unset for V3 (which has no twist
+`groups`, unlike the group-actuated models the base method targets):
+- `heading_rate` [rad/s], computed as a wrapped finite difference of the
+  heading over the model's integrator clock.
+- `depower` (`0..1`), the KCU's actual (tape-lag-limited) depower fraction —
+  the base method leaves this at 0 since it is only filled from `groups`.
 
 The previous heading and time are stored on the `V3KITE` (on the integrator
-clock), so the result is immune to callers restamping `ss.time` with a log
-time between calls. On the first call (or if the integrator time did not
-advance) `heading_rate` is left unchanged.
+clock), so the `heading_rate` result is immune to callers restamping
+`ss.time` with a log time between calls. On the first call (or if the
+integrator time did not advance) `heading_rate` is left unchanged.
 """
 function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
     update_sys_state!(ss, s.sam, zoom)  # sets ss.time to the integrator time
@@ -86,6 +90,7 @@ function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
     end
     s.t_prev = ss.time
     s.heading_prev = ss.heading
+    ss.depower = KitePodModels.get_depower(s.kcu)
     return nothing
 end
 
