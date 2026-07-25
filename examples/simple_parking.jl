@@ -54,7 +54,7 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_run"; colmeta=timestamp_colmeta())
+save_log(s.logger, "tmp_parking"; colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 

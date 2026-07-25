@@ -4,7 +4,7 @@
 """
 Plotting for simple_parking.jl results.
 
-Loads the "tmp_run" log saved by simple_parking.jl and reproduces the same
+Loads the "tmp_parking" log saved by simple_parking.jl and reproduces the same
 plot as parking.jl, entirely from logged data — no re-simulation needed.
 v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
@@ -15,7 +15,7 @@ against the command (`var_14`, written by `step!`), matching parking.jl. Both
 come from the log, so nothing here needs to be kept in sync with
 simple_parking.jl by hand.
 
-Run from the REPL after (or instead of, if "tmp_run" already exists) running
+Run from the REPL after (or instead of, if "tmp_parking" already exists) running
 simple_parking.jl:
 
     include("simple_parking_plots.jl")
@@ -33,10 +33,10 @@ using V3Kite
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
-syslog = load_log("tmp_run")
+syslog = load_log("tmp_parking")
 sl = syslog.syslog
 
-created_at = log_created_at("tmp_run")
+created_at = log_created_at("tmp_parking")
 fig_name = "V3 Kite Parking"
 if !isnothing(created_at)
     fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
