@@ -18,9 +18,9 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
-using LinearAlgebra
-using MakieControlPlots
-using V3Kite
+using LinearAlgebra: norm
+using MakieControlPlots: plotx
+using V3Kite: set_data_path, load_log, v3_data_path
 
 T_MIN = 0.0 # only plot results from T_MIN onwards
 
