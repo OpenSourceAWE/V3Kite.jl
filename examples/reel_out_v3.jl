@@ -30,7 +30,7 @@ DEPOWER_SETPOINT = 0.27 # tuned so winch_force(15s) ≈ 1050 N, matching winch_K
 REL_STEERING = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
-T_MIN = 10.0 # only plot results from T_MIN onwards
+T_MIN =  0.0 # only plot results from T_MIN onwards
 # end of user parameter section #
 
 v_time = zeros(STEPS)
@@ -88,10 +88,13 @@ function simulate(s, steps, plot=false)
     iter / steps
 end
 
+GC.enable(false)
 try
     simulate(s, STEPS, true)
 catch e
     @error "Simulation stopped early at t≈$(round(s.sys_state.time, digits=2))s" exception=(e, catch_backtrace())
+finally
+    GC.enable(true)
 end
 
 @info "Save the log"
@@ -101,7 +104,7 @@ if PLOT
     local p
     mask = v_time .>= T_MIN
     p = plotx(v_time[mask], v_speed[mask], v_force[mask], v_elevation[mask], v_heading[mask], v_wind_speed[mask];
-    ysize= 11,
+    ysize= 16,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
                  "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
     display(p)
