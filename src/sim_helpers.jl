@@ -23,6 +23,49 @@ function create_logger(sam, n_steps)
 end
 
 """
+    timestamp_colmeta(extra=Dict{Symbol, Any}()) -> Dict
+
+Column metadata for `save_log`, tagging the `time` column with a
+`created_at` ISO-8601 timestamp string (`Dates.now()`), on top of the
+default `var_01`..`var_16` `name` entries that `save_log`/`load_log`
+require. Merge in additional `colmeta` entries via `extra`.
+
+# Example
+```julia
+save_log(logger, "my_run"; colmeta=timestamp_colmeta())
+```
+"""
+function timestamp_colmeta(extra=Dict{Symbol, Any}())
+    colmeta = Dict{Symbol, Any}(
+        Symbol("var_", lpad(i, 2, '0')) => ["name" => "var_" * lpad(i, 2, '0')]
+        for i in 1:16
+    )
+    colmeta[:time] = ["name" => "time", "created_at" => string(now())]
+    merge(colmeta, extra)
+end
+
+"""
+    log_created_at(filename; path="") -> Union{String, Nothing}
+
+Read back the `created_at` timestamp string tagged on the `time` column by
+`timestamp_colmeta` (via `save_log(...; colmeta=timestamp_colmeta())`).
+Returns `nothing` if the log has no such tag. Mirrors `load_log`'s file
+path resolution, since `load_log` itself discards non-`var_XX` column
+metadata.
+"""
+function log_created_at(filename; path="")
+    path == "" && (path = get_data_path())
+    fullname = filename
+    if !isfile(filename)
+        candidate = joinpath(path, basename(filename)) * ".arrow"
+        fullname = isfile(candidate) ? candidate : joinpath(path, basename(filename))
+    end
+    table = KiteUtils.Arrow.Table(fullname)
+    meta = KiteUtils.Arrow.getmetadata(table.time)
+    isnothing(meta) ? nothing : get(meta, "created_at", nothing)
+end
+
+"""
     ramp_factor(t, t_start, t_end) -> Float64
 
 Linear ramp from 0 to 1 between `t_start` and `t_end`.

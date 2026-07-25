@@ -20,7 +20,7 @@ end
 
 using LinearAlgebra: norm
 using MakieControlPlots: plotx
-using V3Kite: set_data_path, load_log, v3_data_path
+using V3Kite: set_data_path, load_log, log_created_at, v3_data_path
 
 T_MIN = 0.0 # only plot results from T_MIN onwards
 
@@ -30,12 +30,18 @@ syslog = load_log("tmp_reel_out")
 sl = syslog.syslog
 mask = sl.time .>= T_MIN
 
+created_at = log_created_at("tmp_reel_out")
+fig_name = "V3 Kite reel-out"
+if !isnothing(created_at)
+    fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
+end
+
 @info "Plotting results..."
 p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
     rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]);
     ysize= 16,
     ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
-             "heading [deg]", "wind_speed_kite [m/s]"], fig="V3 Kite reel-out")
+             "heading [deg]", "wind_speed_kite [m/s]"], fig=fig_name)
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing
 

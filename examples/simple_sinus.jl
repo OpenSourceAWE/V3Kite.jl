@@ -83,7 +83,7 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_sinus")
+save_log(s.logger, "tmp_sinus"; colmeta=timestamp_colmeta())
 
 # Tracking error over the settled part (skip the first period).
 syslog = load_log("tmp_sinus")

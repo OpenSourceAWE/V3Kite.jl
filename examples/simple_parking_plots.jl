@@ -37,6 +37,12 @@ set_data_path(v3_data_path())
 syslog = load_log("tmp_run")
 sl = syslog.syslog
 
+created_at = log_created_at("tmp_run")
+fig_name = "V3 Kite Parking"
+if !isnothing(created_at)
+    fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
+end
+
 # Skip the t=0 initial log entry (var_15/var_16 are only filled from the
 # first `step!` call onward).
 rng = 2:length(sl.time)
@@ -72,7 +78,7 @@ p = plotx(
         nothing,
         [L"L/D_{\mathrm{wing}}", L"L/D_{\mathrm{eff}}"],
     ],
-    fig = "V3 Kite Parking",
+    fig = fig_name,
 )
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing

@@ -85,18 +85,23 @@ finally
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_reel_out")
+save_log(s.logger, "tmp_reel_out"; colmeta=timestamp_colmeta())
 
 if PLOT
     local p
     syslog = load_log("tmp_reel_out")
     sl = syslog.syslog
     mask = sl.time .>= T_MIN
+    created_at = log_created_at("tmp_reel_out")
+    fig_name = "winch"
+    if !isnothing(created_at)
+        fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
+    end
     p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
         rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]);
         ysize= 16,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
-                 "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
+                 "heading [deg]", "wind_speed_kite [m/s]"], fig=fig_name)
     display(p)
 end
 @printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" s.set.mass s.sys.points[1].extra_mass s.set.d_tether
