@@ -105,6 +105,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     if isnothing(data_path)
         data_path = v3_data_path()
     end
+    set_data_path(data_path)
 
     gc = config.geom
     gc.tether_length = config.tether_length
@@ -130,8 +131,13 @@ function settle_wing(config::V3SettleConfig, init_row;
         "_lt$(Int(round(config.tether_length)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.system_yaml))[1])"
-    if !isnothing(config.kcu_mass)
-        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+    # Mirrors the config/settings-YAML fallback in `_setup_settling_model`,
+    # so the cache key changes whenever the resolved KCU mass changes.
+    yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
+    resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
+    if !isnothing(resolved_kcu_mass)
+        suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
     end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
@@ -230,8 +236,13 @@ function _setup_settling_model(config::V3SettleConfig;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
 
-    if !isnothing(config.kcu_mass)
-        sys.points[1].extra_mass = config.kcu_mass
+    # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
+    # otherwise fall back to the `kcu_mass` field of the active settings YAML
+    # (0 means "not set", i.e. keep the geometry-file default).
+    kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (set.kcu_mass != 0 ? set.kcu_mass : nothing)
+    if !isnothing(kcu_mass)
+        sys.points[1].extra_mass = kcu_mass
     end
 
     SymbolicAWEModels.set_world_frame_damping(
