@@ -298,7 +298,7 @@ function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
     # SymbolicAWEModels' body x-axis points opposite to the Xsens-sensor
     # convention `KiteUtils.calc_heading` assumes (same correction as
     # `calc_csv_heading` applies to EKF-derived orientation).
-    mod2pi(heading + π)
+    wrap_to_pi(heading + π)
 end
 
 """

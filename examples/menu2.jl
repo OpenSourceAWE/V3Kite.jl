@@ -19,6 +19,7 @@ using REPL.TerminalMenus
 
 files = sort(filter(f -> startswith(f, "simple_") && endswith(f, ".jl"), readdir(@__DIR__)))
 options = [string(f[1:end-3], " = include(\"", f, "\")") for f in files]
+push!(options, "reel_out_v3 = include(\"reel_out_v3.jl\")")
 push!(options, "quit")
 
 function example_menu()
