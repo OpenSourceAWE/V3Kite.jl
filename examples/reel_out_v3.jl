@@ -27,9 +27,11 @@ const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
 PRINT = true
-DEPOWER_SETPOINT = 0.25
+DEPOWER_SETPOINT = 0.27 # tuned so winch_force(15s) ≈ 1050 N, matching winch_KiteModels
+REL_STEERING = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
+T_MIN = 10.0 # only plot results from T_MIN onwards
 # end of user parameter section #
 
 v_time = zeros(STEPS)
@@ -57,14 +59,15 @@ function simulate(s, steps, plot=false)
             dforce = +4.5
         end
         force = winch_force(s)
-        set_torque = force_to_torque(force, s.sys) + dforce
+        winch = s.sys.winches[1]
+        set_torque = -winch.drum_radius / winch.gear_ratio * force + dforce
         v_time[i] = s.sys_state.time
         v_speed[i] = reel_out_speed(s)
         v_force[i] = force
         v_elevation[i] = rad2deg(calc_elevation(s))
         v_heading[i] = rad2deg(calc_heading(s))
         v_wind_speed[i] = norm(v_wind_kite(s))
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque)
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque)
         iter += 1
 
         if plot
@@ -101,7 +104,8 @@ save_log(s.logger, "tmp_reel_out")
 
 if PLOT
     local p
-    p = plotx(v_time, v_speed, v_force, v_elevation, v_heading, v_wind_speed;
+    mask = v_time .>= T_MIN
+    p = plotx(v_time[mask], v_speed[mask], v_force[mask], v_elevation[mask], v_heading[mask], v_wind_speed[mask];
     ysize= 11,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
                  "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")

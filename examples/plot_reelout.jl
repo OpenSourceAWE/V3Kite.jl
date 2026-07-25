@@ -14,20 +14,21 @@ using V3Kite, LinearAlgebra
 using MakieControlPlots
 
 LOGFILE = "reel_out_4p_torque_control"
+T_MIN = 10.0 # only plot results from T_MIN onwards
 
-log = load_log(LOGFILE)
-sl = log.syslog
+reel_log = load_log(LOGFILE)
+sl = reel_log.syslog
 
-v_time      = sl.time
-v_speed     = first.(sl.v_reelout)
-v_force     = first.(sl.winch_force)
-v_elevation = rad2deg.(sl.elevation)
-v_heading   = rad2deg.(wrap_to_pi.(sl.heading))
-v_wind_kite = norm.(sl.v_wind_kite)
+mask         = sl.time .>= T_MIN
+v_time       = sl.time[mask]
+v_speed      = first.(sl.v_reelout)[mask]
+v_force      = first.(sl.winch_force)[mask]
+v_elevation  = rad2deg.(sl.elevation)[mask]
+v_heading    = rad2deg.(wrap_to_pi.(sl.heading))[mask]
+v_wind_speed = norm.(sl.v_wind_kite)[mask]
 
-p = plotx(v_time, v_speed, v_force, v_elevation, v_heading, v_wind_kite;
+p = plotx(v_time, v_speed, v_force, v_elevation, v_heading, v_wind_speed;
     ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]", "heading [deg]", "wind at kite [m/s]"],
-    fig="winch")
+    fig="winch_KiteModels")
 display(p)
-reactivate_host_app()
 nothing
