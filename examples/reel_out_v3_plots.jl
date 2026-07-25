@@ -38,10 +38,11 @@ end
 
 @info "Plotting results..."
 p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
-    rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]);
+    rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]),
+    rad2deg.(sl.AoA[mask]);
     ysize= 16,
     ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
-             "heading [deg]", "wind_speed_kite [m/s]"], fig=fig_name)
+             "heading [deg]", "wind_speed_kite [m/s]", "AoA [deg]"], fig=fig_name)
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing
 

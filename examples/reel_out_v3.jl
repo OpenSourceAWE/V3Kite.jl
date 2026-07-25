@@ -98,10 +98,11 @@ if PLOT
         fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
     end
     p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
-        rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]);
+        rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]),
+        rad2deg.(sl.AoA[mask]);
         ysize= 16,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
-                 "heading [deg]", "wind_speed_kite [m/s]"], fig=fig_name)
+                 "heading [deg]", "wind_speed_kite [m/s]", "AoA [deg]"], fig=fig_name)
     display(p)
 end
 @printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" s.set.mass s.sys.points[1].extra_mass s.set.d_tether
