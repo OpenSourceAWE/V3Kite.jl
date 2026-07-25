@@ -10,8 +10,9 @@ v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
 during simple_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
 L/D_eff). The single-winch V3 model has no l_diff panel; the depower panel
-instead shows DEPOWER_SETPOINT held constant, matching parking.jl — keep it
-in sync with the value used in simple_parking.jl.
+instead shows the actual (logged `depower`) vs. commanded (`DEPOWER_SETPOINT`,
+held constant) value, matching parking.jl — keep DEPOWER_SETPOINT in sync
+with the value used in simple_parking.jl.
 
 Run from the REPL after (or instead of, if "tmp_run" already exists) running
 simple_parking.jl:
@@ -55,7 +56,7 @@ p = plotx(
     rad2deg.(sl.elevation[rng]),
     rad2deg.(sl.heading[rng]),
     rad2deg.(sl.AoA[rng]),
-    fill(DEPOWER_SETPOINT, length(rng)),
+    (sl.depower[rng], fill(DEPOWER_SETPOINT, length(rng))),
     (sl.var_15[rng], sl.var_16[rng]);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 16,
@@ -75,7 +76,7 @@ p = plotx(
         nothing,
         nothing,
         nothing,
-        nothing,
+        [L"u_{\mathrm{d}}", L"u_{\mathrm{d,set}}"],
         [L"L/D_{\mathrm{wing}}", L"L/D_{\mathrm{eff}}"],
     ],
     fig = fig_name,
