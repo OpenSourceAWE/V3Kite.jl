@@ -243,6 +243,6 @@ Load GLMakie before using: `using GLMakie`
 """
 function plot_2d_panels end
 
-# include("precompile.jl") # disabled: precompilation workload
+include("precompile.jl") # precompilation workload (see PlanPrecompile.md)
 
 end # module
