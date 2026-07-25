@@ -21,24 +21,17 @@ toc("Loaded packages")
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
 # the following values can be changed to match your interest
-dt = 0.05/3
+dt    = 0.05/3
 STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
 DEPOWER_SETPOINT = 0.27 # tuned so winch_force(15s) ≈ 1050 N, matching winch_KiteModels
-REL_STEERING = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
+REL_STEERING  = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
-T_MIN =  0.0 # only plot results from T_MIN onwards
+T_MIN =  0.0          # only plot results from T_MIN onwards
 # end of user parameter section #
-
-v_time = zeros(STEPS)
-v_speed = zeros(STEPS)
-v_force = zeros(STEPS)
-v_elevation = zeros(STEPS)
-v_heading = zeros(STEPS)
-v_wind_speed = zeros(STEPS)
 
 @info "Initializing model..."
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
@@ -55,12 +48,6 @@ function simulate(s, steps, plot=false)
         force = winch_force(s)
         winch = s.sys.winches[1]
         set_torque = -winch.drum_radius / winch.gear_ratio * force + dforce
-        v_time[i] = s.sys_state.time
-        v_speed[i] = reel_out_speed(s)
-        v_force[i] = force
-        v_elevation[i] = rad2deg(calc_elevation(s))
-        v_heading[i] = rad2deg(calc_heading(s))
-        v_wind_speed[i] = norm(v_wind_kite(s))
         step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque)
         iter += 1
 
@@ -102,9 +89,12 @@ save_log(s.logger, "tmp_reel_out")
 
 if PLOT
     local p
-    mask = v_time .>= T_MIN
-    p = plotx(v_time[mask], v_speed[mask], v_force[mask], v_elevation[mask], v_heading[mask], v_wind_speed[mask];
-    ysize= 16,
+    syslog = load_log("tmp_reel_out")
+    sl = syslog.syslog
+    mask = sl.time .>= T_MIN
+    p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
+        rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]);
+        ysize= 16,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
                  "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
     display(p)
