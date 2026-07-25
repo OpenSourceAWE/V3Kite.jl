@@ -10,9 +10,10 @@ v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
 during simple_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
 L/D_eff). The single-winch V3 model has no l_diff panel; the depower panel
-instead shows the actual (logged `depower`) vs. commanded (`DEPOWER_SETPOINT`,
-held constant) value, matching parking.jl — keep DEPOWER_SETPOINT in sync
-with the value used in simple_parking.jl.
+instead shows the actual value (`depower`, the KCU's tape-lagged fraction)
+against the command (`var_14`, written by `step!`), matching parking.jl. Both
+come from the log, so nothing here needs to be kept in sync with
+simple_parking.jl by hand.
 
 Run from the REPL after (or instead of, if "tmp_run" already exists) running
 simple_parking.jl:
@@ -30,9 +31,6 @@ using MakieControlPlots
 using LaTeXStrings
 using V3Kite
 
-# Must match DEPOWER_SETPOINT in simple_parking.jl.
-DEPOWER_SETPOINT = 0.25
-
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
 syslog = load_log("tmp_run")
@@ -44,8 +42,8 @@ if !isnothing(created_at)
     fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
 end
 
-# Skip the t=0 initial log entry (var_15/var_16 are only filled from the
-# first `step!` call onward).
+# Skip the t=0 initial log entry (depower/var_14/var_15/var_16 are only
+# filled from the first `step!` call onward).
 rng = 2:length(sl.time)
 
 @info "Plotting results..."
@@ -56,7 +54,7 @@ p = plotx(
     rad2deg.(sl.elevation[rng]),
     rad2deg.(sl.heading[rng]),
     rad2deg.(sl.AoA[rng]),
-    (sl.depower[rng], fill(DEPOWER_SETPOINT, length(rng))),
+    (sl.depower[rng], sl.var_14[rng]),
     (sl.var_15[rng], sl.var_16[rng]);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 16,

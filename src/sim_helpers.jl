@@ -507,6 +507,10 @@ end
 
 Update sys_state from the model, set time, and log.
 
+The optional `steering`/`set_steering` keywords follow the `SysState`
+convention that `step!` also uses: `steering` is the applied (actual) value,
+`set_steering` the command. Pass the applied value to `steering`.
+
 Computed variables:
 - `var_01`: total non-tether CD (VSM + parasitic)
 - `var_02`: wing lift coefficient
@@ -518,9 +522,14 @@ Computed variables:
   (from point drag forces)
 - `var_12`: geometric wing incidence (photogrammetry-style)
 - `var_13`: center-of-pressure x-coordinate (body frame)
+- `var_14`: `video_frame`, when given
+
+Note that `step!` (the high-level `V3KITE` loop) does not call this function
+and fills `var_14` with the commanded depower instead; a log is written by one
+path or the other, never both.
 """
 function log_state!(logger, sys_state, sam, t;
-        set_steering=nothing, depower=nothing,
+        steering=nothing, set_steering=nothing, depower=nothing,
         video_frame=nothing,
         wind_vec_ekf=nothing,
         wind_vec_lidar=nothing)
@@ -541,6 +550,9 @@ function log_state!(logger, sys_state, sam, t;
     sys_state.var_12 = compute_wing_incidence(
         sam.sys_struct)
     sys_state.var_13 = compute_cop_x(sam)
+    if steering !== nothing
+        sys_state.steering = steering
+    end
     if set_steering !== nothing
         sys_state.set_steering = set_steering
     end

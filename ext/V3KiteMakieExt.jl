@@ -890,7 +890,9 @@ Scatter plot of |turn rate| vs |u_s * v_a| for one or more
 logs. The turn rate is computed by `calc_turn_rate` with the
 given `source` (`:heading` or `:course`), which applies the
 frame-transport correction internally. The steering input
-`u_s` is read from `sl.set_steering`.
+`u_s` is the applied value `sl.steering`, not the command
+`sl.set_steering` — the kite responds to the tape position the
+KCU actually reached.
 
 # Arguments
 - `syslogs`: Single syslog or vector of syslogs
@@ -931,7 +933,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
         rate = V3Kite.calc_turn_rate(lg; source, dt)
 
-        us = sl.set_steering[2:end]
+        us = sl.steering[2:end]
         mask = abs.(us) .> min_steering
         x_all = abs.(us[mask] .* sl.v_app[2:end][mask])
         y_all = abs.(rate[mask])

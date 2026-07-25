@@ -527,6 +527,18 @@ given, the cascaded position controller (`speed_limit` [m/s],
 `set_torque` [N·m] is passed through; if neither is given, the measured
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
 is reported every 100 steps.
+
+Each logged row carries both the command and the KCU's actual (tape-lagged)
+value for both channels, so plot scripts never need to re-declare a setpoint:
+
+| quantity | commanded          | actual     |
+|:---------|:-------------------|:-----------|
+| steering | `set_steering`     | `steering` |
+| depower  | `var_14`           | `depower`  |
+
+Depower uses a spare slot because `SysState` has no `set_depower` field; the
+actual values are filled by `update_sys_state!`. The remaining spare slots
+this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff).
 """
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
@@ -570,7 +582,12 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     update_sys_state!(s.sys_state, s)
     s.sys_state.time = t
-    s.sys_state.set_steering = st
+    # Both channels log the command and the KCU's tape-lagged actual value.
+    # `steering`/`set_steering` are the standard SysState pair; depower has no
+    # `set_depower` field, so its command goes to the spare slot `var_14`.
+    s.sys_state.steering = st
+    s.sys_state.set_steering = rel_steering
+    s.sys_state.var_14 = rel_depower
     lift, wing_drag = lift_drag(s)
     _, _, total_d = total_drag(s)
     s.sys_state.var_15 = wing_drag > 1e-6 ? lift / wing_drag : 0.0

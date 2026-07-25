@@ -5,9 +5,10 @@
 Plotting for simple_sinus.jl results.
 
 Loads the "tmp_sinus" log saved by simple_sinus.jl. The heading setpoint is
-read back from the logged `bearing` field (set each step in
-simple_sinus.jl). The commanded steering (`set_steering`, logged by `step!`)
-is plotted alongside heading, elevation, azimuth, AoA and L/D.
+read back from the logged `bearing` field (set each step in simple_sinus.jl).
+The steering panel shows both values `step!` logs: the command
+(`set_steering`) and the KCU's actual, tape-rate-limited value (`steering`).
+They are plotted alongside heading, elevation, azimuth, AoA and L/D.
 
 Run from the REPL after (or instead of, if "tmp_sinus" already exists)
 running simple_sinus.jl:
@@ -50,7 +51,7 @@ p = plotx(
     rad2deg.(sl.elevation[rng]),
     rad2deg.(sl.azimuth[rng]),
     [rad2deg.(sl.heading[rng]), rad2deg.(sl.bearing[rng])],
-    100.0 .* sl.set_steering[rng],
+    (100.0 .* sl.steering[rng], 100.0 .* sl.set_steering[rng]),
     rad2deg.(sl.AoA[rng]),
     (sl.var_15[rng], sl.var_16[rng]);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
@@ -68,7 +69,7 @@ p = plotx(
         nothing,
         nothing,
         [L"\psi", L"\psi_{\mathrm{ref}}"],
-        nothing,
+        [L"u_{\mathrm{s}}", L"u_{\mathrm{s,set}}"],
         nothing,
         [L"L/D_{\mathrm{wing}}", L"L/D_{\mathrm{eff}}"],
     ],
