@@ -26,16 +26,17 @@ using LinearAlgebra: norm
 
 # ==================== USER PARAMETERS ==================== #
 
-PROJECT =        "system_cabauw.yaml"  # System project to use (see data/system_*.yaml)
+PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
-V_WIND           = 10.0     # Ground wind speed at reference height [m/s]
+DT               = 0.05/3   # Simulation timestep [s]
+V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
+DEPOWER_SETPOINT = 0.27     # Depower setting held during parking [-]
 
 # ======================== INIT =========================== #
 
 s = init(V_WIND, TETHER_LENGTH;
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
