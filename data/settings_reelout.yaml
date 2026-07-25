@@ -11,6 +11,7 @@ system:
 initial:
   l_tethers: [0] # initial tether length       [m]
   v_reel_outs: [0] # initial reel out speed    [m/s]
+  elevations: [73] # initial elevation angle   [deg]
 
 solver:
   solver: 'FBDF'
