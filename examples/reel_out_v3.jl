@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Jelle Poland, Bart van de Lint
+# Copyright (c) 2026 Uwe Fechner
 # SPDX-License-Identifier: MPL-2.0
 
 """
@@ -35,7 +35,7 @@ T_MIN =  0.0          # only plot results from T_MIN onwards
 
 @info "Initializing model..."
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
-    depower_setpoint = DEPOWER_SETPOINT, dt, sim_time = STEPS*dt)
+                                depower_setpoint = DEPOWER_SETPOINT, dt, sim_time = STEPS*dt)
 toc("Initialized V3KITE instance")
 
 function simulate(s, steps, plot=false)
