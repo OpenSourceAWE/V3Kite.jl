@@ -5,8 +5,7 @@
 Settings of the cascaded winch length controller (see `_winch_position_torque!`),
 loaded from a YAML file (`wc_settings.yaml`) rather than hard-coded. These are new
 parameters with no historical counterpart; tune on `examples/simple_parking.jl`
-(constant-length parking) and, per CLAUDE.md, change them by at most 10 % per
-iteration.
+(constant-length parking) and change them by at most 10 % per iteration.
 """
 @with_kw mutable struct WC_Settings @deftype Float64
     "Outer proportional gain: tether length error [m] → reel-out speed setpoint [1/s]"
