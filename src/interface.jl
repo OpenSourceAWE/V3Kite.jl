@@ -294,7 +294,11 @@ function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
     else
         azimuth = calc_azimuth(s)
     end
-    KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+    heading = KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+    # SymbolicAWEModels' body x-axis points opposite to the Xsens-sensor
+    # convention `KiteUtils.calc_heading` assumes (same correction as
+    # `calc_csv_heading` applies to EKF-derived orientation).
+    mod2pi(heading + π)
 end
 
 """
