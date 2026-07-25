@@ -1,4 +1,5 @@
 import SymbolicAWEModels: winch_force, tether_length
+using Printf
 
 # ===================== Winch position controller ===================== #
 # Gains for the cascaded winch length controller (see `winch_position_torque!`)
@@ -578,10 +579,10 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     i = Int(round(t / dt))
     if i % 100 == 0
         now = time()
-        if !isnan(s.last_step_time)
-            rtf = (100 * dt) / (now - s.last_step_time)
-            @info "step $i / $(s.steps), $(round(rtf, digits=2)) times realtime"
-        end
+        rtf_str = isnan(s.last_step_time) ? "----" :
+            @sprintf("%.2f", (100 * dt) / (now - s.last_step_time))
+        @info @sprintf("step %04d / %04d, %s times realtime, lift/drag [N]: %7.2f/%7.2f",
+                       i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
     end
     return nothing

@@ -26,7 +26,6 @@ STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
-PRINT = true
 DEPOWER_SETPOINT = 0.27 # tuned so winch_force(15s) ≈ 1050 N, matching winch_KiteModels
 REL_STEERING = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
@@ -49,11 +48,6 @@ toc("Initialized V3KITE instance")
 function simulate(s, steps, plot=false)
     iter = 0
     for i in 1:steps
-        if PRINT
-            lift, drag = lift_drag(s)
-            @printf "%.2f: " round(s.sys_state.time, digits=2)
-            println("lift, drag  [N]: $(round(lift, digits=2)), $(round(drag, digits=2))")
-        end
         dforce = 0.0
         if s.sys_state.time > 15.0
             dforce = +4.5
@@ -87,6 +81,7 @@ function simulate(s, steps, plot=false)
                     plot2d(pos, reltime; zoom=ZOOM, front=false,
                                         segments=n_segs, fig="side_view")
                 end
+                sleep(0.001) # yield to let GLMakie's render task redraw
             end
         end
     end
