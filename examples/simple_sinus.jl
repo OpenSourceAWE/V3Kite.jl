@@ -23,6 +23,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
+using Timers; tic()
 using V3Kite
 using DiscretePIDs: set_Td!
 using Statistics
@@ -61,6 +62,7 @@ heading_pid = create_heading_pid(;
 
 max_heading_rad = deg2rad(MAX_HEADING)
 angular_freq = 2pi / HEADING_PERIOD
+toc("Start simulation loop...")
 
 # ==================== SIMULATION LOOP ==================== #
 
