@@ -49,31 +49,6 @@ Config C measures **47.4 s** in a fresh process, consistently. The 28 s figure
 was most likely timed by `include`ing `simple_sinus.jl` into an already-warm
 REPL. Worth confirming before 28 s anchors a target.
 
-## Proof that this works: HybridWings.jl
-
-`~/repos/HybridWings.jl` has the same architecture — same `bin/create_sys_image`
-pattern, same deliberate exclusion of the package itself from the image — and a
-`@compile_workload` there **improved TTFX by 22 s**. Its own comment states the
-mechanism precisely (`src/HybridWings.jl:79-85`):
-
-> The sysimage built by bin/create_sys_image deliberately excludes
-> HybridWings.jl itself (so Revise keeps working on it), so none of this is
-> otherwise precompiled.
-
-Structure of that workload (`src/HybridWings.jl:86-183`):
-
-1. Build settings + `SystemStructure` from the bundled YAML.
-2. `SymbolicAWEModel(set, sys_struct)` then `init!(sam; remake=false, remake_vsm=true)`.
-3. Construct the high-level wrapper (`HybridWing`), a `Logger`, a `SysState`,
-   and the `DiscretePID`s.
-4. **Run 3 full control steps**, each calling `lift_drag`, `total_drag`,
-   `calc_steady_torque`, `next_step!`, `update_sys_state!`, `log!`.
-5. The whole thing wrapped in `try`/`catch` with a `@warn`, so a workload failure
-   cannot break `using`.
-
-Note it uses `remake=false` — it consumes the existing serialized model rather
-than rebuilding one, so it is hermetic with respect to `data/`.
-
 ## Where the earlier rejection went wrong
 
 The rejection rested on a trace-compile bucketing of config C: 300 events, 257
@@ -88,7 +63,7 @@ The rejection rested on a trace-compile bucketing of config C: 300 events, 257
    at run time, true. But the specializations of `generated_callfunc` and of
    everything downstream are keyed on the RGF type tag, and that tag is
    deterministic given the same serialized model — so those specializations
-   *are* cacheable. HybridWings demonstrates this empirically.
+   *are* cacheable, as the measured 43.4 s gain confirms.
 
 There is also a V3Kite-specific reason the gap should be large. The sysimage's
 `precompile_execution_file` is `test/test_for_precompile.jl`, which runs
@@ -96,8 +71,7 @@ There is also a V3Kite-specific reason the gap should be large. The sysimage's
 **directly**. It never calls `init()` or `step!(::V3KITE, …)`. So the entire
 `init`/`step!` interface path used by `simple_sinus.jl` — the `V3KITE` wrapper,
 KCU actuator dynamics, `winch_position_torque!`, `update_sys_state!` — is absent
-from the sysimage trace. That is precisely what the workload covers — and it is
-why the gain here (43 s) exceeds the 22 s seen in HybridWings.
+from the sysimage trace. That is precisely what the workload covers.
 
 ## What was implemented
 
@@ -112,8 +86,8 @@ why the gain here (43 s) exceeds the 22 s seen in HybridWings.
 - calls the query functions the examples use (`lift_drag`, `total_drag`,
   `pos_kite`, `winch_force`, `reel_out_speed`, `cl_cd`, `calc_elevation`,
   `calc_azimuth`, `calc_heading`);
-- is wrapped in `try`/`catch` with a `@warn`, as HybridWings does, so a workload
-  failure can never break `using V3Kite`.
+- is wrapped in `try`/`catch` with a `@warn`, so a workload failure can never
+  break `using V3Kite`.
 
 It inherits `init`'s `remake=false`, so the serialized settled geometry and model
 in `data/` are consumed, never rebuilt — no `remake_cache=true` and no writes to
@@ -133,8 +107,8 @@ julia --startup-file=no --project -J bin/kps-image-1.12.so -e 'using V3Kite'
 If `model_*.bin` or the matching `settled_*.bin` is absent — e.g. after a
 SymbolicAWEModels bump changes the model filename — the workload will *build*
 them during precompilation. That makes precompilation slow (minutes) and writes
-into `data/`, which would fail outright on a read-only install. HybridWings
-accepts the same trade-off. If this becomes a problem, guard the workload on
+into `data/`, which would fail outright on a read-only install. If this becomes
+a problem, guard the workload on
 `isfile` of the expected cache; the cost of guarding is that a fresh clone or CI
 gets no benefit until the caches exist.
 
