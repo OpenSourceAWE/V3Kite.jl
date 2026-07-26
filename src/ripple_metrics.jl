@@ -126,9 +126,10 @@ function ripple_metrics(time::AbstractVector, y::AbstractVector, rs::RippleSetti
     i0 = searchsortedfirst(time, rs.t_start)
     i0 > length(time) && error("analysis window starts after the end of the log " *
                                "(t_start = $(rs.t_start) s, log ends at $(last(time)) s)")
-    win = i0:length(time)
-    dt = (time[end] - time[i0]) / (length(win) - 1)
-    fs = 1 / dt
+win = i0:length(time)
+length(win) < 2 && error("analysis window must contain at least 2 samples to estimate fs")
+dt = (time[end] - time[i0]) / (length(win) - 1)
+fs = 1 / dt
     # The moving average is taken over the whole record so that the start of the
     # analysis window still sees a full, centred window.
     resid = view(y, win) .- view(_centred_ma(y, round(Int, 0.5 * rs.detrend_window * fs)), win)
