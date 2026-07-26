@@ -27,8 +27,8 @@ using LaTeXStrings
 using V3Kite
 
 # Must match the corresponding constants in simple_sinus.jl.
-PROJECT          = "system_cabauw.yaml"
-DEPOWER_SETPOINT = 0.25
+PROJECT          = "system_reelout.yaml"
+DEPOWER_SETPOINT = 0.26
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())

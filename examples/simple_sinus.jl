@@ -38,16 +38,26 @@ SIM_TIME         = 120.0     # Total simulation time [s]
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-DEPOWER_SETPOINT = 0.27     # Depower setting held during the run [-]
+DEPOWER_SETPOINT = 0.26     # Depower setting held during the run [-]
 MAX_HEADING      = 40.0     # Heading setpoint amplitude [deg]
 HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
-HEADING_P = 1.1             # +10% from the v3kite.jl baseline (was 1.0; RMS 1.1° there)
+# The tracking error is almost pure phase lag, so it scales with 1/loop gain:
+# K = 1.1 gave 0.32 s lag (RMS 2.6°), K = 5.0 gives 0.05 s (RMS 0.49°). The
+# v3kite.jl baseline of K = 1.0 is enough there only because it flies at
+# 15.4 m/s — at the 9.5 m/s used here the turn rate per unit steering, and
+# hence the plant gain, is ~1.6x lower.
+HEADING_P = 5.0
 HEADING_I = false
-HEADING_D = 0.15            # damps the initial u_s overshoot/ringing (was 0.0)
-HEADING_D_RAMP_TIME = 30.0  # ramp HEADING_D down to 0 over this many seconds
-MAX_STEERING = 0.175        # +17% (was 0.15)
+# Sustained derivative action degrades tracking (K = 4.5 with a constant
+# Td = 0.1: RMS 1.05° instead of 0.55°), but it is what damps the initial u_s
+# swing, so it is ramped to zero over the first heading period: p2p u_s during
+# t < 10 s drops 0.343 → 0.215 and the command no longer saturates. Since Td
+# has reached zero by the time the error is measured (t ≥ HEADING_PERIOD), the
+# settled RMS is unaffected — identical to 3 digits for Td = 0…0.5.
+HEADING_D = 0.15
+MAX_STEERING = 0.175        # settled |u_s| peaks at 0.078, so this is not binding
 
 # ======================== INIT =========================== #
 
@@ -72,7 +82,8 @@ try
         t = s.sys_state.time + s.dt
         target = max_heading_rad * sin(angular_freq * t)
         s.sys_state.bearing = target
-        set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_D_RAMP_TIME)))
+        # Ramp HEADING_D down to zero at t = HEADING_PERIOD.
+        set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_PERIOD)))
         rel_steering = heading_pid(target, s.sys_state.heading, 0.0)
         # Position mode: `set_length` holds the mean tether length.
         step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
