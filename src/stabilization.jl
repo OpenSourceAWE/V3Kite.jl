@@ -80,8 +80,13 @@ Second form builds it from explicit ENU vectors (`position`,
 `velocity` in m / m·s⁻¹, `attitude` is `[roll, pitch, yaw]` rad).
 
 Always returns a fresh model loaded from the settled binary, so
-the caller gets clean settings (no settling damping). When
-`remake=false` and the destination file already exists, the
+the caller gets clean settings — clean meaning the *world*-frame
+damping, which is only a settling aid and decays away. The
+body-frame damping is a per-point field of the serialized
+`SystemStructure` and therefore carries over into the returned
+model on purpose; it is part of the cache key for that reason.
+
+When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
 file.
 """
@@ -97,6 +102,16 @@ function settle_wing(config::V3SettleConfig;
         wind_vec=wind_vec)
     return settle_wing(config, init_row; kwargs...)
 end
+
+"""
+    _damping_tag(d) -> String
+
+Filename-safe tag for a damping coefficient, scalar or per-axis vector:
+`_damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
+settled-geometry cache key.
+"""
+_damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+_damping_tag(d::AbstractVector) = join(_damping_tag.(d), "-")
 
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
@@ -138,6 +153,20 @@ function settle_wing(config::V3SettleConfig, init_row;
         (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
     if !isnothing(resolved_kcu_mass)
         suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
+    end
+    # Damping belongs in the key: `_setup_settling_model` writes it into the
+    # points' `body_frame_damping`, which is serialized with the geometry, so a
+    # cached file carries whatever damping produced it. Without this, changing
+    # `body_damping` against a warm cache silently changes nothing.
+    suffix *= "_bd$(_damping_tag(config.body_damping))"
+    for (rng, damp) in config.body_damping_overrides
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(_damping_tag(damp))"
+    end
+    # World-frame damping only shapes the settling transient (it decays to
+    # `min_damping`), but it still moves the equilibrium it converges to.
+    if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
+        suffix *= "_wd$(_damping_tag(config.world_damping))" *
+                  "_md$(_damping_tag(config.min_damping))"
     end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
@@ -406,6 +435,13 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         end
         rethrow(err)
     end
+
+    # A diverged run must not be cached: the resulting geometry fails the VSM
+    # solve on reload, and because the cache is keyed on the *inputs* it would be
+    # reused on every later run until someone deletes the file by hand.
+    # `settle_wing` turns this into `settle_failed = true`.
+    failed && error("Settling diverged before completing " *
+                    "$(config.num_steps) steps; geometry not serialized")
 
     # Copy settled world positions into CAD slots so
     # that copy_cad_to_world! during init! restores
