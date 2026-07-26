@@ -80,7 +80,7 @@ T_START          = 10.0     # Start of the excitation [s]; before that u_s = 0
 HEADING_OFFSET   = 10.0      # Heading band edge [deg]; steering flips outside ±this
 START_STEERING   = 0.05     # First steering amplitude [-]
 STEERING_STEP    = 0.025    # Amplitude increment per completed cycle group [-]
-MAX_STEERING     = 0.25    # Last amplitude [-]; the run ends after this one
+MAX_STEERING     = 0.175    # Last amplitude [-]; the run ends after this one
 # Upward band crossings (≈ oscillation cycles) spent at each amplitude before it
 # is stepped up. 1 reproduces the KPS4 original exactly; 2 doubles the samples
 # per amplitude, which is what the gain-scatter criterion needs.
@@ -100,7 +100,16 @@ MIN_STEERING_FIT = START_STEERING / 2
 
 # `body_damping` matches simple_parking.jl (the default is [10, 10, 40]); it is
 # part of the settling cache key, so the first run with it re-settles the wing.
-s = init(V_WIND, TETHER_LENGTH; body_damping = [20.0, 20.0, 40.0],
+# with [20.0, 20.0, 40.0]
+#  c1                 :   0.0567 1/m ± 0.0000  (0.06 %)
+#  c2                 :  -2.0841 [-] ± 0.0167  (0.80 %)
+# with [10.0, 10.0, 40.0]
+#  c1                 :   0.0982 1/m ± 0.0001  (0.07 %)
+#  c2                 :  -0.4850 [-] ± 0.0279  (5.75 %)
+# with [0.0, 0.0, 40.0]
+#  c1                 :   0.3159 1/m ± 0.0003  (0.09 %)
+#  c2                 :  -0.3837 [-] ± 0.0573  (14.93 %)
+s = init(V_WIND, TETHER_LENGTH; body_damping = [10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT)
 

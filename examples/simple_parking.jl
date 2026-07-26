@@ -45,7 +45,7 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 
 # ======================== INIT =========================== #
 
-s = init(V_WIND, TETHER_LENGTH; body_damping=[20.0, 20.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_damping=[10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
 
 # Constant-length setpoint: the tether length just after settling.
