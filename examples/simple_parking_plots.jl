@@ -15,6 +15,10 @@ against the command (`var_14`, written by `step!`), matching parking.jl. Both
 come from the log, so nothing here needs to be kept in sync with
 simple_parking.jl by hand.
 
+Also reprints the AoA ripple metrics (see `ripple_metrics.jl`) from the log on
+disk, so the oscillation can be re-measured without re-simulating. The solver
+cost and wall clock are *not* part of the log; for those, run simple_parking.jl.
+
 Run from the REPL after (or instead of, if "tmp_parking" already exists) running
 simple_parking.jl:
 
@@ -30,6 +34,8 @@ using GLMakie
 using MakieControlPlots
 using LaTeXStrings
 using V3Kite
+
+include(joinpath(@__DIR__, "ripple_metrics.jl"))
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
@@ -81,5 +87,8 @@ p = plotx(
 )
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing
+
+ripple = aoa_ripple(sl)
+print("\n", format_ripple_report(ripple; sl))
 
 nothing

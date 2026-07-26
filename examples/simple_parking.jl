@@ -12,6 +12,12 @@ controller, so the kite parks without any net reel-out.
 
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
 script is its `init`/`step!` counterpart. Logs the run to "tmp_parking".
+
+At the end it prints the AoA ripple metrics (see `ripple_metrics.jl` and
+PlanSuppressOscillations.md) together with the solver cost and the wall clock, so
+a change to e.g. the body-frame damping can be judged on both the oscillation and
+the simulation speed. The numbers are only comparable across runs that fix
+PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, SIM_TIME and DT.
 """
 
 using Pkg
@@ -20,7 +26,11 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
+                   # plots scripts bind the bare name `syslog` to a SysLog value
 using LinearAlgebra: norm
+
+include(joinpath(@__DIR__, "ripple_metrics.jl"))
 
 @info "simple_parking.jl: parking the V3 kite via the init/step! interface."
 
@@ -43,10 +53,12 @@ l0 = s.sys_state.l_tether[1]
 
 # ==================== SIMULATION LOOP ==================== #
 
-try
+steps_done = 0
+t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        global steps_done += 1
         # The current system state is available via `s.sys_state`.
     end
 catch e
@@ -57,5 +69,12 @@ end
 save_log(s.logger, "tmp_parking"; colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
+
+# ==================== RIPPLE METRICS ===================== #
+
+sl = KiteUtils.syslog(s.logger)
+ripple = aoa_ripple(sl)
+print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
+                                 t_loop, n_steps = steps_done))
 
 nothing
