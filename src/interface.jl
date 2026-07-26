@@ -407,7 +407,7 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[10.0, 10.0, 40.0],
+         gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
          remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
