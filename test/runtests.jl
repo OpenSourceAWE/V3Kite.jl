@@ -133,6 +133,8 @@ using KitePodModels: KCU
         @test config.brake == true
     end
 
+    include("test_ripple_metrics.jl")
+
     include("test-interface.jl")
 
 end
