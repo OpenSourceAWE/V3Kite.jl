@@ -11,7 +11,7 @@ parked at a constant tether length: `step!` runs in POSITION MODE, with
 controller, so the kite parks without any net reel-out.
 
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
-script is its `init`/`step!` counterpart. Logs the run to "tmp_run".
+script is its `init`/`step!` counterpart. Logs the run to "tmp_parking".
 """
 
 using Pkg
