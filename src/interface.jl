@@ -461,7 +461,7 @@ function init(v_wind_gnd, l_tether;
               gc = V3GeomAdjustConfig(),
               wc = nothing,
               system_yaml = "system.yaml",
-              body_damping = [10.0, 10.0, 40.0],
+              body_damping = [0.0, 0.0, 40.0],
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
