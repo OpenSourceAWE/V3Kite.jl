@@ -1,0 +1,9 @@
+# Settings of the cascaded winch length controller. Loaded into a `WC_Settings`
+# struct via `WC_Settings("wc_settings.yaml")`. These are new parameters with no
+# historical counterpart; tune on examples/simple_parking.jl (constant-length
+# parking) and change them by at most 10 % per iteration.
+wc_settings:
+  winch_pos_kp:       0.5    # Outer proportional gain: length error [m] -> reel-out speed setpoint [1/s]
+  winch_speed_k:      30.0   # Inner speed-loop proportional gain: speed error [m/s] -> winch torque [N*m*s/m]
+  winch_speed_ti:     2.0    # Inner speed-loop integral time [s] (larger = weaker integral action)
+  winch_torque_limit: 500.0  # Saturation of the inner speed loop's torque correction [N*m]

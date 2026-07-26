@@ -17,6 +17,8 @@ Base.@kwdef mutable struct V3SettleConfig
     source_struc_path::String = "struc_geometry.yaml"
     source_aero_path::String = "aero_geometry.yaml"
     vsm_settings_path::String = "vsm_settings.yaml"
+    # System YAML pointing at the active settings file (loaded via `Settings`)
+    system_yaml::String = "system.yaml"
 
     # Simulation parameters
     num_steps::Int = 8000
@@ -126,7 +128,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))" *
-        "_g$(Int(round(config.g_earth * 10)))"
+        "_g$(Int(round(config.g_earth * 10)))" *
+        "_sys$(splitext(basename(config.system_yaml))[1])"
     if !isnothing(config.kcu_mass)
         suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
     end
@@ -169,11 +172,11 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Load model from serialized sys_struct, or source
     # YAML if settling failed
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(config.system_yaml)
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
-    set.profile_law = 0
+    # profile_law is taken from settings.yaml (loaded via Settings above).
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
     if !settle_failed && isfile(dest_struc)
@@ -212,11 +215,11 @@ function _setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(config.system_yaml)
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
-    set.profile_law = 0
+    # profile_law is taken from settings.yaml (loaded via Settings above).
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(

@@ -28,6 +28,8 @@ Base.@kwdef mutable struct V3SimConfig
     struc_yaml_path::String = "struc_geometry_depower0.0_tip0.4_te0.95.yaml"
     aero_yaml_path::String = "aero_geometry_depower0.0_tip0.4_te0.95.yaml"
     vsm_settings_path::String = "vsm_settings_reduced_for_coupling.yaml"
+    # System YAML pointing at the active settings file (loaded via `Settings`)
+    system_yaml::String = "system.yaml"
 
     # Simulation parameters
     sim_time::Float64 = 60.0
@@ -86,7 +88,7 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
 
     # Load settings
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(config.system_yaml)
     set.v_wind = config.v_wind
     set.upwind_dir = config.upwind_dir
     set.l_tether = config.tether_length

@@ -1,0 +1,34 @@
+#!/bin/bash -eu
+# SPDX-FileCopyrightText: 2026 Uwe Fechner
+# SPDX-License-Identifier: MIT
+#
+# Start the V3Kite REST server (examples/rest_server.jl) under the examples
+# project. Drive it from Matlab/Python — see
+# examples/matlab/simple_parking_client.m.
+#
+# Usage:
+#   bin/run_server              # listen on port 8080 (or $V3_REST_PORT)
+#   bin/run_server 9000         # listen on port 9000
+#   V3_REST_PORT=9000 bin/run_server
+#
+# `-t 4` lets /status report live init progress while initialization runs
+# on a background thread.
+
+if [[ $(basename $(pwd)) == "bin" ]]; then
+    cd ..
+fi
+
+export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
+
+julia_version=$(julia --version | awk '{print($3)}')
+julia_major=${julia_version:0:3}
+if [[ $julia_major == "1.1" ]]; then
+    julia_major=${julia_version:0:4}
+fi
+
+if test -f "bin/kps-image-${julia_major}.so"; then
+    echo "Found system image!"
+    julia -t 4 --project=examples -J "bin/kps-image-${julia_major}.so" examples/rest_server.jl "$@"
+else
+    julia -t 4 --project=examples examples/rest_server.jl "$@"
+fi
