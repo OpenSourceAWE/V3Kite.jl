@@ -157,7 +157,7 @@ function fit_c1_c2(v_app::AbstractVector, psi::AbstractVector,
     n = length(psi_dot)
     dof = max(n - 2, 1)
     sigma2 = sum(abs2, resid) / dof
-    cov = sigma2 .* inv(A' * A)
+cov = sigma2 .* pinv(A' * A)
     return (c1 = c[1], c2 = c[2],
             se1 = sqrt(abs(cov[1, 1])), se2 = sqrt(abs(cov[2, 2])),
             rms = sqrt(sum(abs2, resid) / n), cond = cond(A), n = n)
