@@ -57,8 +57,8 @@ p = plotx(
     (sl.depower[rng], sl.var_14[rng]),
     (sl.var_15[rng], sl.var_16[rng]);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
-    ysize = 16,
-    legendsize = 16,
+    ysize = 18,
+    legendsize = 18,
     ylabels = [
         L"v_{\mathrm{ro}}~[\mathrm{m/s}]",
         L"F_{\mathrm{t}}~[\mathrm{N}]",
