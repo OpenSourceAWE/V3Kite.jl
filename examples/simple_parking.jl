@@ -13,7 +13,7 @@ controller, so the kite parks without any net reel-out.
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
 script is its `init`/`step!` counterpart. Logs the run to "tmp_parking".
 
-At the end it prints the AoA ripple metrics (see `ripple_metrics.jl` and
+At the end it prints the AoA ripple metrics (see `src/ripple_metrics.jl` and
 PlanSuppressOscillations.md) together with the solver cost and the wall clock, so
 a change to e.g. the body-frame damping can be judged on both the oscillation and
 the simulation speed. The numbers are only comparable across runs that fix
@@ -29,8 +29,6 @@ using V3Kite
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
                    # plots scripts bind the bare name `syslog` to a SysLog value
 using LinearAlgebra: norm
-
-include(joinpath(@__DIR__, "ripple_metrics.jl"))
 
 @info "simple_parking.jl: parking the V3 kite via the init/step! interface."
 

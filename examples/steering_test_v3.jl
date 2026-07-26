@@ -16,7 +16,7 @@ steering amplitudes at a roughly constant flight state. The run ends when the
 sweep is done (the intended exit), when `SIM_TIME` runs out, or when the
 elevation drops below `MIN_ELEVATION`.
 
-Afterwards the turn-rate law is fitted (see `turn_rate_id.jl`) and the three
+Afterwards the turn-rate law is fitted (see `src/turn_rate_id.jl`) and the three
 success criteria are reported: completion, minimum elevation, and the scatter
 of the identified turn-rate gain.
 
@@ -57,8 +57,6 @@ using Timers; tic()
 using V3Kite
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it
 using Printf
-
-include(joinpath(@__DIR__, "turn_rate_id.jl"))
 
 @info "steering_test_v3.jl: identifying the V3 steering response."
 

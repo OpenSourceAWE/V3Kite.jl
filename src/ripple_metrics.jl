@@ -18,11 +18,10 @@ than the ripple. Everything here is therefore computed on the *detrended*
 signal: the AoA minus a centred moving average (`detrend_window`), restricted to
 `t >= t_start`.
 
-Included by `simple_parking.jl` (which adds solver cost and wall clock) and by
-`simple_parking_plots.jl` (which recomputes the AoA metrics from a log already on
-disk, without re-simulating):
+Used by `examples/simple_parking.jl` (which adds solver cost and wall clock) and
+by `examples/simple_parking_plots.jl` (which recomputes the AoA metrics from a
+log already on disk, without re-simulating):
 
-    include(joinpath(@__DIR__, "ripple_metrics.jl"))
     r = aoa_ripple(sl)
     print(format_ripple_report(r; sl))
 
@@ -30,13 +29,10 @@ Note that the moving-average detrend also attenuates the ripple itself (a 0.5 s
 window passes ~11 % of a 5 Hz sine, so the reported RMS is ~11 % low). That bias
 is identical for every run, so it does not affect comparisons.
 
-Tunables live in `ripple_settings.yaml`, not in this file.
+Tunables live in `data/ripple_settings.yaml`, not in this file.
 """
 
-using Parameters
 using Printf
-using Statistics: mean
-using YAML
 
 @with_kw mutable struct RippleSettings @deftype Float64
     "Start of the analysis window [s]; discards the post-settling transient"
@@ -52,13 +48,15 @@ end
 """
     RippleSettings(filename::String) -> RippleSettings
 
-Load the ripple-analysis settings from the YAML file `filename`, looked up next
-to this script (`examples/`). The file must have a top-level `ripple_settings:`
-mapping whose keys are field names of `RippleSettings`; any missing key falls
-back to the struct default.
+Load the ripple-analysis settings from the YAML file `filename`, looked up in the
+active data path, i.e. `joinpath(get_data_path(), filename)` — same convention as
+`WC_Settings` in `src/wc_settings.jl`. The file must have a top-level
+`ripple_settings:` mapping whose keys are field names of `RippleSettings`; any
+missing key falls back to the struct default. Call
+`set_data_path(v3_data_path())` first if the data path is not already set.
 """
 function RippleSettings(filename::String)
-    dict = YAML.load_file(joinpath(@__DIR__, filename))["ripple_settings"]
+    dict = YAML.load_file(joinpath(get_data_path(), filename))["ripple_settings"]
     RippleSettings(; (Symbol(k) => Float64(v) for (k, v) in dict)...)
 end
 
@@ -84,7 +82,7 @@ Frequency [Hz] of the largest periodogram peak of `x` (sampled at `fs` Hz) insid
 `[f_min, f_max]`, and the frequency resolution `fs/N`. A Hann window suppresses
 the leakage from the finite record; the DFT is evaluated directly on the
 one-sided frequency grid, which is cheap for the few hundred samples involved and
-avoids an FFTW dependency in the examples environment.
+avoids an FFTW dependency.
 """
 function _peak_frequency(x::AbstractVector, fs::Real, f_min::Real, f_max::Real)
     n = length(x)

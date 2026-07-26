@@ -17,7 +17,7 @@ zenith-down direction. `c1` has unit 1/m (`u_s` is dimensionless because
 Ported from the analysis part of `steering_test_4p.jl` in KiteModels.jl, with
 three changes that the V3 model requires:
 
-1. The turn rate comes from `V3Kite.calc_turn_rate`, not from a plain
+1. The turn rate comes from `calc_turn_rate` (`coordinate_utils.jl`), not from a plain
    `diff(heading)/dt`. Heading lives in the rotating tangent-sphere frame, so
    the frame-transport term `−φ̇·sin(β)` has to be subtracted; at the ~70°
    elevation of these runs `sin(β) ≈ 0.94`, so leaving it out biases both
@@ -34,21 +34,15 @@ three changes that the V3 model requires:
    count is far below `n` — but they do expose an ill-conditioned fit, which
    the bare `A \\ b` of the original script cannot.
 
-Included by `steering_test_v3.jl` (which simulates, then reports) and by
-`steering_test_v3_plots.jl` (which re-runs the identical analysis on the log
-already on disk, so both print the same numbers):
+Used by `examples/steering_test_v3.jl` (which simulates, then reports) and by
+`examples/steering_test_v3_plots.jl` (which re-runs the identical analysis on
+the log already on disk, so both print the same numbers):
 
-    include(joinpath(@__DIR__, "turn_rate_id.jl"))
     r = identify_turn_rate_law(sl; dt = DT, t_start = T_START)
     print(format_turn_rate_report(r))
-
-Requires `using V3Kite` in the including script (for `calc_turn_rate` and
-`wrap_to_pi`).
 """
 
 using Printf
-using Statistics: mean, std
-using LinearAlgebra: cond
 
 """
     _corr(a, b) -> Float64

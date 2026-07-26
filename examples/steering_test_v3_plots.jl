@@ -4,7 +4,7 @@
 """
 Plotting for steering_test_v3.jl results.
 
-Loads the "tmp_steering" log and re-runs the identification of `turn_rate_id.jl`
+Loads the "tmp_steering" log and re-runs the identification of `src/turn_rate_id.jl`
 on it, so the numbers printed here are the same ones steering_test_v3.jl
 printed — without re-simulating.
 
@@ -40,8 +40,6 @@ using GLMakie
 using MakieControlPlots
 using LaTeXStrings
 using V3Kite
-
-include(joinpath(@__DIR__, "turn_rate_id.jl"))
 
 # Must match the corresponding constants in steering_test_v3.jl.
 DT               = 0.05/3

@@ -43,6 +43,8 @@ export V3KITE
 include("model_setup.jl")
 include("calibration.jl")
 include("coordinate_utils.jl")
+include("turn_rate_id.jl")
+include("ripple_metrics.jl")
 include("flight_data.jl")
 include("photogrammetry.jl")
 include("sim_helpers.jl")
@@ -80,6 +82,13 @@ export wrap_to_pi, euler_to_quaternion
 export calc_heading, calc_csv_heading
 export calc_R_b_w, calc_turn_rate
 export COURSE_RATE_WINDOW_SEC
+
+# Turn-rate-law identification exports
+export identify_turn_rate_law, format_turn_rate_report
+export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
+
+# AoA-ripple analysis exports
+export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report
 
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
