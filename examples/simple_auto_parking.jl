@@ -47,7 +47,7 @@ SIM_TIME         = 60.0     # Total simulation time [s]
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-DEPOWER_SETPOINT = 0.26     # Depower setting held during parking [-]
+DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1).
 # Baseline taken from simple_sinus.jl, which was tuned at v_app ≈ V_APP_REF.
@@ -61,7 +61,7 @@ MAX_STEERING     = 0.175    # Steering command limit [-]
 
 # ======================== INIT =========================== #
 
-s = init(V_WIND, TETHER_LENGTH;
+s = init(V_WIND, TETHER_LENGTH; body_damping=[20.0, 20.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
 
 # Constant-length setpoint: the tether length just after settling.

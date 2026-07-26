@@ -38,7 +38,7 @@ SIM_TIME         = 120.0     # Total simulation time [s]
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-DEPOWER_SETPOINT = 0.26     # Depower setting held during the run [-]
+DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
 MAX_HEADING      = 40.0     # Heading setpoint amplitude [deg]
 HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
