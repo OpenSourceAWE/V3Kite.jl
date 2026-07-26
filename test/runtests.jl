@@ -135,6 +135,8 @@ using KitePodModels: KCU
 
     include("test_ripple_metrics.jl")
 
+    include("test_turn_rate_id.jl")
+
     include("test-interface.jl")
 
 end
