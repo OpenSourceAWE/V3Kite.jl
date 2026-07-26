@@ -365,18 +365,6 @@ end
 # `step!` calls.
 
 """
-    _wind_vec(v_wind_gnd, upwind_dir) -> Vector{Float64}
-
-Ground-level wind vector [m/s] (ENU) from a wind speed `v_wind_gnd` [m/s] and
-an `upwind_dir` [rad]. Inverse of `upwind_dir(v_wind_gnd)`; the default
-`upwind_dir = -π/2` gives wind blowing towards +x, i.e. `[v_wind_gnd, 0, 0]`.
-"""
-function _wind_vec(v_wind_gnd, upwind_dir)
-    wind_dir = -upwind_dir - π/2
-    return [v_wind_gnd * cos(wind_dir), v_wind_gnd * sin(wind_dir), 0.0]
-end
-
-"""
     winch_position_torque!(s::V3KITE, set_length, speed_limit,
                             acceleration_limit) -> torque
 
@@ -450,7 +438,7 @@ function init(v_wind_gnd, l_tether;
         elevation = Settings(system_yaml).elevation
     end
     el_rad = deg2rad(elevation)
-    wind_vec = _wind_vec(v_wind_gnd, upwind_dir)
+    wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)
 
     # ---- Settling (see examples/parking.jl) ----
     position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
@@ -538,11 +526,12 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     t = s.sys_state.time + dt
 
     # Optional live wind update (read by the DAE via get_wind_vec).
+    # set.v_wind/set.upwind_dir are kept in sync with set.wind_vec by
+    # KiteUtils (use_wind_vec: true), so they fill in the omitted argument.
     if v_wind_gnd !== nothing || upwind_dir !== nothing
-        v = s.set.wind_vec
-        vw = v_wind_gnd === nothing ? norm(v) : v_wind_gnd
-        ud = upwind_dir === nothing ? -(atan(v[2], v[1]) + π/2) : upwind_dir
-        s.set.wind_vec = _wind_vec(vw, ud)
+        vw = something(v_wind_gnd, s.set.v_wind)
+        ud = upwind_dir === nothing ? deg2rad(s.set.upwind_dir) : upwind_dir
+        s.set.wind_vec = wind_vec_from_angles(vw, ud, 0.0)
     end
 
     # KCU actuator dynamics: command → finite-speed tape motion → geometry.
