@@ -3,7 +3,7 @@
 
 """
 Quantify the small ~5.5 Hz angle-of-attack oscillation seen in the parking
-examples (see PlanSuppressOscillations.md). In the baseline it is a very lightly
+examples. In the baseline it is a very lightly
 damped mode rung by the initial condition rather than a limit cycle, so the
 whole-window RMS mixes a large early amplitude with a small late one — compare
 runs at equal `t_start`, or narrow the window to a late interval.
