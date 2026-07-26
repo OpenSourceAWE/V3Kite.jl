@@ -407,7 +407,8 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), wc=nothing, remake=false) -> V3KITE
+         gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[10.0, 10.0, 40.0],
+         remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -425,6 +426,28 @@ file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
 alternate config.
 
+`body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
+applied to every point during settling. It acts on point velocity *relative to
+the wing*, so it damps bridle vibration without slowing the kite's global motion
+(unlike world-frame damping). It is baked into the settled geometry and carries
+over into the returned model, so it also forms part of the settling cache key —
+changing it produces a different `data/settled_*.bin` rather than silently
+reusing the old one.
+
+The in-plane terms matter as much as the normal one: the default used to be
+`[0, 0, 40]`, which damps only normal to the wing surface and therefore could not
+touch the lightly-damped ~5.5 Hz *in-plane* bridle mode that dominated the parked
+solver cost. Adding the `[10, 10, ...]` terms cuts the parked AoA ripple from
+0.144° to 0.020° peak-to-peak and the solver step count by 3.4×, with the settled
+trim (AoA, elevation, tether force) unchanged to within 0.5 %.
+
+Raising the in-plane terms further keeps helping (`[20, 20, 40]` is 5.4× on
+solver steps) but the settling itself goes unstable at fixed `dt = 0.001`
+somewhere between 15 and 20 on the `system_cabauw.yaml` configuration, so the
+default keeps a margin. Pass a larger value explicitly if your configuration
+tolerates it — a diverged settling now fails loudly rather than caching broken
+geometry. See PlanSuppressOscillations.md for the sweep.
+
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
 the returned instance, and the winch is left un-braked.
@@ -438,6 +461,7 @@ function init(v_wind_gnd, l_tether;
               gc = V3GeomAdjustConfig(),
               wc = nothing,
               system_yaml = "system.yaml",
+              body_damping = [10.0, 10.0, 40.0],
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
@@ -458,7 +482,7 @@ function init(v_wind_gnd, l_tether;
         dt = 0.001,
         num_steps = 400,
         num_substeps = 5,
-        body_damping = [0.0, 0.0, 40.0],
+        body_damping = body_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
