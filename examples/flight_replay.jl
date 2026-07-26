@@ -20,7 +20,7 @@ using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
 using GLMakie: save
 using CairoMakie
-GLMakie.activate!()
+GLMakie.activate!(; px_per_unit=2.0)
 using Statistics
 using Rotations
 using UnPack
@@ -39,6 +39,7 @@ generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
 N_SUBSTEPS = 1
+VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
@@ -154,7 +155,7 @@ end
 
 function run_physics_replay(h5_path;
         start_utc=start_utc, end_utc=end_utc,
-        n_substeps=N_SUBSTEPS)
+        n_substeps=N_SUBSTEPS, vsm_interval=VSM_INTERVAL)
 
     full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
@@ -267,15 +268,14 @@ function run_physics_replay(h5_path;
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         world_damping=0.0,
-        body_damping=BODY_DAMPING*2.0,
-        body_damping_overrides=[
-            (37:38, POINT_37_38_DAMPING*2.0)],
+        body_damping=[10.0, 10.0, 10.0],
+        decay_steps=69,
         min_damping=0.0,
         v_wind=row1.v_app,
         tether_length=tether_len,
-        dt=0.001,
-        num_steps=400,
-        num_substeps=5,
+        dt=0.05,
+        num_steps=69,
+        num_substeps=1,
         start_depower=row1.depower * 100.0 + 10.0,
         course_correction_gain=0.05,
         geom=V3GeomAdjustConfig(
@@ -310,7 +310,7 @@ function run_physics_replay(h5_path;
 
     if SETTLE
         sam, settle_log, settle_failed =
-            settle_wing(settle_config, row1; remake=false)
+            settle_wing(settle_config, row1; remake=true)
         if settle_failed
             @warn "Settling failed — skipping sim"
             base_name = build_replay_name(h5_path,
@@ -349,14 +349,13 @@ function run_physics_replay(h5_path;
     sys_state = SysState(sam)
     logger = Logger(sam, max_sim_steps)
 
-    # CSV reference model
-    data_struct = load_sys_struct_from_yaml(source_struc;
-        system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-        aero_mode=AERO_MODE)
+    # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
+    data_struct = load_settled_struct(
+        settle_config, row1; set)
     data_sam = SymbolicAWEModel(set, data_struct)
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
-    init!(data_sam)
+    init!(data_sam; remake=false, remake_vsm=true,
+        reinit_sys=false)
     data_state = SysState(data_sam)
     data_logger = Logger(data_sam, n_data_steps)
 
@@ -476,10 +475,17 @@ function run_physics_replay(h5_path;
                     lateral_correction +
                     STEERING_OFFSET/100)
 
+        # Log pre-step state so sim point i aligns with data point i.
+        log_state!(logger, sys_state, sam, sim_time;
+            set_steering=eff_steer, depower=eff_dep,
+            video_frame=row.video_frame,
+            wind_vec_ekf=row.wind_vec_ekf,
+            wind_vec_lidar=row.wind_vec_lidar)
+
         SymbolicAWEModels.reinit!(
             sam, sam.prob, FBDF())
 
-        next_step!(sam; dt)
+        next_step!(sam; dt, vsm_interval)
         if !isapprox(sam.set.wind_vec,
                 row.wind_vec; atol=1e-6)
             @warn "wind_vec mismatch" step row.wind_vec sam.set.wind_vec
@@ -507,12 +513,6 @@ function run_physics_replay(h5_path;
                 end
             end
         end
-
-        log_state!(logger, sys_state, sam, sim_time;
-            set_steering=eff_steer, depower=eff_dep,
-            video_frame=row.video_frame,
-            wind_vec_ekf=row.wind_vec_ekf,
-            wind_vec_lidar=row.wind_vec_lidar)
 
         if DISTANCE_BASED_STEERING
             pct = sim_cum_dist / total_data_dist
@@ -611,6 +611,28 @@ function syslog_to_tape(syslog)
         depower=collect(sl.depower))
 end
 
+"""
+    combine_gifs(out, left, right; height=720, fps=10) -> String
+
+Tile two equal-length gifs side by side into `out` with `ffmpeg`
+(shared frame clock → stays in sync), at `fps`, building a palette
+for quality. No-op returning `out` when `ffmpeg` is missing.
+"""
+function combine_gifs(out, left, right; height=720, fps=10)
+    if isnothing(Sys.which("ffmpeg"))
+        @warn "ffmpeg not found, skipping gif stacking"
+        return out
+    end
+    filter = "[0:v]scale=-2:$height[l];" *
+        "[1:v]scale=-2:$height[r];[l][r]hstack=inputs=2[s];" *
+        "[s]fps=$fps[f];[f]split[x][y];" *
+        "[x]palettegen[p];[y][p]paletteuse"
+    run(`ffmpeg -y -i $left -i $right
+        -filter_complex $filter $out`)
+    @info "Combined gif" out kB=filesize(out) ÷ 1024
+    return out
+end
+
 function create_replay_plots(;
         sys_struct, data_sys_struct,
         syslog, datalog,
@@ -647,6 +669,7 @@ function create_replay_plots(;
         frame_indexes=frame_syslog_idxs,
         show_heading=false,
         show_course=true,
+        show_tether_len=true,
         show_drag_coeff=false,
         show_lift_coeff=false,
         show_lift_drag_ratio=false)
@@ -679,7 +702,7 @@ function create_replay_plots(;
     config_suffix = "_dpoff_$(depower_offset_pct)" *
         "_sr_$(sr)_tr_$(tr)"
     suffix = "_$(section)" * config_suffix
-    CairoMakie.activate!()
+    CairoMakie.activate!(; px_per_unit=2.0)
     traj_2d = plot_2d_trajectory(_logs; trajectory_kwargs...)
     panels_2d = plot_2d_panels(_logs; panels_kwargs...)
     yaw_heading_2d = plot_yaw_rate_vs_steering(
@@ -702,12 +725,12 @@ function create_replay_plots(;
         save_with_dist("yaw_rate_heading", yaw_heading_2d)
         save_with_dist("yaw_rate_course", yaw_course_2d)
     end
-    GLMakie.activate!()
+    GLMakie.activate!(; px_per_unit=2.0)
 
     # 2D body frame plots for PDF export
     body = Dict{Int, Dict{Symbol, Any}}()
     twist = Dict{Int, Any}()
-    CairoMakie.activate!()
+    CairoMakie.activate!(; px_per_unit=2.0)
     frame_annotations = ["right turn", "straight flight"]
     for (fi, (csv, target_frame)) in
             enumerate(frame_csvs)
@@ -787,7 +810,7 @@ function create_replay_plots(;
         body[target_frame] = frame_figs
         @info "Saved 2D body frame + twist" target_frame
     end
-    GLMakie.activate!()
+    GLMakie.activate!(; px_per_unit=2.0)
 
     mean_gk = Dict{Tuple{String,Symbol},Float64}()
     for (label, lg) in [("sim", syslog),
@@ -891,5 +914,40 @@ if !isnothing(syslog)
         distance_based_steering=DISTANCE_BASED_STEERING,
         depower_offset_pct=depower_offset_pct,
         figures_dir=FIGURES_DIR, save_figs=SAVE_FIGS)
+    sim_tape = syslog_to_tape(syslog)
+    data_tape = syslog_to_tape(datalog)
+    frame_syslog_idxs = find_frame_syslog_idxs(
+        syslog, frame_csvs)
+    mkpath(FIGURES_DIR)
+    gif(name) = joinpath(FIGURES_DIR, "$(name)_$(SECTION).gif")
+    # Realtime: gif fps = log sample rate (1/dt).
+    sl_dt = syslog.syslog.time[2] - syslog.syslog.time[1]
+    fps = max(1, round(Int, 1 / sl_dt))
+    GLMakie.activate!(; px_per_unit=2.0)
+    # 2D pair: trajectory + panels, recorded on a shared frame clock.
+    traj_gif = gif("trajectory_anim")
+    record_2d_trajectory([syslog, datalog], traj_gif;
+        gradient=:vel, tapes=[sim_tape, data_tape],
+        labels=["simulation", "data"], framerate=fps,
+        frame_indexes=frame_syslog_idxs)
+    panels_gif = gif("panels_anim")
+    record_2d_panels([syslog, datalog], panels_gif;
+        tapes=[sim_tape, data_tape],
+        labels=["simulation", "data"],
+        show_aoa=false, show_course=true,
+        show_heading=false, show_drag_coeff=false,
+        show_lift_coeff=false, show_lift_drag_ratio=false,
+        framerate=fps, frame_indexes=frame_syslog_idxs)
+    # 3D pair: square views for side-by-side stacking.
+    world_gif = gif("replay_3d_world")
+    SymbolicAWEModels.record(syslog, sam.sys_struct,
+        world_gif; body_frame=false, size=(800, 800),
+        framerate=fps)
+    body_gif = gif("replay_3d_body")
+    SymbolicAWEModels.record(syslog, sam.sys_struct,
+        body_gif; body_frame=true, pan_vertical=5.0,
+        size=(800, 800), framerate=fps)
+    combine_gifs(gif("combined_2d"), traj_gif, panels_gif; fps)
+    combine_gifs(gif("combined_3d"), body_gif, world_gif; fps)
     SymbolicAWEModels.replay(syslog, sam.sys_struct)
 end

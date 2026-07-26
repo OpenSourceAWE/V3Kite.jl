@@ -61,6 +61,65 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
+    settled_struct_path(config, init_row; data_path=nothing) -> String
+
+Path of the serialized settled `SystemStructure` for `config` and
+`init_row`. Deterministic from the geometry adjustments,
+depower/steering, wind speed, tether length and gravity, so the
+same flight state always maps to the same file.
+"""
+function settled_struct_path(config::V3SettleConfig, init_row;
+                             data_path=nothing)
+    if isnothing(data_path)
+        data_path = v3_data_path()
+    end
+    gc = config.geom
+    dp_reduction = gc.reduce_depower ?
+        gc.depower_reduction : 0.0
+    st_reduction = gc.reduce_steering ?
+        gc.steering_reduction : 0.0
+    dp_norm = isnothing(config.end_depower) ?
+        init_row.depower : config.end_depower / 100.0
+    st_norm = init_row.steering
+    depower_tape = depower_percentage_to_length(
+        dp_norm * 100.0;
+        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
+    L_left, L_right = steering_percentage_to_lengths(
+        st_norm * 100.0;
+        l0_base=V3_STEERING_L0_BASE - st_reduction)
+    tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
+    te_f = gc.reduce_te ? gc.te_frac : 1.0
+    suffix = build_geom_suffix(depower_tape,
+        L_left, L_right, tip_red, te_f)
+    suffix *= "_vapp$(round(config.v_wind, digits=2))" *
+        "_lt$(Int(round(config.tether_length)))" *
+        "_g$(Int(round(config.g_earth * 10)))"
+    if !isnothing(config.kcu_mass)
+        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+    end
+    return joinpath(data_path, "settled_$(suffix).bin")
+end
+
+"""
+    load_settled_struct(config, init_row;
+                        data_path=nothing, set=nothing)
+
+Deserialize the settled `SystemStructure` for `config`/`init_row`
+(see [`settled_struct_path`](@ref)), assigning `set` to it when
+given. Errors when the file is missing; run [`settle_wing`](@ref)
+first to create it.
+"""
+function load_settled_struct(config::V3SettleConfig, init_row;
+                             data_path=nothing, set=nothing)
+    path = settled_struct_path(config, init_row; data_path)
+    isfile(path) ||
+        error("No settled struct at $path; run settle_wing first")
+    sys = deserialize(path)
+    isnothing(set) || (sys.set = set)
+    return sys
+end
+
+"""
     settle_wing(config::V3SettleConfig, init_row;
                 data_path=nothing,
                 show_progress=true, remake=false)
@@ -109,31 +168,8 @@ function settle_wing(config::V3SettleConfig, init_row;
     gc = config.geom
     gc.tether_length = config.tether_length
 
-    dp_reduction = gc.reduce_depower ?
-        gc.depower_reduction : 0.0
-    st_reduction = gc.reduce_steering ?
-        gc.steering_reduction : 0.0
-    dp_norm = isnothing(config.end_depower) ?
-        init_row.depower : config.end_depower / 100.0
-    st_norm = init_row.steering
-    depower_tape = depower_percentage_to_length(
-        dp_norm * 100.0;
-        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
-    L_left, L_right = steering_percentage_to_lengths(
-        st_norm * 100.0;
-        l0_base=V3_STEERING_L0_BASE - st_reduction)
-    tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
-    te_f = gc.reduce_te ? gc.te_frac : 1.0
-    suffix = build_geom_suffix(depower_tape,
-        L_left, L_right, tip_red, te_f)
-    suffix *= "_vapp$(round(config.v_wind, digits=2))" *
-        "_lt$(Int(round(config.tether_length)))" *
-        "_g$(Int(round(config.g_earth * 10)))"
-    if !isnothing(config.kcu_mass)
-        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
-    end
-    dest_struc = joinpath(
-        data_path, "settled_$(suffix).bin")
+    dest_struc = settled_struct_path(
+        config, init_row; data_path)
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -395,6 +431,9 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         end
         rethrow(err)
     end
+
+    # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
+    SymbolicAWEModels.reposition!(sys.transforms, sys)
 
     # Copy settled world positions into CAD slots so
     # that copy_cad_to_world! during init! restores

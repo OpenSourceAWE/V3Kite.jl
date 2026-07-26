@@ -23,9 +23,11 @@ end
 using V3Kite
 using GLMakie
 using SymbolicAWEModels
+using MakieControlPlots
 using LinearAlgebra
 using Statistics
 using Printf
+using Dates
 
 # =============================================================================
 # Configuration
@@ -42,8 +44,8 @@ UP = 0.25              # Depower fraction [0, 1]
 STEERING_TARGET = 15.0     # Target % when key held
 STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 
-SIM_TIME = 60.0
-FPS = 120
+MAX_TIME = 1000.0
+FPS = 30
 DISPLAY_FPS = 10
 AERO_MODE = ContinuousAero()
 vector_scale = 1.0
@@ -54,8 +56,9 @@ max_depower_pct = 50.0
 
 # Recording
 record_video = false
-output_filename = joinpath(
-    v3_data_path(), "v3_realtime.mp4")
+run_name = "realtime_v3_" *
+    Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
+output_filename = joinpath(v3_data_path(), run_name * ".mp4")
 
 # =============================================================================
 # Settling setup (matches open_loop / flight_replay)
@@ -164,16 +167,9 @@ end
 # Simulation loop
 # =============================================================================
 
-n_steps = if record_video
-    Int(round(FPS * SIM_TIME))
-else
-    typemax(Int)
-end
+n_steps = Int(round(FPS * MAX_TIME))
 
-if record_video
-    logger, sys_state = create_logger(
-        sam, Int(round(FPS * SIM_TIME)))
-end
+logger, sys_state = create_logger(sam, n_steps)
 
 io = if record_video
     VideoStream(scene; framerate=DISPLAY_FPS)
@@ -214,9 +210,7 @@ try
         simulation_time += time() - step_start
         last_t = t
 
-        if record_video
-            log_state!(logger, sys_state, sam, t)
-        end
+        log_state!(logger, sys_state, sam, t)
 
         if step % display_interval == 0
             plot!(sys; vector_scale)
@@ -249,11 +243,14 @@ end
 if record_video
     save(output_filename, io)
     @info "Video saved" output_filename
+end
 
-    report_performance(SIM_TIME, simulation_time)
+report_performance(last_t, simulation_time)
+save_log(logger, run_name)
+@info "Log saved" file=joinpath(get_data_path(), run_name * ".arrow")
 
-    save_log(logger, "realtime_v3")
-    syslog = load_log("realtime_v3")
+if record_video
+    syslog = load_log(run_name)
     replay_scene = SymbolicAWEModels.replay(
         syslog, sys; autoplay=false, loop=true)
     display(replay_scene)
