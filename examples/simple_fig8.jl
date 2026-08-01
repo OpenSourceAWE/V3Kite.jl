@@ -56,9 +56,10 @@ error is curvature-limited and no PID tuning will fix it — enlarge the pattern
 lower its centre, lower the damping, or raise `MAX_STEERING`.
 
 Logs the run to "fig8_run" (a dedicated name, not the shared "tmp_run"). For
-verification run `include("examples/simple_fig8.jl")` — a ~200 s simulation is
-several thousand `step!` calls and takes minutes of wall time — then
-`include("examples/simple_fig8_plots.jl")`.
+verification run `include("examples/simple_fig8.jl")` — a 90 s simulation is
+several thousand `step!` calls and takes minutes of wall time. The script
+`include`s `simple_fig8_plots.jl` itself at the end, so the pattern and
+time-series figures come up without a second call.
 
 Log slot mapping (`step!` already fills `var_14`/`var_15`/`var_16`):
 
@@ -92,8 +93,17 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
-SIM_TIME         = 200.0    # Total simulation time [s]; ~43 s per lap at
-                            # v_app 13 m/s, plus the descent from the park
+SIM_TIME         = 30.0     # Total simulation time [s]; ~43 s per lap at
+                            # v_app 13 m/s, plus the descent from the park.
+                            # Capped at 30 s for the tuning campaign, one run
+                            # per parameter change. CAUTION: the metrics window
+                            # opens at PARK_TIME + ENTRY_TIME = 25 s, so the
+                            # tracking statistics are computed over the last 5 s
+                            # only and `laps` cannot reach its 3.0 criterion at
+                            # any tuning. At this length the run answers "does
+                            # it survive the entry, and where does it arrive",
+                            # not "how well does it track" — for the latter
+                            # lengthen the run or shorten ENTRY_TIME.
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
@@ -287,22 +297,46 @@ fec = FigureEightController(FigureEightSettings(;
     az_center = 0.0, el_center = EL_CENTER,
     attractor_distance = ATTRACTOR_DIST, up_loops = UP_LOOPS))
 
+# Turn-rate law of the plant actually being flown. `turn_rate_coeffs` is the
+# single source for all three coefficients of
+#
+#     psi_dot = c1 * v_app * u_s + c2 / v_app * sin(psi) * cos(beta)
+#
+# at this BODY_DAMPING and DEPOWER_SETPOINT — never hardcode them, both
+# arguments move them a lot (see the function's docstring). They are printed
+# every run because every parameter decision below is argued against them:
+#   c1     -> steering authority, hence the curvature feasibility margin
+#   c2     -> the gravity/turn term the heading loop has to fight
+#   delay  -> steering dead time, the limit on how fast the commanded course
+#             may rotate (the lever behind ATTRACTOR_DIST and HEADING_D)
+# turn_rate_coeffs interpolates for a DEPOWER_SETPOINT between identified grid
+# points (see PlanC1C2.md); a run using interpolated values says so rather than
+# reporting the margin as if it came from an identified one.
+coeffs = turn_rate_coeffs(BODY_DAMPING, DEPOWER_SETPOINT)
+c1, c2, delay = coeffs.c1, coeffs.c2, coeffs.delay
+@info @sprintf("Turn-rate law at body_damping=%s, depower=%.2f%s: \
+                c1 = %.4f 1/m, c2 = %.4f m/s^2, delay = %.3f s",
+               BODY_DAMPING, DEPOWER_SETPOINT,
+               coeffs.interpolated ? " (INTERPOLATED, not identified)" : "",
+               c1, c2, delay)
+
 # Curvature feasibility: a pattern tighter than the kite's minimum turn radius
 # cannot be tracked at any PID tuning (see the docstring). c1 must match the
 # body damping actually in use — that is what makes this check meaningful.
-# turn_rate_coeffs interpolates for a DEPOWER_SETPOINT between identified grid
-# points (see PlanC1C2.md); a run using an interpolated c1 says so below rather
-# than reporting the margin as if it came from an identified value.
-coeffs = turn_rate_coeffs(BODY_DAMPING, DEPOWER_SETPOINT)
-coeffs.interpolated &&
-    @info "turn_rate_coeffs($BODY_DAMPING, $DEPOWER_SETPOINT) is INTERPOLATED: " *
-          "c1=$(coeffs.c1), c2=$(coeffs.c2), delay=$(coeffs.delay) -- not an " *
-          "identified value; treat the feasibility margin below accordingly."
-c1 = coeffs.c1
 feas = check_pattern_feasible(fec, TETHER_LENGTH, MAX_STEERING; c1)
 feas.feasible ||
     @warn "Pattern is tighter than the kite's minimum turn radius — expect \
            curvature-limited tracking, not a tuning problem."
+
+# Dead-time context for ATTRACTOR_DIST. The attractor sits ATTRACTOR_DIST of arc
+# ahead of the kite, so the commanded course turns over roughly the time the
+# kite needs to cover that arc; `delay` is how long the plant takes to react at
+# all. Reported, not enforced: the recorded failure at ATTRACTOR_DIST = 10°
+# (lead 2.7 s against a 0.42 s dead time) is one data point, not a threshold.
+lead_time = deg2rad(ATTRACTOR_DIST) * TETHER_LENGTH / V_APP_REF
+@info @sprintf("Attractor lead %.1f° ≈ %.1f s of flight at v_app %.1f m/s, \
+                vs %.2f s steering dead time (ratio %.1f).",
+               ATTRACTOR_DIST, lead_time, V_APP_REF, delay, lead_time / delay)
 
 heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,
@@ -416,5 +450,9 @@ syslog = load_log("fig8_run")
 sl = syslog.syslog
 print_fig8_metrics(sl; t_start = PARK_TIME, settle_time = ENTRY_TIME,
                    min_elevation = MIN_ELEVATION, az_center = 0.0)
+
+# Plots come up with the run — the plotting script reuses the F8_* constants
+# defined above, so the reference overlay always matches the pattern flown.
+include(joinpath(@__DIR__, "simple_fig8_plots.jl"))
 
 nothing

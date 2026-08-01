@@ -24,6 +24,12 @@ V3Kite = "4caac9c8-c726-438f-ab10-3553e918eab1"
 VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
+[compat]
+# 0.1.9's legend-height probe throws `only(owned)` (ArgumentError: Collection
+# has multiple elements) when displaying a plotx figure with a legend on more
+# than one row — which is every *_plots.jl script here. Fixed in 0.1.12.
+MakieControlPlots = "0.1.12"
+
 [sources]
 V3Kite = {path = ".."}
 

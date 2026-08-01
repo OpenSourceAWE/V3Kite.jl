@@ -29,12 +29,14 @@ using MakieControlPlots
 using LaTeXStrings
 using V3Kite
 
-# Must match the corresponding constants in simple_fig8.jl (used only to
-# redraw the reference path).
-F8_A = 50.0
-F8_B = 25.0
-F8_C = 0.0
-F8_D = 0.0
+# Pattern geometry, used only to redraw the reference path. simple_fig8.jl
+# `include`s this file at the end of a run, so whatever it defined wins and the
+# overlay cannot drift out of sync with the run; these values are the fallback
+# for running this script standalone against an existing "fig8_run" log.
+@isdefined(F8_A) || (F8_A = 50.0)
+@isdefined(F8_B) || (F8_B = 20.0)
+@isdefined(F8_C) || (F8_C = 0.0)
+@isdefined(F8_D) || (F8_D = 0.0)
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
