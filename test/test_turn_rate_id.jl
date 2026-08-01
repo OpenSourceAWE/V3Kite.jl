@@ -23,14 +23,14 @@ using Test
 using V3Kite
 
 """
-    _consistent_log(; c1, c2, dt, n, v_a, beta, amp, freq) -> (sl, us_true)
+    consistent_log(; c1, c2, dt, n, v_a, beta, amp, freq) -> (sl, us_true)
 
 Synthetic syslog table that satisfies the turn-rate law exactly, plus the
 steering series `us_true` aligned the way `identify_turn_rate_law` aligns it
 (i.e. `sl.steering[2:end]`). The azimuth is constant so that the frame-transport
 term of `calc_turn_rate` vanishes and the turn rate is a plain `diff(heading)/dt`.
 """
-function _consistent_log(; c1 = 0.05, c2 = -0.2, dt = 0.05, n = 601,
+function consistent_log(; c1 = 0.05, c2 = -0.2, dt = 0.05, n = 601,
                            v_a = 20.0, beta = deg2rad(70.0),
                            amp = 0.5, freq = 0.1)
     time = collect((0:n-1) .* dt)
@@ -51,11 +51,11 @@ end
 
     @testset "Correlation" begin
         a = [1.0, 3.0, 2.0, 5.0, 4.0]
-        @test V3Kite._corr(a, a) ≈ 1.0
-        @test V3Kite._corr(a, -a) ≈ -1.0
-        @test V3Kite._corr(a, 2 .* a .+ 3) ≈ 1.0     # scale/offset invariant
-        @test V3Kite._corr(a, fill(2.0, 5)) == 0.0   # constant input, no NaN
-        @test V3Kite._corr(fill(2.0, 5), a) == 0.0
+        @test V3Kite.corr(a, a) ≈ 1.0
+        @test V3Kite.corr(a, -a) ≈ -1.0
+        @test V3Kite.corr(a, 2 .* a .+ 3) ≈ 1.0     # scale/offset invariant
+        @test V3Kite.corr(a, fill(2.0, 5)) == 0.0   # constant input, no NaN
+        @test V3Kite.corr(fill(2.0, 5), a) == 0.0
     end
 
     @testset "shift_delay" begin
@@ -174,7 +174,7 @@ end
     @testset "identify_turn_rate_law" begin
         dt = 0.05
         c1_true, c2_true = 0.05, -0.2
-        sl, us_true = _consistent_log(; c1 = c1_true, c2 = c2_true, dt, n = 601)
+        sl, us_true = consistent_log(; c1 = c1_true, c2 = c2_true, dt, n = 601)
 
         r = identify_turn_rate_law(sl; dt, t_start = 0.0, t_max_delay = 3.0)
 
@@ -215,7 +215,7 @@ end
         dt = 0.05
         d_true = 8
         c1_true, c2_true = 0.05, -0.2
-        sl0, us_true = _consistent_log(; c1 = c1_true, c2 = c2_true, dt, n = 601)
+        sl0, us_true = consistent_log(; c1 = c1_true, c2 = c2_true, dt, n = 601)
         # Feed the identification a log whose steering happens d_true samples
         # *earlier* than the response it produced.
         lead = [us_true[1 + d_true:end]; fill(0.0, d_true)]
@@ -232,7 +232,7 @@ end
 
     @testset "identify_turn_rate_law Window" begin
         dt = 0.05
-        sl, _ = _consistent_log(; dt, n = 601)
+        sl, _ = consistent_log(; dt, n = 601)
         t_start = 10.0
 
         r = identify_turn_rate_law(sl; dt, t_start, t_max_delay = 3.0)
@@ -249,7 +249,7 @@ end
 
     @testset "format_turn_rate_report" begin
         dt = 0.05
-        sl, _ = _consistent_log(; dt, n = 601)
+        sl, _ = consistent_log(; dt, n = 601)
         r = identify_turn_rate_law(sl; dt, t_start = 0.0, t_max_delay = 3.0)
 
         rep = format_turn_rate_report(r)
@@ -271,5 +271,5 @@ end
         @test occursin("FAIL", format_turn_rate_report(
                        merge(r, (G_rel_std = NaN,))))
     end
-
 end
+nothing

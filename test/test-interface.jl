@@ -231,12 +231,15 @@ end
 
     @testset "step! position mode (set_length)" begin
         t0 = s.sys_state.time
-        # Two steps: the previous torque-mode step left residual winch speed,
-        # and the position PI loop (Ti = 2s) needs more than one 0.05s step
-        # to bring it back down.
+        # Three steps: the previous torque-mode step left residual winch speed,
+        # and the position PI loop (Ti = 2s) needs more than one 0.05s step to
+        # bring it back down. The decay from that transient is smooth and
+        # monotone (1.31, 1.06, 0.89, 0.73, ... m/s), so two steps sit right on
+        # the 1.0 bound below — the third gives it margin.
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
-        @test s.sys_state.time ≈ t0 + 2 * s.dt
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        @test s.sys_state.time ≈ t0 + 3 * s.dt
         @test isfinite(unstretched_length(s))
         @test abs(reel_out_speed(s)) < 1.0  # holding l0: speed setpoint ≈ 0
     end

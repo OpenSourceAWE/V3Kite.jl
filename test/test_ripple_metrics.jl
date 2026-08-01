@@ -52,31 +52,31 @@ using V3Kite
     @testset "Centred Moving Average" begin
         y = [1.0, 2.0, 3.0, 4.0, 5.0]
         # half = 0 is the identity
-        @test V3Kite._centred_ma(y, 0) == y
+        @test V3Kite.centred_ma(y, 0) == y
         # A constant is passed through unchanged (any window)
-        @test V3Kite._centred_ma(fill(7.0, 5), 2) ≈ fill(7.0, 5)
+        @test V3Kite.centred_ma(fill(7.0, 5), 2) ≈ fill(7.0, 5)
         # Truncated (not zero-padded) at the edges
-        @test V3Kite._centred_ma(y, 1) ≈ [1.5, 2.0, 3.0, 4.0, 4.5]
+        @test V3Kite.centred_ma(y, 1) ≈ [1.5, 2.0, 3.0, 4.0, 4.5]
         # A linear ramp is reproduced exactly wherever the window is full
-        @test V3Kite._centred_ma(y, 1)[2:4] ≈ y[2:4]
+        @test V3Kite.centred_ma(y, 1)[2:4] ≈ y[2:4]
     end
 
     @testset "Peak Frequency" begin
         fs = 100.0
         t = collect(0:(1/fs):10)
         x = sin.(2π * 5.0 .* t)
-        f_peak, f_res = V3Kite._peak_frequency(x, fs, 0.5, 30.0)
+        f_peak, f_res = V3Kite.peak_frequency(x, fs, 0.5, 30.0)
         @test f_res ≈ fs / length(t)
         @test abs(f_peak - 5.0) <= f_res      # within one bin of the true 5 Hz
 
         # The strongest component inside the band wins, not the strongest overall
         x2 = sin.(2π * 5.0 .* t) .+ 3 .* sin.(2π * 20.0 .* t)
-        f_peak, f_res = V3Kite._peak_frequency(x2, fs, 0.5, 10.0)
+        f_peak, f_res = V3Kite.peak_frequency(x2, fs, 0.5, 10.0)
         @test abs(f_peak - 5.0) <= f_res
 
         # Too few samples, and an empty search band, both yield NaN
-        @test isnan(V3Kite._peak_frequency(x[1:5], fs, 0.5, 30.0)[1])
-        @test isnan(V3Kite._peak_frequency(x, fs, 60.0, 80.0)[1])  # above Nyquist
+        @test isnan(V3Kite.peak_frequency(x[1:5], fs, 0.5, 30.0)[1])
+        @test isnan(V3Kite.peak_frequency(x, fs, 60.0, 80.0)[1])  # above Nyquist
     end
 
     # Reference signal for the metrics tests: a 5 Hz, 0.5-unit-amplitude ripple
@@ -203,5 +203,5 @@ using V3Kite
         rep = format_ripple_report(merge(r, (f_peak = NaN,)))
         @test occursin("n/a", rep)
     end
-
 end
+nothing

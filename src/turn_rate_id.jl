@@ -45,12 +45,12 @@ the log already on disk, so both print the same numbers):
 using Printf
 
 """
-    _corr(a, b) -> Float64
+    corr(a, b) -> Float64
 
 Pearson correlation coefficient of `a` and `b`. Returns 0.0 if either input is
 constant.
 """
-function _corr(a::AbstractVector, b::AbstractVector)
+function corr(a::AbstractVector, b::AbstractVector)
     da = a .- mean(a)
     db = b .- mean(b)
     den = sqrt(sum(abs2, da) * sum(abs2, db))
@@ -81,7 +81,7 @@ function estimate_delay(u::AbstractVector, y::AbstractVector, dt::Real;
     d_max = min(n - 2, round(Int, t_max / dt))
     best_d, best_c = 0, -Inf
     for d in 0:d_max
-        c = _corr(view(u, 1:n-d), view(y, 1+d:n))
+        c = corr(view(u, 1:n-d), view(y, 1+d:n))
         if c > best_c
             best_c, best_d = c, d
         end
