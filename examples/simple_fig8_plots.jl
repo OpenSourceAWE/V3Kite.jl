@@ -24,8 +24,8 @@ carries the same errors wrapped to ±180°.
 
 Judge path following by `chi - chi_set`. The third curve in the error panel is
 the error the PID actually regulated (`var_06`): the loop feeds back heading at
-low apparent wind speed and course at high, blending in between
-(`V_APP_HEADING`/`V_APP_COURSE` in simple_fig8.jl, weight logged in `var_08`),
+low kite speed and course at high, blending in between
+(`V_KITE_HEADING`/`V_KITE_COURSE` in simple_fig8.jl, weight logged in `var_08`),
 so that curve rides on `psi - chi_set` at low speed and on `chi - chi_set` at
 high. On logs written before the blend existed it coincides with
 `psi - chi_set`.

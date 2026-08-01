@@ -77,9 +77,9 @@ Log slot mapping (`step!` already fills `var_14`/`var_15`/`var_16`):
 `bearing` carries `chi_cmd`, the course the loop actually tracks, so
 `course - bearing` is the path-following error; the unmodified guidance course
 is kept in `var_05`. The feedback angle the PID regulates is heading at low
-apparent wind speed and course at high (`V_APP_HEADING`/`V_APP_COURSE`), so
-`var_06` equals `heading - bearing` at low speed and `course - bearing` at
-high.
+kite speed and course at high (`V_KITE_HEADING`/`V_KITE_COURSE`, scheduled on
+`|vel_kite|`), so `var_06` equals `heading - bearing` at low speed and
+`course - bearing` at high.
 """
 
 using Pkg
@@ -159,6 +159,20 @@ F8_B             = 20.0     # Height of the eight (elevation spans +-B/2)
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
 EL_CENTER        = 50.0     # Pattern-centre elevation; spans 40-60° at B=20.
+                            # Tried 45.0 on the course-feedback loop
+                            # (2026-08-01, -10%) — 45° was the lowest centre
+                            # that FAILED the sweep below (18.4 s) back when the
+                            # loop regulated heading, so it was a deliberate
+                            # re-test of that limit. It STILL FAILS, and in the
+                            # same way: solver abort at t = 17.4 s, at elevation
+                            # 33° with v_app 27.5 m/s, tether force 3494 N and
+                            # AoA 45°. The better feedback signal does NOT buy a
+                            # lower centre, because the binding limit is energy,
+                            # not tracking: cross-track error was 0.4-6.8° right
+                            # up to the abort, i.e. the guidance was working and
+                            # the kite simply overspeeds in the power zone. The
+                            # curvature margin even IMPROVES (1.19 -> 1.30), as
+                            # the sweep predicted. Reverted to 50.0.
                             # This is the LOWEST SURVIVABLE centre, not a
                             # conservative pick. Swept in 10% steps
                             # (2026-07-26, A=50 B=20, u_s=0.30):
@@ -175,8 +189,52 @@ EL_CENTER        = 50.0     # Pattern-centre elevation; spans 40-60° at B=20.
                             # energy side wins until reel-out exists.
                             # Pattern at this centre: 224 m wide x 70 m tall,
                             # 564 m of path per lap, tightest radius 26 m.
-ATTRACTOR_DIST   = 19.8     # Arc distance Q -> attractor [deg]. Swept in 10%
-                            # steps at depower 0.40 / 200 m / centre 50°:
+ATTRACTOR_DIST   = 35.1     # Arc distance Q -> attractor [deg].
+                            #
+                            # 19.8 -> 35.1 (2026-08-01): swept in 10% steps to
+                            # MINIMIZE the RMS COURSE error (course - chi_cmd,
+                            # both in the guidance convention), on the
+                            # course-feedback loop with DOWN-loops, 30 s runs,
+                            # depower 0.40 / 200 m / centre 50°:
+                            #   attr  t_end  RMSchi>=15s  >=25s  RMSd>=25s  min_el
+                            #   16.2   30.0     60.1      79.2     5.24     30.6
+                            #   18.0   30.0     63.7      87.6     6.72     28.2
+                            #   19.8   30.0     60.4      82.4     8.37     27.9
+                            #   21.8   30.0     59.8      73.3     8.30     28.5
+                            #   24.0   30.0     58.4      62.2     7.42     29.9
+                            #   26.4   30.0     55.8      47.7     6.26     31.3
+                            #   29.0   30.0     57.5      45.0     5.81     31.4
+                            #   31.9   27.1     77.6      42.7     9.43     28.4  DIVERGED
+                            #   35.1   30.0     41.9      29.2     4.21     40.2  <- min
+                            #   38.6   30.0     45.7      36.7     6.51     40.2
+                            # 35.1 is the minimum in BOTH windows and is also
+                            # the best on cross-track error, elevation floor
+                            # (40.2° vs ~29°) and force ripple (CV 8.6% vs 27%).
+                            # Three caveats before trusting it:
+                            # 1. The landscape is NOT smooth — 31.9 diverges
+                            #    between two surviving neighbours, so these are
+                            #    single 30 s runs of a marginally stable loop,
+                            #    not a converged optimum.
+                            # 2. RMS course error is ~42° even at the minimum.
+                            #    Steering is clamped 77% of the time, so this
+                            #    picks the least-bad point inside a saturated
+                            #    regime; the course oscillates +-60° about the
+                            #    command (measured, not a wrap artefact — only
+                            #    12% of samples exceed 90°).
+                            # 3. A 35° lead is ~22% of the ~162° of arc in one
+                            #    lap. Part of the gain is the kite cutting
+                            #    corners on a smoother, higher trajectory rather
+                            #    than tracking the pattern more faithfully.
+                            #
+                            # EARLIER sweep, 200 s runs on the HEADING loop with
+                            # UP-loops (kept because it maps the low end, where
+                            # the 2026-08-01 sweep did not go):
+                            #   attr  survived  laps  RMS d  min el  saturation
+                            #   10.0     13.6s     -      -       -       -
+                            #   14.6      200s     0   6.34°   29.3°     97%
+                            #   16.2      200s     0   5.94°   29.8°     97%
+                            #   18.0      200s     0   5.76°   29.9°     97%
+                            #   19.8      200s     0   5.50°   30.5°     97%
                             #   attr  survived  laps  RMS d  min el  saturation
                             #   10.0     13.6s     -      -       -       -
                             #   14.6      200s     0   6.34°   29.3°     97%
@@ -193,17 +251,31 @@ ATTRACTOR_DIST   = 19.8     # Arc distance Q -> attractor [deg]. Swept in 10%
                             # given the 0.42 s steering dead time at this
                             # depower, and the run diverges (10° died at 13.6 s
                             # after the course swung -154° -> -45° in 2.5 s).
-                            # 19.8 chosen as the best of the swept values.
-                            # The 97% steering saturation in EVERY case is the
+                            # The heavy steering saturation in EVERY case is the
                             # real constraint: the crossover is authority-limited.
                             # Interacts strongly with HEADING_P; tune jointly.
-UP_LOOPS         = true     # Fly upwards during the turns at large |azimuth|.
-                            # MEASURED on the V3 (2026-07-26), not inherited:
-                            # true -> survives 200 s; false -> diverges at 17.8 s,
-                            # all else equal. Up-loops shed energy through the
-                            # turn where down-loops convert height into speed,
-                            # which decides it here because the failure mode is
-                            # overspeed.
+UP_LOOPS         = false    # Fly DOWN-loops: at large |azimuth| the kite passes
+                            # the azimuth extreme moving downwards. The flag
+                            # reverses the traversal direction of the reference
+                            # path (`_build_path` in src/fig8_controller.jl);
+                            # the path shape itself is unchanged, so the
+                            # curvature feasibility margin is unaffected.
+                            # MEASURED on the V3 (2026-07-26) on the HEADING
+                            # loop: true -> survives 200 s; false -> diverges at
+                            # 17.8 s, all else equal. Up-loops shed energy
+                            # through the turn where down-loops convert height
+                            # into speed, and the failure mode of this
+                            # configuration is overspeed.
+                            # RE-MEASURED on the course-feedback loop
+                            # (2026-08-01): down-loops now SURVIVE the full 30 s
+                            # at this centre, so the 17.8 s divergence above was
+                            # partly a feedback-signal problem, not purely an
+                            # energy one. At the then-current lead of 19.8 they
+                            # tracked worse (RMS d 8.37° vs 3.86° for up-loops);
+                            # after retuning ATTRACTOR_DIST to 35.1 they are the
+                            # first configuration recorded here that actually
+                            # CROSSES the pattern centre (2 crossings in 18 s,
+                            # azimuth -23..+33°) instead of circling one lobe.
 
 # Optional walk of the pattern centre (PlanFig8.md STEP 4). 0 disables it; the
 # run then flies the whole time at EL_CENTER. Use it to move the pattern to a
@@ -225,26 +297,39 @@ HEADING_D        = 0.15     # Derivative time [s], damps the initial transient
 V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
 V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 
-# WHAT THE LOOP REGULATES: heading at low apparent wind speed, course at high.
+# WHAT THE LOOP REGULATES: heading at low KITE speed, course at high.
 # The guidance commands a COURSE, so course is the signal that actually closes
 # the path-following loop and is what must be regulated once the kite is flying
-# fast. At low v_app it is the wrong feedback: the flight-path direction is the
-# small difference of two nearly equal velocities there, so it is noisy and
-# ill-defined (undefined at v_app = 0, e.g. during the park), while heading
+# fast. When the kite is slow it is the wrong feedback: the flight-path
+# direction is undefined at zero velocity and noisy just above it, while heading
 # stays clean and still has the right sign of steering authority. Regulating
 # course throughout also asks the loop to chase the drift angle, which the kite
 # cannot change directly.
 #
-# Below V_APP_HEADING the error is formed from heading alone, above V_APP_COURSE
-# from course alone, and linearly blended in between. The band exists to avoid a
-# hard switch: heading and course differ by the drift angle (~13-15° on the V3),
-# so a step change of feedback signal at one speed would step the steering
-# command by HEADING_P * drift. Widen the band if that transient still shows.
-V_APP_HEADING    = 5.0      # [m/s] at/below: pure heading feedback
-V_APP_COURSE     = 10.0     # [m/s] at/above: pure course feedback ("high" per
-                            # the flight note; the lower edge is a choice, set
-                            # to V_APP_MIN so the blend spans the whole range
-                            # over which the gain schedule is already clamped)
+# Scheduled on |vel_kite|, NOT on v_app. A parked V3 already sees v_app ~ the
+# ambient wind, so apparent wind speed cannot tell "flying" from "hanging
+# still" — measured on this configuration:
+#
+#     signal          park          flying (t >= 15 s)
+#     v_app           9.1 m/s       21.1 m/s, never below 10
+#     |vel_kite|      4.2 m/s       15.5 m/s (8.3 .. 22.3)
+#
+# A 10 m/s threshold on v_app therefore puts the PARK at blend weight 0.82 —
+# nearly full course feedback on a kite that is barely moving, which is the one
+# case the rule exists to prevent. On |vel_kite| the park is unambiguously
+# heading, and the weight modulates in flight when the kite slows through a
+# turn, which is when the course estimate is worst.
+#
+# Below V_KITE_HEADING the error is formed from heading alone, above
+# V_KITE_COURSE from course alone, and linearly blended in between. The band
+# exists to avoid a hard switch: heading and course differ by the drift angle
+# (~13-15° on the V3), so a step change of feedback signal at one speed would
+# step the steering command by HEADING_P * drift. Widen it if that shows.
+V_KITE_HEADING   = 5.0      # [m/s] at/below: pure heading feedback
+V_KITE_COURSE    = 10.0     # [m/s] at/above: pure course feedback ("high" per
+                            # the flight note in SmallPlan.md; the lower edge is
+                            # a choice — 5 m/s is just above the 4.2 m/s the
+                            # kite drifts at during the park)
 MAX_STEERING     = 0.30     # Steering command limit [-]. OPTION 3 (raise the
                             # authority to relieve the 97% clamp saturation) is
                             # CLOSED — it does not work on this plant:
@@ -419,13 +504,13 @@ try
             chi_cmd = sgn * deg2rad(ENTRY_CHI_MAX)
         end
 
-        # Feedback angle: heading at low apparent wind speed, course at high
-        # (see the parameter block). Blended on the WRAPPED difference so the
-        # transition stays continuous across the ±180° cut, and so the two
-        # endpoints are exactly `heading` and `course`.
-        v_app_raw = Float64(s.sys_state.v_app)
-        w_course = clamp((v_app_raw - V_APP_HEADING) /
-                         (V_APP_COURSE - V_APP_HEADING), 0.0, 1.0)
+        # Feedback angle: heading at low kite speed, course at high (see the
+        # parameter block). Blended on the WRAPPED difference so the transition
+        # stays continuous across the ±180° cut, and so the two endpoints are
+        # exactly `heading` and `course`.
+        v_kite = norm(s.sys_state.vel_kite)
+        w_course = clamp((v_kite - V_KITE_HEADING) /
+                         (V_KITE_COURSE - V_KITE_HEADING), 0.0, 1.0)
         # +π: `SysState.course` is SymbolicAWEModels' raw tangent-frame course,
         # whose zero points AWAY from zenith, while `SysState.heading` and the
         # guidance both use 0 = towards zenith. The flip is not symmetric
@@ -444,8 +529,10 @@ try
         # and passed as the measurement against a zero reference; otherwise the
         # loop commands a full turn the long way round at every wrap crossing.
         err = wrap_to_pi(fb - chi_cmd)
-        # Gain scheduling: turn rate ~ u_s * v_app, so K ~ 1/v_app.
-        v_app = max(v_app_raw, V_APP_MIN)
+        # Gain scheduling: turn rate ~ u_s * v_app, so K ~ 1/v_app. Still on
+        # APPARENT wind speed — that is the plant gain; only the choice of
+        # feedback angle above schedules on kite speed.
+        v_app = max(Float64(s.sys_state.v_app), V_APP_MIN)
         set_K!(heading_pid, HEADING_P * V_APP_REF / v_app, 0.0, err)
         # Park: hold zero steering while the settling transients decay. The PID
         # is still stepped (with zero error) so its derivative state is current
@@ -484,8 +571,10 @@ try
         s.sys_state.var_07 = chi_cmd == chi_set ? 0.0 : 1.0  # entry limiter active
         s.sys_state.var_08 = w_course          # course/heading blend weight [-]
     end
-catch e
-    @error "Simulation stopped early at t≈$(round(s.sys_state.time, digits=2))s" exception=(e, catch_backtrace())
+catch exc
+    # `exc`, not `e`: a stray global `e` in the REPL turns the catch binding
+    # into a soft-scope local and emits a confusing warning on every run.
+    @error "Simulation stopped early at t≈$(round(s.sys_state.time, digits=2))s" exception=(exc, catch_backtrace())
 end
 
 @info "Save the log"
