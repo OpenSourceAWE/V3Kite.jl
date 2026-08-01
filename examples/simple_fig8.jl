@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # lets the kite turn tighter in angular terms — the
                             # single most effective lever on pattern
                             # feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.40     # Depower setting held during the run [-].
+DEPOWER_SETPOINT = 0.36     # Depower setting held during the run [-].
                             # 0.36 -> 0.40 (2026-08-01): REVERTED, see below.
                             #
                             # 0.40 -> 0.36 (2026-08-01, -10%): the entry is
