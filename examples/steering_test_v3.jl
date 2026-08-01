@@ -96,8 +96,10 @@ MIN_STEERING_FIT = START_STEERING / 2
 
 # ======================== INIT =========================== #
 
-# `body_damping` matches simple_parking.jl (the default is [10, 10, 40]); it is
-# part of the settling cache key, so the first run with it re-settles the wing.
+# `body_damping` matches simple_parking.jl (the `init` default is [0, 0, 40]); it
+# is part of the settling cache key, so the first run with it re-settles the wing.
+# The in-plane (x, y) terms damp the bridle oscillation but also suppress the
+# steering deformation: c1, the turn-rate gain, falls by 3x per damping level.
 # with [20.0, 20.0, 40.0]
 #  c1                 :   0.0567 1/m ± 0.0000  (0.06 %)
 #  c2                 :  -2.0841 [-] ± 0.0167  (0.80 %)

@@ -434,19 +434,25 @@ over into the returned model, so it also forms part of the settling cache key �
 changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
 
-The in-plane terms matter as much as the normal one: the default used to be
-`[0, 0, 40]`, which damps only normal to the wing surface and therefore could not
-touch the lightly-damped ~5.5 Hz *in-plane* bridle mode that dominated the parked
-solver cost. Adding the `[10, 10, ...]` terms cuts the parked AoA ripple from
-0.144° to 0.020° peak-to-peak and the solver step count by 3.4×, with the settled
-trim (AoA, elevation, tether force) unchanged to within 0.5 %.
+The in-plane (x, y) terms trade accuracy for solver cost, which is why the
+default damps only normal to the wing surface. The normal-only default cannot
+touch the lightly-damped ~5.5 Hz *in-plane* bridle mode that dominates the parked
+solver cost: adding `[10, 10, ...]` cuts the parked AoA ripple from 0.144° to
+0.020° peak-to-peak and the solver step count by 3.4×, with the settled trim
+(AoA, elevation, tether force) unchanged to within 0.5 %. But in-plane damping
+also resists the wing deformation that produces steering, so it **reduces the
+turn rate** and with it the model's accuracy against flight data: the turn-rate
+law fitted by `examples/steering_test_v3.jl` drops from `c1 = 0.316` 1/m at
+`[0, 0, 40]` to `0.098` at `[10, 10, 40]` and `0.057` at `[20, 20, 40]`. Use
+in-plane damping for parked/quasi-static runs where throughput matters, not for
+validating turning maneuvers.
 
-Raising the in-plane terms further keeps helping (`[20, 20, 40]` is 5.4× on
-solver steps) but the settling itself goes unstable at fixed `dt = 0.001`
-somewhere between 15 and 20 on the `system_cabauw.yaml` configuration, so the
-default keeps a margin. Pass a larger value explicitly if your configuration
-tolerates it — a diverged settling now fails loudly rather than caching broken
-geometry. See PlanSuppressOscillations.md for the sweep.
+Raising the in-plane terms further keeps cutting solver cost (`[20, 20, 40]` is
+5.4×) at a correspondingly larger turn-rate penalty, and the settling itself goes
+unstable at fixed `dt = 0.001` somewhere between 15 and 20 on the
+`system_cabauw.yaml` configuration. Pass a larger value explicitly if your
+configuration tolerates it — a diverged settling now fails loudly rather than
+caching broken geometry. See PlanSuppressOscillations.md for the sweep.
 
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
