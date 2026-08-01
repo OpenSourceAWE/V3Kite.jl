@@ -10,8 +10,25 @@ Loads the "fig8_run" log saved by simple_fig8.jl. Produces two figures:
    lemniscate and the attractor track overlaid — the plot that shows at a glance
    whether the pattern is being flown or only approximated;
 2. a stacked time-series figure: cross-track error, elevation (with the pattern
-   centre), heading vs commanded course, steering command vs the KCU's actual
-   tape-lagged value, and tether force.
+   centre), heading and course vs the commanded course, the course-tracking
+   error, steering command vs the KCU's actual tape-lagged value, and tether
+   force.
+
+The guidance commands a COURSE (direction of travel) while the inner loop
+regulates HEADING (where the nose points), so the angle panel shows all three:
+`chi` is what the kite actually flew, `chi_set` the command, and the
+`chi - psi` gap is the kite's drift angle (~13° on the V3, see
+`src/fig8_controller.jl`). Those three are plotted UNWRAPPED (a lap of the
+pattern crosses ±180°, and the raw traces jump there); the error panel below
+carries the same errors wrapped to ±180°.
+
+Judge path following by `chi - chi_set`. The third curve in the error panel is
+the error the PID actually regulated (`var_06`): the loop feeds back heading at
+low apparent wind speed and course at high, blending in between
+(`V_APP_HEADING`/`V_APP_COURSE` in simple_fig8.jl, weight logged in `var_08`),
+so that curve rides on `psi - chi_set` at low speed and on `chi - chi_set` at
+high. On logs written before the blend existed it coincides with
+`psi - chi_set`.
 
 Run from the REPL after (or instead of, if "fig8_run" already exists) running
 simple_fig8.jl:
@@ -61,6 +78,30 @@ el_deg = rad2deg.(sl.elevation[rng])
 el_c_end = Float64(sl.var_04[end])
 ref_az, ref_el = figure_eight_path(F8_A, F8_B, F8_C, F8_D, 0.0, el_c_end, 0.0, 361)
 
+# --- angles for the psi/chi panel ---------------------------------------- #
+# Plotted UNWRAPPED: the raw ±180° traces jump at the branch cut, the three
+# curves cross it at different times, and the pattern makes them cross it every
+# lap. The course is unwrapped by integrating its wrapped increments; heading
+# and the command are then placed on the branch nearest the unwrapped course at
+# each sample, so all three stay continuous *and* their vertical distances are
+# still exactly the wrapped errors plotted in the panel below.
+unwrap_angle(a) = first(a) .+ cumsum(vcat(0.0, wrap_to_pi.(diff(a))))
+onto(ref_u, ref_w, a) = ref_u .+ wrap_to_pi.(a .- ref_w)
+
+psi    = Float64.(sl.heading[rng])
+# +π puts the logged course into the same convention as heading and the
+# guidance (0 = towards zenith); see the note in simple_fig8.jl. Without it the
+# course trace sits 180° away from everything else in the panel.
+chi    = wrap_to_pi.(Float64.(sl.course[rng]) .+ pi)
+chiset = Float64.(sl.bearing[rng])   # chi_cmd, the course actually tracked
+chi_u  = unwrap_angle(chi)
+
+# Tracking errors, both wrapped to ±180°. chi - chi_set is the path-following
+# error the guidance cares about; psi - chi_set is what the PID regulates, and
+# the offset between them is the kite's drift angle (~13° on the V3).
+err_course  = rad2deg.(wrap_to_pi.(chi .- chiset))
+err_heading = rad2deg.(wrap_to_pi.(psi .- chiset))
+
 @info "Plotting the pattern..."
 p1 = plotxy(
     [az_deg, ref_az, Float64.(sl.var_02[rng])],
@@ -78,7 +119,9 @@ p2 = plotx(
     sl.time[rng],
     sl.var_01[rng],
     [el_deg, Float64.(sl.var_04[rng])],
-    [rad2deg.(sl.heading[rng]), rad2deg.(sl.bearing[rng])],
+    [rad2deg.(onto(chi_u, chi, psi)), rad2deg.(chi_u),
+     rad2deg.(onto(chi_u, chi, chiset))],
+    [err_course, err_heading, Float64.(sl.var_06[rng])],
     (100.0 .* sl.steering[rng], 100.0 .* sl.set_steering[rng]),
     getindex.(sl.winch_force[rng], 1);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
@@ -87,14 +130,17 @@ p2 = plotx(
     ylabels = [
         L"d~[°]",
         L"\mathrm{elevation}~[°]",
-        L"\psi~[°]",
+        L"\psi,~\chi~[°]",
+        L"\Delta\chi~[°]",
         L"u_{\mathrm{s}}~[\%]",
         L"F_{\mathrm{tether}}~[\mathrm{N}]",
     ],
     labels = [
         nothing,
         [L"\mathrm{kite}", L"\mathrm{pattern~centre}"],
-        [L"\psi", L"\chi_{\mathrm{set}}"],
+        [L"\psi", L"\chi", L"\chi_{\mathrm{set}}"],
+        [L"\chi - \chi_{\mathrm{set}}", L"\psi - \chi_{\mathrm{set}}",
+         L"\mathrm{regulated}"],
         [L"u_{\mathrm{s}}", L"u_{\mathrm{s,set}}"],
         nothing,
     ],

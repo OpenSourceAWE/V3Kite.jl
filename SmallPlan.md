@@ -13,4 +13,6 @@
 - make the required adaptions, run once, plot the results and wait
 
 ## Next steps
+- plot course and desired course
+- what the PID is regulating is wrong. For low apparent wind speeds it should only regulate the heading, for high apparent wind speeds it should only regulate the course. High means above 10 m/s
 - get log file from working controller and plot it

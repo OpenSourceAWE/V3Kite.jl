@@ -70,12 +70,16 @@ Log slot mapping (`step!` already fills `var_14`/`var_15`/`var_16`):
 | `var_03` | attractor elevation [deg]                 |
 | `var_04` | pattern-centre elevation [deg]            |
 | `var_05` | raw guidance course chi_set [rad]         |
-| `var_06` | course error (heading - chi_cmd) [deg]    |
+| `var_06` | regulated error (feedback - chi_cmd) [deg] |
 | `var_07` | 1 while the entry descent limiter is active |
+| `var_08` | course/heading blend weight (0 = heading, 1 = course) |
 
-`bearing` carries `chi_cmd`, the course the heading loop actually tracks, so
-`heading - bearing` is the true tracking error; the unmodified guidance course
-is kept in `var_05`.
+`bearing` carries `chi_cmd`, the course the loop actually tracks, so
+`course - bearing` is the path-following error; the unmodified guidance course
+is kept in `var_05`. The feedback angle the PID regulates is heading at low
+apparent wind speed and course at high (`V_APP_HEADING`/`V_APP_COURSE`), so
+`var_06` equals `heading - bearing` at low speed and `course - bearing` at
+high.
 """
 
 using Pkg
@@ -220,6 +224,27 @@ HEADING_I        = false    # No integral action: a steady heading bias shows up
 HEADING_D        = 0.15     # Derivative time [s], damps the initial transient
 V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
 V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
+
+# WHAT THE LOOP REGULATES: heading at low apparent wind speed, course at high.
+# The guidance commands a COURSE, so course is the signal that actually closes
+# the path-following loop and is what must be regulated once the kite is flying
+# fast. At low v_app it is the wrong feedback: the flight-path direction is the
+# small difference of two nearly equal velocities there, so it is noisy and
+# ill-defined (undefined at v_app = 0, e.g. during the park), while heading
+# stays clean and still has the right sign of steering authority. Regulating
+# course throughout also asks the loop to chase the drift angle, which the kite
+# cannot change directly.
+#
+# Below V_APP_HEADING the error is formed from heading alone, above V_APP_COURSE
+# from course alone, and linearly blended in between. The band exists to avoid a
+# hard switch: heading and course differ by the drift angle (~13-15° on the V3),
+# so a step change of feedback signal at one speed would step the steering
+# command by HEADING_P * drift. Widen the band if that transient still shows.
+V_APP_HEADING    = 5.0      # [m/s] at/below: pure heading feedback
+V_APP_COURSE     = 10.0     # [m/s] at/above: pure course feedback ("high" per
+                            # the flight note; the lower edge is a choice, set
+                            # to V_APP_MIN so the blend spans the whole range
+                            # over which the gain schedule is already clamped)
 MAX_STEERING     = 0.30     # Steering command limit [-]. OPTION 3 (raise the
                             # authority to relieve the 97% clamp saturation) is
                             # CLOSED — it does not work on this plant:
@@ -394,13 +419,33 @@ try
             chi_cmd = sgn * deg2rad(ENTRY_CHI_MAX)
         end
 
+        # Feedback angle: heading at low apparent wind speed, course at high
+        # (see the parameter block). Blended on the WRAPPED difference so the
+        # transition stays continuous across the ±180° cut, and so the two
+        # endpoints are exactly `heading` and `course`.
+        v_app_raw = Float64(s.sys_state.v_app)
+        w_course = clamp((v_app_raw - V_APP_HEADING) /
+                         (V_APP_COURSE - V_APP_HEADING), 0.0, 1.0)
+        # +π: `SysState.course` is SymbolicAWEModels' raw tangent-frame course,
+        # whose zero points AWAY from zenith, while `SysState.heading` and the
+        # guidance both use 0 = towards zenith. The flip is not symmetric
+        # between the two fields — the V3's body x-axis is reversed w.r.t. the
+        # sensor convention, which cancels the frame flip for the heading but
+        # cannot for a velocity direction. MEASURED on this model over the
+        # samples where the kite flies (>2°/s): with the correction,
+        # course - heading is the +13..15° drift angle documented in
+        # src/fig8_controller.jl; without it, -165°. Feeding the raw field back
+        # is positive feedback and diverged the run at t = 19.7 s.
+        course = wrap_to_pi(Float64(s.sys_state.course) + pi)
+        fb = heading + w_course * wrap_to_pi(course - heading)
+
         # Heading PID on the WRAPPED course error. DiscretePID computes a plain
         # (r - y) difference with no ±π wrapping, so the error is formed here
         # and passed as the measurement against a zero reference; otherwise the
         # loop commands a full turn the long way round at every wrap crossing.
-        err = wrap_to_pi(heading - chi_cmd)
+        err = wrap_to_pi(fb - chi_cmd)
         # Gain scheduling: turn rate ~ u_s * v_app, so K ~ 1/v_app.
-        v_app = max(Float64(s.sys_state.v_app), V_APP_MIN)
+        v_app = max(v_app_raw, V_APP_MIN)
         set_K!(heading_pid, HEADING_P * V_APP_REF / v_app, 0.0, err)
         # Park: hold zero steering while the settling transients decay. The PID
         # is still stepped (with zero error) so its derivative state is current
@@ -426,7 +471,8 @@ try
         end
 
         # Logged after step! (which overwrites parts of sys_state). bearing is
-        # the tracked course, so heading - bearing is the true tracking error.
+        # the commanded course, so course - bearing is the path-following error
+        # and heading - bearing is what the loop sees while w_course = 0.
         s.sys_state.bearing = chi_cmd          # the course actually tracked
         s.sys_state.attractor .= (deg2rad(az_attr), deg2rad(el_attr))
         s.sys_state.var_01 = dmin              # cross-track error [deg]
@@ -434,8 +480,9 @@ try
         s.sys_state.var_03 = el_attr           # attractor elevation [deg]
         s.sys_state.var_04 = el_center_cur     # pattern-centre elevation [deg]
         s.sys_state.var_05 = chi_set           # RAW guidance course [rad]
-        s.sys_state.var_06 = rad2deg(err)      # course error [deg]
+        s.sys_state.var_06 = rad2deg(err)      # REGULATED error [deg]
         s.sys_state.var_07 = chi_cmd == chi_set ? 0.0 : 1.0  # entry limiter active
+        s.sys_state.var_08 = w_course          # course/heading blend weight [-]
     end
 catch e
     @error "Simulation stopped early at t≈$(round(s.sys_state.time, digits=2))s" exception=(e, catch_backtrace())
