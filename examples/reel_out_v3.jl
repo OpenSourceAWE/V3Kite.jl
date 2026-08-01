@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Jelle Poland, Bart van de Lint
+# Copyright (c) 2026 Uwe Fechner
 # SPDX-License-Identifier: MPL-2.0
 
 """
@@ -13,8 +13,6 @@ end
 using Timers
 tic()
 using V3Kite
-using V3Kite.KitePodModels
-using VortexStepMethod
 using LinearAlgebra
 using MakieControlPlots
 using Printf
@@ -22,99 +20,46 @@ toc("Loaded packages")
 
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
-gc = V3GeomAdjustConfig()
-
 # the following values can be changed to match your interest
-dt = 0.05/3
+dt    = 0.05/3
 STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
-PRINT = true
-STATISTIC = false
-ALPHA_ZERO = 8.8 
+DEPOWER_SETPOINT = 0.27 # tuned so winch_force(15s) ≈ 1050 N, matching winch_KiteModels
+REL_STEERING  = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
+T_MIN =  0.0          # only plot results from T_MIN onwards
 # end of user parameter section #
 
-data_path = v3_data_path()
-set_data_path(data_path)
-set = Settings("system.yaml")
-set.g_earth = 9.81
-set.wind_vec = [V_WIND, 0.0, 0.0]
-set.l_tether = TETHER_LENGTH
-set.profile_law = 3  # 3=EXPLOG, matches KiteModels default
+@info "Initializing model..."
+s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
+                                depower_setpoint = DEPOWER_SETPOINT, dt, sim_time = STEPS*dt)
+toc("Initialized V3KITE instance")
 
-set.alpha_zero = ALPHA_ZERO
-set.mass = 6.2    # kite mass [kg]
-set.d_tether = 4.0  # tether diameter [mm]
-set.drum_radius = 0.1615  # radius of the drum                    [m]
-set.gear_ratio = 6.2      # gear ratio of the winch               [-]
-set.f_coulomb = 122.0     # coulomb friction                      [N]
-set.c_vf = 30.6           # coefficient for the viscous friction  [Ns/m]
-
-v_time = zeros(STEPS)
-v_speed = zeros(STEPS)
-v_force = zeros(STEPS)
-v_elevation = zeros(STEPS)
-v_heading = zeros(STEPS)
-v_wind_speed = zeros(STEPS)
-
-kcu::KCU = KCU(set)
-
-source_struc = joinpath(data_path, "struc_geometry.yaml")
-source_aero = joinpath(data_path, "aero_geometry.yaml")
-vsm_path = joinpath(data_path, "vsm_settings.yaml")
-vsm_set = VortexStepMethod.VSMSettings(vsm_path; data_prefix=false)
-vsm_set.wings[1].geometry_file = source_aero
-
-@info "Creating V3 model..."
-sys = load_sys_struct_from_yaml(source_struc;
-    system_name=V3_MODEL_NAME, set,
-    dynamics_type=PARTICLE_DYNAMICS, vsm_set)
-sys.points[1].extra_mass = 8.4   # KCU mass [kg]
-sam = SymbolicAWEModel(set, sys)
-
-# create an instance of the V3KITE struct
-v3kite = V3KITE(set=set, kcu=kcu, sam=sam)
-toc("Created V3KITE instance")
-
-function simulate(integrator, steps, plot=false)
+function simulate(s, steps, plot=false)
     iter = 0
     for i in 1:steps
-        if PRINT
-            lift, drag = lift_drag(v3kite)
-            @printf "%.2f: " round(integrator.t, digits=2)
-            println("lift, drag  [N]: $(round(lift, digits=2)), $(round(drag, digits=2))")
-        end
         dforce = 0.0
-        if integrator.t > 15.0
+        if s.sys_state.time > 15.0
             dforce = +4.5
         end
-        force = winch_force(v3kite)
-        r = set.drum_radius
-        n = set.gear_ratio
-        set_torque = -r/n * force + dforce
-        # This should be the same as the above, but it isn't. Why?
-        # set_torque = force_to_torque(-force, v3kite.sys) + dforce
-        v_time[i] = integrator.t
-        v_speed[i] = reel_out_speed(v3kite)
-        v_force[i] = force
-        v_elevation[i] = rad2deg(calc_elevation(v3kite))
-        v_heading[i] = rad2deg(calc_heading(v3kite))
-        v_wind_speed[i] = norm(v_wind_kite(v3kite))
-        sim_step!(v3kite.sam; set_values=[set_torque], dt, vsm_interval=1)
+        force = winch_force(s)
+        winch = s.sys.winches[1]
+        set_torque = -winch.drum_radius / winch.gear_ratio * force + dforce
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque)
         iter += 1
 
         if plot
             reltime = i*dt-dt
             if mod(i, 5) == 1
-                tether = v3kite.sys.tethers[1]
+                tether = s.sys.tethers[1]
                 n_segs = length(tether.segment_idxs)
-                pos = [v3kite.sys.points[tether.start_point_idx].pos_w]
+                pos = [s.sys.points[tether.start_point_idx].pos_w]
                 for si in tether.segment_idxs
-                    seg = v3kite.sys.segments[si]
-                    push!(pos, v3kite.sys.points[seg.point_idxs[2]].pos_w)
+                    seg = s.sys.segments[si]
+                    push!(pos, s.sys.points[seg.point_idxs[2]].pos_w)
                 end
                 if FRONT_VIEW
                     plot2d(pos, reltime; zoom=ZOOM, front=true,
@@ -123,26 +68,43 @@ function simulate(integrator, steps, plot=false)
                     plot2d(pos, reltime; zoom=ZOOM, front=false,
                                         segments=n_segs, fig="side_view")
                 end
+                sleep(0.001) # yield to let GLMakie's render task redraw
             end
         end
     end
     iter / steps
 end
 
-@info "Initializing model..."
-integrator = init!(v3kite.sam; remake=false, remake_vsm=true)
-v3kite.sys.winches[1].brake = false
+GC.enable(false)
+try
+    simulate(s, STEPS, true)
+catch e
+    @error "Simulation stopped early at t≈$(round(s.sys_state.time, digits=2))s" exception=(e, catch_backtrace())
+finally
+    GC.enable(true)
+end
 
-simulate(integrator, STEPS, true)
+@info "Save the log"
+save_log(s.logger, "tmp_reel_out"; colmeta=timestamp_colmeta())
 
 if PLOT
     local p
-    p = plotx(v_time, v_speed, v_force, v_elevation, v_heading, v_wind_speed;
-    ysize= 11,
+    syslog = load_log("tmp_reel_out")
+    sl = syslog.syslog
+    mask = sl.time .>= T_MIN
+    created_at = log_created_at("tmp_reel_out")
+    fig_name = "winch"
+    if !isnothing(created_at)
+        fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
+    end
+    p = plotx(sl.time[mask], first.(sl.v_reelout[mask]), first.(sl.winch_force[mask]),
+        rad2deg.(sl.elevation[mask]), rad2deg.(sl.heading[mask]), norm.(sl.v_wind_kite[mask]),
+        rad2deg.(sl.AoA[mask]);
+        ysize= 16,
         ylabels=["v_reelout  [m/s]", "tether_force [N]", "elevation [deg]",
-                 "heading [deg]", "wind_speed_kite [m/s]"], fig="winch")
+                 "heading [deg]", "wind_speed_kite [m/s]", "AoA [deg]"], fig=fig_name)
     display(p)
 end
-@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" set.mass sys.points[1].extra_mass set.d_tether
-println("Number of states: $(states(v3kite))")
+@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" s.set.mass s.sys.points[1].extra_mass s.set.d_tether
+println("Number of states: $(states(s))")
 nothing

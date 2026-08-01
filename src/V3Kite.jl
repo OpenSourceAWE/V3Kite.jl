@@ -43,6 +43,8 @@ export V3KITE
 include("model_setup.jl")
 include("calibration.jl")
 include("coordinate_utils.jl")
+include("turn_rate_id.jl")
+include("ripple_metrics.jl")
 include("flight_data.jl")
 include("photogrammetry.jl")
 include("sim_helpers.jl")
@@ -81,6 +83,13 @@ export calc_heading, calc_csv_heading
 export calc_R_b_w, calc_turn_rate
 export COURSE_RATE_WINDOW_SEC
 
+# Turn-rate-law identification exports
+export identify_turn_rate_law, format_turn_rate_report
+export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
+
+# AoA-ripple analysis exports
+export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report
+
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
 export utc_to_video_frame
@@ -92,7 +101,7 @@ export update_sys_struct_from_data!
 export compute_wind_vec, interpolate_lidar_wind
 
 # Simulation helper exports
-export create_logger, ramp_factor
+export create_logger, ramp_factor, timestamp_colmeta, log_created_at
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
 export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
@@ -243,6 +252,6 @@ Load GLMakie before using: `using GLMakie`
 """
 function plot_2d_panels end
 
-# include("precompile.jl") # disabled: precompilation workload
+include("precompile.jl") # precompilation workload (see PlanPrecompile.md)
 
 end # module

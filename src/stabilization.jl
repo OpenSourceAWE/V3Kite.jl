@@ -80,8 +80,13 @@ Second form builds it from explicit ENU vectors (`position`,
 `velocity` in m / m·s⁻¹, `attitude` is `[roll, pitch, yaw]` rad).
 
 Always returns a fresh model loaded from the settled binary, so
-the caller gets clean settings (no settling damping). When
-`remake=false` and the destination file already exists, the
+the caller gets clean settings — clean meaning the *world*-frame
+damping, which is only a settling aid and decays away. The
+body-frame damping is a per-point field of the serialized
+`SystemStructure` and therefore carries over into the returned
+model on purpose; it is part of the cache key for that reason.
+
+When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
 file.
 """
@@ -98,6 +103,16 @@ function settle_wing(config::V3SettleConfig;
     return settle_wing(config, init_row; kwargs...)
 end
 
+"""
+    damping_tag(d) -> String
+
+Filename-safe tag for a damping coefficient, scalar or per-axis vector:
+`damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
+settled-geometry cache key.
+"""
+damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+damping_tag(d::AbstractVector) = join(damping_tag.(d), "-")
+
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      show_progress=true,
@@ -105,6 +120,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     if isnothing(data_path)
         data_path = v3_data_path()
     end
+    set_data_path(data_path)
 
     gc = config.geom
     gc.tether_length = config.tether_length
@@ -130,8 +146,27 @@ function settle_wing(config::V3SettleConfig, init_row;
         "_lt$(Int(round(config.tether_length)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.system_yaml))[1])"
-    if !isnothing(config.kcu_mass)
-        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+    # Mirrors the config/settings-YAML fallback in `setup_settling_model`,
+    # so the cache key changes whenever the resolved KCU mass changes.
+    yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
+    resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
+    if !isnothing(resolved_kcu_mass)
+        suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
+    end
+    # Damping belongs in the key: `setup_settling_model` writes it into the
+    # points' `body_frame_damping`, which is serialized with the geometry, so a
+    # cached file carries whatever damping produced it. Without this, changing
+    # `body_damping` against a warm cache silently changes nothing.
+    suffix *= "_bd$(damping_tag(config.body_damping))"
+    for (rng, damp) in config.body_damping_overrides
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(damping_tag(damp))"
+    end
+    # World-frame damping only shapes the settling transient (it decays to
+    # `min_damping`), but it still moves the equilibrium it converges to.
+    if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
+        suffix *= "_wd$(damping_tag(config.world_damping))" *
+                  "_md$(damping_tag(config.min_damping))"
     end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
@@ -145,7 +180,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     settle_failed = false
     if remake || !isfile(dest_struc)
         try
-            syslog = _run_power_zone_settling!(
+            syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero,
                 dest_struc, init_row)
@@ -211,7 +246,7 @@ Set up a settling model: settings, VSM, sys struct, damping,
 SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
-function _setup_settling_model(config::V3SettleConfig;
+function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
@@ -230,8 +265,13 @@ function _setup_settling_model(config::V3SettleConfig;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
 
-    if !isnothing(config.kcu_mass)
-        sys.points[1].extra_mass = config.kcu_mass
+    # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
+    # otherwise fall back to the `kcu_mass` field of the active settings YAML
+    # (0 means "not set", i.e. keep the geometry-file default).
+    kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (set.kcu_mass != 0 ? set.kcu_mass : nothing)
+    if !isnothing(kcu_mass)
+        sys.points[1].extra_mass = kcu_mass
     end
 
     SymbolicAWEModels.set_world_frame_damping(
@@ -259,12 +299,12 @@ function _setup_settling_model(config::V3SettleConfig;
 end
 
 """Run power-zone settling initialized from flight data."""
-function _run_power_zone_settling!(config::V3SettleConfig;
+function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
         dest_struc,
         init_row)
-    sam, sys, gc = _setup_settling_model(config;
+    sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
@@ -395,6 +435,13 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         end
         rethrow(err)
     end
+
+    # A diverged run must not be cached: the resulting geometry fails the VSM
+    # solve on reload, and because the cache is keyed on the *inputs* it would be
+    # reused on every later run until someone deletes the file by hand.
+    # `settle_wing` turns this into `settle_failed = true`.
+    failed && error("Settling diverged before completing " *
+                    "$(config.num_steps) steps; geometry not serialized")
 
     # Copy settled world positions into CAD slots so
     # that copy_cad_to_world! during init! restores

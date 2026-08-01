@@ -1,0 +1,3 @@
+system:
+    sim_settings: "settings_reelout.yaml"
+    wc_settings: "wc_settings.yaml"

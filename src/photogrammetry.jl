@@ -8,7 +8,7 @@ comparing with simulation.
 """
 
 """Find closest interpolated point on a polyline."""
-function _closest_on_polyline(pt, polyline)
+function closest_on_polyline(pt, polyline)
     best_dist = Inf
     best_pt = polyline[1]
     for i in 1:(length(polyline)-1)
@@ -95,9 +95,9 @@ function load_extra_points(csv_path::String,
               "index 1")
     end
 
-    csv_le_3 = _closest_on_polyline(
+    csv_le_3 = closest_on_polyline(
         strut3[le_idx], le_pts)
-    csv_le_4 = _closest_on_polyline(
+    csv_le_4 = closest_on_polyline(
         strut4[le_idx], le_pts)
     csv_le_center = (csv_le_3 + csv_le_4) / 2
 
@@ -147,7 +147,7 @@ function load_extra_points(csv_path::String,
         strut_pts = [[r.x, r.y, r.z]
             for r in eachrow(df) if r.group == gname]
         isempty(strut_pts) && continue
-        snapped = _closest_on_polyline(
+        snapped = closest_on_polyline(
             strut_pts[end], le_pts)
         push!(all_pts, snapped)
         strut_le_snapped[gname] = length(all_pts)

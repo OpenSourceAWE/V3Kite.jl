@@ -1,4 +1,5 @@
 import SymbolicAWEModels: winch_force, tether_length
+using Printf
 
 # ===================== Winch position controller ===================== #
 # Gains for the cascaded winch length controller (see `winch_position_torque!`)
@@ -69,13 +70,17 @@ end
     update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
 
 Update `ss` from the model (the `SymbolicAWEModel` method) and additionally
-fill the `heading_rate` [rad/s] that method leaves at zero, computed as a
-wrapped finite difference of the heading over the model's integrator clock.
+fill in two fields that method leaves wrong/unset for V3 (which has no twist
+`groups`, unlike the group-actuated models the base method targets):
+- `heading_rate` [rad/s], computed as a wrapped finite difference of the
+  heading over the model's integrator clock.
+- `depower` (`0..1`), the KCU's actual (tape-lag-limited) depower fraction —
+  the base method leaves this at 0 since it is only filled from `groups`.
 
 The previous heading and time are stored on the `V3KITE` (on the integrator
-clock), so the result is immune to callers restamping `ss.time` with a log
-time between calls. On the first call (or if the integrator time did not
-advance) `heading_rate` is left unchanged.
+clock), so the `heading_rate` result is immune to callers restamping
+`ss.time` with a log time between calls. On the first call (or if the
+integrator time did not advance) `heading_rate` is left unchanged.
 """
 function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
     update_sys_state!(ss, s.sam, zoom)  # sets ss.time to the integrator time
@@ -85,6 +90,7 @@ function KiteUtils.update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
     end
     s.t_prev = ss.time
     s.heading_prev = ss.heading
+    ss.depower = KitePodModels.get_depower(s.kcu)
     return nothing
 end
 
@@ -294,7 +300,11 @@ function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
     else
         azimuth = calc_azimuth(s)
     end
-    KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+    heading = KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
+    # SymbolicAWEModels' body x-axis points opposite to the Xsens-sensor
+    # convention `KiteUtils.calc_heading` assumes (same correction as
+    # `calc_csv_heading` applies to EKF-derived orientation).
+    wrap_to_pi(heading + π)
 end
 
 """
@@ -397,7 +407,8 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), wc=nothing, remake=false) -> V3KITE
+         gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
+         remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -415,6 +426,34 @@ file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
 alternate config.
 
+`body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
+applied to every point during settling. It acts on point velocity *relative to
+the wing*, so it damps bridle vibration without slowing the kite's global motion
+(unlike world-frame damping). It is baked into the settled geometry and carries
+over into the returned model, so it also forms part of the settling cache key —
+changing it produces a different `data/settled_*.bin` rather than silently
+reusing the old one.
+
+The in-plane (x, y) terms trade accuracy for solver cost, which is why the
+default damps only normal to the wing surface. The normal-only default cannot
+touch the lightly-damped ~5.5 Hz *in-plane* bridle mode that dominates the parked
+solver cost: adding `[10, 10, ...]` cuts the parked AoA ripple from 0.144° to
+0.020° peak-to-peak and the solver step count by 3.4×, with the settled trim
+(AoA, elevation, tether force) unchanged to within 0.5 %. But in-plane damping
+also resists the wing deformation that produces steering, so it **reduces the
+turn rate** and with it the model's accuracy against flight data: the turn-rate
+law fitted by `examples/steering_test_v3.jl` drops from `c1 = 0.316` 1/m at
+`[0, 0, 40]` to `0.098` at `[10, 10, 40]` and `0.057` at `[20, 20, 40]`. Use
+in-plane damping for parked/quasi-static runs where throughput matters, not for
+validating turning maneuvers.
+
+Raising the in-plane terms further keeps cutting solver cost (`[20, 20, 40]` is
+5.4×) at a correspondingly larger turn-rate penalty, and the settling itself goes
+unstable at fixed `dt = 0.001` somewhere between 15 and 20 on the
+`system_cabauw.yaml` configuration. Pass a larger value explicitly if your
+configuration tolerates it — a diverged settling now fails loudly rather than
+caching broken geometry. See PlanSuppressOscillations.md for the sweep.
+
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
 the returned instance, and the winch is left un-braked.
@@ -428,6 +467,7 @@ function init(v_wind_gnd, l_tether;
               gc = V3GeomAdjustConfig(),
               wc = nothing,
               system_yaml = "system.yaml",
+              body_damping = [0.0, 0.0, 40.0],
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
@@ -448,7 +488,7 @@ function init(v_wind_gnd, l_tether;
         dt = 0.001,
         num_steps = 400,
         num_substeps = 5,
-        body_damping = [0.0, 0.0, 40.0],
+        body_damping = body_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
@@ -517,6 +557,18 @@ given, the cascaded position controller (`speed_limit` [m/s],
 `set_torque` [N·m] is passed through; if neither is given, the measured
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
 is reported every 100 steps.
+
+Each logged row carries both the command and the KCU's actual (tape-lagged)
+value for both channels, so plot scripts never need to re-declare a setpoint:
+
+| quantity | commanded          | actual     |
+|:---------|:-------------------|:-----------|
+| steering | `set_steering`     | `steering` |
+| depower  | `var_14`           | `depower`  |
+
+Depower uses a spare slot because `SysState` has no `set_depower` field; the
+actual values are filled by `update_sys_state!`. The remaining spare slots
+this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff).
 """
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
@@ -560,7 +612,12 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     update_sys_state!(s.sys_state, s)
     s.sys_state.time = t
-    s.sys_state.set_steering = st
+    # Both channels log the command and the KCU's tape-lagged actual value.
+    # `steering`/`set_steering` are the standard SysState pair; depower has no
+    # `set_depower` field, so its command goes to the spare slot `var_14`.
+    s.sys_state.steering = st
+    s.sys_state.set_steering = rel_steering
+    s.sys_state.var_14 = rel_depower
     lift, wing_drag = lift_drag(s)
     _, _, total_d = total_drag(s)
     s.sys_state.var_15 = wing_drag > 1e-6 ? lift / wing_drag : 0.0
@@ -574,10 +631,10 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     i = Int(round(t / dt))
     if i % 100 == 0
         now = time()
-        if !isnan(s.last_step_time)
-            rtf = (100 * dt) / (now - s.last_step_time)
-            @info "step $i / $(s.steps), $(round(rtf, digits=2)) times realtime"
-        end
+        rtf_str = isnan(s.last_step_time) ? "----" :
+            @sprintf("%.2f", (100 * dt) / (now - s.last_step_time))
+        @info @sprintf("step %04d / %04d, %s times realtime, lift/drag [N]: %7.2f/%7.2f",
+                       i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
     end
     return nothing

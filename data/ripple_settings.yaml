@@ -1,0 +1,11 @@
+# Settings of the AoA ripple analysis (see src/ripple_metrics.jl). Loaded
+# into a `RippleSettings` struct via `RippleSettings("ripple_settings.yaml")`,
+# which resolves the name against the active data path (`data/`).
+# These only affect how the oscillation is *measured*, never the simulation, but
+# the numbers are only comparable across runs that share them - so change them
+# deliberately and re-take the baseline when you do.
+ripple_settings:
+  t_start:        2.0   # Start of the analysis window [s]; discards the post-settling transient
+  detrend_window: 0.5   # Length of the centred moving average subtracted before the RMS [s]
+  f_min:          0.5   # Lowest frequency considered when searching the spectral peak [Hz]
+  f_max:          30.0  # Highest frequency considered when searching the spectral peak [Hz]

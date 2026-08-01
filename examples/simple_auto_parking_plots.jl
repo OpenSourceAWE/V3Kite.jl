@@ -2,27 +2,20 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-Plotting for simple_parking.jl results.
+Plotting for simple_auto_parking.jl results.
 
-Loads the "tmp_parking" log saved by simple_parking.jl and reproduces the same
-plot as parking.jl, entirely from logged data — no re-simulation needed.
+Loads the "tmp_auto_parking" log saved by simple_auto_parking.jl and reproduces the same
+plot as auto_parking.jl, entirely from logged data — no re-simulation needed.
 v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
-during simple_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
-L/D_eff). The single-winch V3 model has no l_diff panel; the depower panel
-instead shows the actual value (`depower`, the KCU's tape-lagged fraction)
-against the command (`var_14`, written by `step!`), matching parking.jl. Both
-come from the log, so nothing here needs to be kept in sync with
-simple_parking.jl by hand.
+during simple_auto_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
+L/D_eff). The depower panel shows the actual value (`depower`, the KCU's tape-lagged 
+fraction) against the command (`var_14`, written by `step!`), matching parking.jl. 
 
-Also reprints the AoA ripple metrics (see `src/ripple_metrics.jl`) from the log on
-disk, so the oscillation can be re-measured without re-simulating. The solver
-cost and wall clock are *not* part of the log; for those, run simple_parking.jl.
+Run from the REPL after (or instead of, if "tmp_auto_parking" already exists) running
+simple_auto_parking.jl:
 
-Run from the REPL after (or instead of, if "tmp_parking" already exists) running
-simple_parking.jl:
-
-    include("simple_parking_plots.jl")
+    include("simple_auto_parking_plots.jl")
 """
 
 using Pkg
@@ -30,18 +23,17 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
-using GLMakie
 using MakieControlPlots
 using LaTeXStrings
 using V3Kite
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
-syslog = load_log("tmp_parking")
+syslog = load_log("tmp_auto_parking")
 sl = syslog.syslog
 
-created_at = log_created_at("tmp_parking")
-fig_name = "V3 Kite Parking"
+created_at = log_created_at("tmp_auto_parking")
+fig_name = "V3 Kite Auto Parking"
 if !isnothing(created_at)
     fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
 end
@@ -85,8 +77,5 @@ p = plotx(
 )
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing
-
-ripple = aoa_ripple(sl)
-print("\n", format_ripple_report(ripple; sl))
 
 nothing

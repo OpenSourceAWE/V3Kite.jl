@@ -435,15 +435,15 @@ lidar fields via `interpolate_lidar_wind`).
 """
 function compute_wind_vec(raw, altitude;
         speed_source=:ekf, dir_source=:ekf)
-    speed_vec = _wind_vec_from_source(
+    speed_vec = wind_vec_from_source(
         raw, altitude, speed_source)
     speed_source === dir_source && return speed_vec
-    dir_vec = _wind_vec_from_source(
+    dir_vec = wind_vec_from_source(
         raw, altitude, dir_source)
     return norm(speed_vec) .* normalize(dir_vec)
 end
 
-function _wind_vec_from_source(raw, altitude, source)
+function wind_vec_from_source(raw, altitude, source)
     if source === :ekf
         wdir = raw.ekf_wind_direction
         wh   = raw.ekf_wind_speed_horizontal
