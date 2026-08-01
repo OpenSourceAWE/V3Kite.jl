@@ -43,7 +43,7 @@ function euler_to_quaternion(roll, pitch, yaw)
     return q
 end
 
-function _calc_heading_from_rotation(R_b_w, pos_w)
+function calc_heading_from_rotation(R_b_w, pos_w)
     e_x = R_b_w[:, 1]
     # Tangential sphere frame (same as scalar_eqs.jl)
     z = normalize(pos_w)
@@ -64,7 +64,7 @@ function calc_csv_heading(roll, pitch, yaw, pos_w)
     quat = euler_to_quaternion(roll, pitch, yaw)
     R = SymbolicAWEModels.quaternion_to_rotation_matrix(
         quat)
-    return wrap_to_pi(_calc_heading_from_rotation(R, pos_w) + π)
+    return wrap_to_pi(calc_heading_from_rotation(R, pos_w) + π)
 end
 
 """
@@ -115,15 +115,15 @@ function calc_turn_rate(syslog; source=:heading, dt=0.01)
         error("Unknown source: $source " *
             "(expected :heading or :course)")
     end
-    _unwrap_inplace!(ang)
+    unwrap_inplace!(ang)
     rate = diff(ang) ./ dt
     az = copy(sl.azimuth)
-    _unwrap_inplace!(az)
+    unwrap_inplace!(az)
     az_dot = diff(az) ./ dt
     return rate .- az_dot .* sin.(sl.elevation[2:end])
 end
 
-function _unwrap_inplace!(a)
+function unwrap_inplace!(a)
     for j in 2:length(a)
         while a[j] - a[j-1] > π
             a[j] -= 2π

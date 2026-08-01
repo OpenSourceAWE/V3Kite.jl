@@ -104,14 +104,14 @@ function settle_wing(config::V3SettleConfig;
 end
 
 """
-    _damping_tag(d) -> String
+    damping_tag(d) -> String
 
 Filename-safe tag for a damping coefficient, scalar or per-axis vector:
-`_damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
+`damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
 settled-geometry cache key.
 """
-_damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
-_damping_tag(d::AbstractVector) = join(_damping_tag.(d), "-")
+damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+damping_tag(d::AbstractVector) = join(damping_tag.(d), "-")
 
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
@@ -146,7 +146,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         "_lt$(Int(round(config.tether_length)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.system_yaml))[1])"
-    # Mirrors the config/settings-YAML fallback in `_setup_settling_model`,
+    # Mirrors the config/settings-YAML fallback in `setup_settling_model`,
     # so the cache key changes whenever the resolved KCU mass changes.
     yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
     resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
@@ -154,19 +154,19 @@ function settle_wing(config::V3SettleConfig, init_row;
     if !isnothing(resolved_kcu_mass)
         suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
     end
-    # Damping belongs in the key: `_setup_settling_model` writes it into the
+    # Damping belongs in the key: `setup_settling_model` writes it into the
     # points' `body_frame_damping`, which is serialized with the geometry, so a
     # cached file carries whatever damping produced it. Without this, changing
     # `body_damping` against a warm cache silently changes nothing.
-    suffix *= "_bd$(_damping_tag(config.body_damping))"
+    suffix *= "_bd$(damping_tag(config.body_damping))"
     for (rng, damp) in config.body_damping_overrides
-        suffix *= "_bd$(first(rng))t$(last(rng))-$(_damping_tag(damp))"
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(damping_tag(damp))"
     end
     # World-frame damping only shapes the settling transient (it decays to
     # `min_damping`), but it still moves the equilibrium it converges to.
     if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
-        suffix *= "_wd$(_damping_tag(config.world_damping))" *
-                  "_md$(_damping_tag(config.min_damping))"
+        suffix *= "_wd$(damping_tag(config.world_damping))" *
+                  "_md$(damping_tag(config.min_damping))"
     end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")
@@ -180,7 +180,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     settle_failed = false
     if remake || !isfile(dest_struc)
         try
-            syslog = _run_power_zone_settling!(
+            syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero,
                 dest_struc, init_row)
@@ -246,7 +246,7 @@ Set up a settling model: settings, VSM, sys struct, damping,
 SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
-function _setup_settling_model(config::V3SettleConfig;
+function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
@@ -299,12 +299,12 @@ function _setup_settling_model(config::V3SettleConfig;
 end
 
 """Run power-zone settling initialized from flight data."""
-function _run_power_zone_settling!(config::V3SettleConfig;
+function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
         dest_struc,
         init_row)
-    sam, sys, gc = _setup_settling_model(config;
+    sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)

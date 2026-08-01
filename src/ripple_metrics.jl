@@ -61,12 +61,12 @@ function RippleSettings(filename::String)
 end
 
 """
-    _centred_ma(y, half) -> Vector{Float64}
+    centred_ma(y, half) -> Vector{Float64}
 
 Centred moving average of `y` over `2*half+1` samples, with the window truncated
 (not zero-padded) at the array edges.
 """
-function _centred_ma(y::AbstractVector, half::Int)
+function centred_ma(y::AbstractVector, half::Int)
     n = length(y)
     ma = Vector{Float64}(undef, n)
     for i in 1:n
@@ -76,7 +76,7 @@ function _centred_ma(y::AbstractVector, half::Int)
 end
 
 """
-    _peak_frequency(x, fs, f_min, f_max) -> (f_peak, f_res)
+    peak_frequency(x, fs, f_min, f_max) -> (f_peak, f_res)
 
 Frequency [Hz] of the largest periodogram peak of `x` (sampled at `fs` Hz) inside
 `[f_min, f_max]`, and the frequency resolution `fs/N`. A Hann window suppresses
@@ -84,7 +84,7 @@ the leakage from the finite record; the DFT is evaluated directly on the
 one-sided frequency grid, which is cheap for the few hundred samples involved and
 avoids an FFTW dependency.
 """
-function _peak_frequency(x::AbstractVector, fs::Real, f_min::Real, f_max::Real)
+function peak_frequency(x::AbstractVector, fs::Real, f_min::Real, f_max::Real)
     n = length(x)
     f_res = fs / n
     n < 8 && return (NaN, f_res)
@@ -132,8 +132,8 @@ dt = (time[end] - time[i0]) / (length(win) - 1)
 fs = 1 / dt
     # The moving average is taken over the whole record so that the start of the
     # analysis window still sees a full, centred window.
-    resid = view(y, win) .- view(_centred_ma(y, round(Int, 0.5 * rs.detrend_window * fs)), win)
-    f_peak, f_res = _peak_frequency(resid, fs, rs.f_min, rs.f_max)
+    resid = view(y, win) .- view(centred_ma(y, round(Int, 0.5 * rs.detrend_window * fs)), win)
+    f_peak, f_res = peak_frequency(resid, fs, rs.f_min, rs.f_max)
     return (rms = sqrt(mean(abs2, resid)),
             pkpk = maximum(resid) - minimum(resid),
             mean = mean(view(y, win)),

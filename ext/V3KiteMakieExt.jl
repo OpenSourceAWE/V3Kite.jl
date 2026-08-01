@@ -25,7 +25,7 @@ Draw photogrammetry group lines and scatter points.
 LE lines are opaque+thick, strut inner points are
 transparent.
 """
-function _draw_extra_groups!(ax, coords, groups;
+function draw_extra_groups!(ax, coords, groups;
         point_size=8, strut_alpha=0.6,
         skip_ungrouped=false)
     te_idxs = Set{Int}()
@@ -83,7 +83,7 @@ function _draw_extra_groups!(ax, coords, groups;
 end
 
 """Draw text with a white halo (CairoMakie-safe)."""
-function _halo_text!(ax, x, y; text, fontsize=12,
+function halo_text!(ax, x, y; text, fontsize=12,
         color=:black, halo_width=3, kw...)
     text!(ax, x, y; text, fontsize,
         color=:white, strokecolor=:white,
@@ -95,7 +95,7 @@ end
 Draw incidence angle overlay: chord line, bridle
 lines, scatter points, angle arc, and labels.
 """
-function _draw_incidence!(ax, kcu_2d, cr_2d,
+function draw_incidence!(ax, kcu_2d, cr_2d,
         te_2d, le_2d; color=:purple,
         radius_scale=0.3, show_labels=true,
         origin_label="KCU")
@@ -119,18 +119,18 @@ function _draw_incidence!(ax, kcu_2d, cr_2d,
         [kcu_2d[2], cr_2d[2], te_2d[2], le_2d[2]];
         markersize=10, color=color)
     if show_labels
-        _halo_text!(ax, kcu_2d[1], kcu_2d[2];
+        halo_text!(ax, kcu_2d[1], kcu_2d[2];
             text=origin_label, fontsize=12,
             color=color,
             align=(:right, :top), offset=(-6, -4))
-        _halo_text!(ax, cr_2d[1], cr_2d[2];
+        halo_text!(ax, cr_2d[1], cr_2d[2];
             text="CR", fontsize=12, color=color,
             align=(:left, :bottom), offset=(6, 8))
-        _halo_text!(ax, te_2d[1], te_2d[2];
+        halo_text!(ax, te_2d[1], te_2d[2];
             text="TE", fontsize=12, color=color,
             align=(:right, :bottom),
             offset=(-8, 8))
-        _halo_text!(ax, le_2d[1], le_2d[2];
+        halo_text!(ax, le_2d[1], le_2d[2];
             text="LE", fontsize=12, color=color,
             align=(:left, :bottom), offset=(6, 8))
     end
@@ -157,7 +157,7 @@ function _draw_incidence!(ax, kcu_2d, cr_2d,
     th_mid = th1 + dth / 2
     deg_str = "$(round(abs(rad2deg(dth));
         digits=1))°"
-    _halo_text!(ax,
+    halo_text!(ax,
         cr_2d[1] + radius * 1.5 * cos(th_mid),
         cr_2d[2] + radius * 1.5 * sin(th_mid);
         text=deg_str, fontsize=14, color=color,
@@ -421,7 +421,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
         _s_alpha = show_incidence && dir == :side ?
             0.4 : 0.6
-        _draw_extra_groups!(ax, extra_coords,
+        draw_extra_groups!(ax, extra_coords,
             extra_groups;
             point_size=extra_point_size,
             strut_alpha=_s_alpha,
@@ -518,7 +518,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             le_3_b, te_3_b, le_4_b, te_4_b)
         le_center_b = (le_3_b + le_4_b) / 2
         te_mid_b = (te_3_b + te_4_b) / 2
-        _draw_incidence!(ax,
+        draw_incidence!(ax,
             get_2d(kcu_b), get_2d(cr_b),
             get_2d(te_mid_b), get_2d(le_center_b);
             color=:purple, radius_scale=0.3)
@@ -556,7 +556,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                     end
                 end
                 if !isnothing(p_kcu)
-                    _draw_incidence!(ax,
+                    draw_incidence!(ax,
                         get_2d(p_kcu), get_2d(p_cr),
                         get_2d(p_te_mid),
                         get_2d(p_le_ctr);
@@ -878,7 +878,7 @@ function V3Kite.plot_photogrammetry(points, groups;
     coords = [dir == :top ? (p[1], p[2]) :
               dir == :side ? (p[1], p[3]) :
               (p[2], p[3]) for p in points]
-    _draw_extra_groups!(ax, coords, groups;
+    draw_extra_groups!(ax, coords, groups;
         point_size)
     return fig
 end
@@ -1378,8 +1378,8 @@ end
 # =====================================================================
 
 """Compute per-log and per-tape index ranges for time filtering."""
-function _compute_ranges(logs, tapes, t_start, t_end)
-    _time_range(t) = begin
+function compute_ranges(logs, tapes, t_start, t_end)
+    time_range(t) = begin
         t0 = t[1]
         i1 = isnothing(t_start) ? 1 :
             searchsortedfirst(t, t0 + t_start)
@@ -1387,10 +1387,10 @@ function _compute_ranges(logs, tapes, t_start, t_end)
             searchsortedlast(t, t0 + t_end)
         i1:i2
     end
-    log_ranges = [_time_range(collect(lg.syslog.time))
+    log_ranges = [time_range(collect(lg.syslog.time))
                   for lg in logs]
     tape_ranges = isnothing(tapes) ? nothing :
-        [_time_range(collect(Float64, tp.time))
+        [time_range(collect(Float64, tp.time))
          for tp in tapes]
     return log_ranges, tape_ranges
 end
@@ -1435,7 +1435,7 @@ function V3Kite.plot_2d_trajectory(
         error("tapes required for gradient=:steering")
     end
 
-    log_ranges, tape_ranges = _compute_ranges(
+    log_ranges, tape_ranges = compute_ranges(
         logs, tapes, t_start, t_end)
 
     fig = Figure(; size)
@@ -1632,7 +1632,7 @@ function V3Kite.plot_2d_panels(
     fig_size = isnothing(size) ?
         (800, n_panels * panel_height) : size
 
-    log_ranges, tape_ranges = _compute_ranges(
+    log_ranges, tape_ranges = compute_ranges(
         logs, tapes, t_start, t_end)
 
     fig = Figure(; size=fig_size)
@@ -1642,7 +1642,7 @@ function V3Kite.plot_2d_panels(
     use_twin = twin_time_axes && length(logs) >= 2
     top_axes = Axis[]
 
-    function _twin_panel!(fig, row, ylabel)
+    function twin_panel!(fig, row, ylabel)
         ax = Axis(fig[row, 1]; ylabel,
             ylabelsize=labelsize,
             xticklabelsvisible=false)
@@ -1661,7 +1661,7 @@ function V3Kite.plot_2d_panels(
 
     if show_steering
         cur_row += 1
-        ax_st = _twin_panel!(fig, cur_row,
+        ax_st = twin_panel!(fig, cur_row,
             L"u_{\text{s}} \; [-]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
@@ -1684,7 +1684,7 @@ function V3Kite.plot_2d_panels(
                 "tapes required for show_depower=true")
         end
         cur_row += 1
-        ax_dp = _twin_panel!(fig, cur_row,
+        ax_dp = twin_panel!(fig, cur_row,
             L"u_{\text{d}} \; [\%]")
         for (i, tp) in enumerate(tapes)
             trng = tape_ranges[i]
@@ -1703,7 +1703,7 @@ function V3Kite.plot_2d_panels(
 
     if show_winch_force
         cur_row += 1
-        ax_wf = _twin_panel!(fig, cur_row,
+        ax_wf = twin_panel!(fig, cur_row,
             L"F_{\text{t}} \; [kN]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1725,7 +1725,7 @@ function V3Kite.plot_2d_panels(
 
     if show_v_app
         cur_row += 1
-        ax_va = _twin_panel!(fig, cur_row,
+        ax_va = twin_panel!(fig, cur_row,
             L"v_{\text{app}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1746,7 +1746,7 @@ function V3Kite.plot_2d_panels(
 
     if show_tether_len
         cur_row += 1
-        ax_tl = _twin_panel!(fig, cur_row,
+        ax_tl = twin_panel!(fig, cur_row,
             L"l_{\text{t}} \; [m]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1765,7 +1765,7 @@ function V3Kite.plot_2d_panels(
 
     if show_drag_coeff
         cur_row += 1
-        ax_cd = _twin_panel!(fig, cur_row,
+        ax_cd = twin_panel!(fig, cur_row,
             L"C_{\text{D}} \; [-]")
         cd_vars = [:var_01, :var_09, :var_10, :var_11]
         cd_colors = [:black, :blue, :orange, :red]
@@ -1795,7 +1795,7 @@ function V3Kite.plot_2d_panels(
 
     if show_lift_coeff
         cur_row += 1
-        ax_cl = _twin_panel!(fig, cur_row,
+        ax_cl = twin_panel!(fig, cur_row,
             L"C_{\text{L}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1816,7 +1816,7 @@ function V3Kite.plot_2d_panels(
 
     if show_lift_drag_ratio
         cur_row += 1
-        ax_ld = _twin_panel!(fig, cur_row,
+        ax_ld = twin_panel!(fig, cur_row,
             L"C_L / \Sigma C_{\text{D}} \; [-]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1843,7 +1843,7 @@ function V3Kite.plot_2d_panels(
 
     if show_te_force
         cur_row += 1
-        ax_te = _twin_panel!(fig, cur_row,
+        ax_te = twin_panel!(fig, cur_row,
             L"\bar{F}_{\text{TE}} \; [N]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1864,7 +1864,7 @@ function V3Kite.plot_2d_panels(
 
     if show_heading
         cur_row += 1
-        ax_hd = _twin_panel!(fig, cur_row,
+        ax_hd = twin_panel!(fig, cur_row,
             L"\psi \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1885,7 +1885,7 @@ function V3Kite.plot_2d_panels(
 
     if show_course
         cur_row += 1
-        ax_co = _twin_panel!(fig, cur_row,
+        ax_co = twin_panel!(fig, cur_row,
             L"\chi \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1906,7 +1906,7 @@ function V3Kite.plot_2d_panels(
 
     if show_wing_vel
         cur_row += 1
-        ax_wv = _twin_panel!(fig, cur_row,
+        ax_wv = twin_panel!(fig, cur_row,
             L"v_{\text{k}} \; [m/s]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -1939,7 +1939,7 @@ function V3Kite.plot_2d_panels(
         ylabel_euler = single_angle ?
             active[1][5] : L"\text{angle} \; [°]"
         cur_row += 1
-        ax_euler = _twin_panel!(fig, cur_row,
+        ax_euler = twin_panel!(fig, cur_row,
             ylabel_euler)
         if single_angle
             var = active[1][2]
@@ -1996,7 +1996,7 @@ function V3Kite.plot_2d_panels(
 
     if show_bridle_pitch
         cur_row += 1
-        ax_bp = _twin_panel!(fig, cur_row,
+        ax_bp = twin_panel!(fig, cur_row,
             L"\beta_{\text{br}} \; [°]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog
@@ -2023,7 +2023,7 @@ function V3Kite.plot_2d_panels(
         t_sim_aoa = collect(sl_sim.time)[rng_sim]
         t_data_aoa = collect(sl_data.time)[rng_data]
         cur_row += 1
-        ax_aoa = _twin_panel!(fig, cur_row,
+        ax_aoa = twin_panel!(fig, cur_row,
             L"\alpha \; [°]")
         c_wing = Makie.wong_colors()[1]
         c_kite = Makie.wong_colors()[2]
@@ -2065,7 +2065,7 @@ function V3Kite.plot_2d_panels(
 
     if show_cop
         cur_row += 1
-        ax_cop = _twin_panel!(fig, cur_row,
+        ax_cop = twin_panel!(fig, cur_row,
             L"x_{\text{cop}} \; [m]")
         for (i, lg) in enumerate(logs)
             sl = lg.syslog

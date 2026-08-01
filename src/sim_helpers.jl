@@ -159,7 +159,7 @@ KCU drag coefficients, the four sum to the total CD.
 function compute_drag_coeff(sam)
     wing = sam.sys_struct.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = _drag_coeff_ref(wing)
+    _, q_ref = drag_coeff_ref(wing)
     return compute_drag(sam) / q_ref
 end
 
@@ -217,7 +217,7 @@ normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
 function compute_lift_coeff(sam)
     wing = sam.sys_struct.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = _drag_coeff_ref(wing)
+    _, q_ref = drag_coeff_ref(wing)
     return compute_lift(sam) / q_ref
 end
 
@@ -231,14 +231,14 @@ function compute_lift_drag(sam)
     return compute_lift(sam), compute_drag(sam)
 end
 
-const _RHO_SL = 1.225
+const RHO_SL = 1.225
 
 """
-    _tether_point_idxs(sys) -> Set{Int}
+    tether_point_idxs(sys) -> Set{Int}
 
 Collect all point indices that belong to tether segments.
 """
-function _tether_point_idxs(sys)
+function tether_point_idxs(sys)
     pts = Set{Int}()
     for tether in sys.tethers
         for seg_idx in tether.segment_idxs
@@ -251,29 +251,29 @@ function _tether_point_idxs(sys)
 end
 
 """
-    _drag_coeff_ref(wing) -> (va_hat_b, q_ref)
+    drag_coeff_ref(wing) -> (va_hat_b, q_ref)
 
 Common reference quantities for drag coefficient functions:
 apparent-wind unit vector (body frame) and dynamic pressure
 times projected area.
 """
-function _drag_coeff_ref(wing)
+function drag_coeff_ref(wing)
     va_b = wing.va_b
     v_app = norm(va_b)
     va_hat_b = va_b / v_app
     A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    q_ref = 0.5 * RHO_SL * v_app^2 * A_proj
     return va_hat_b, q_ref
 end
 
 """
-    _point_drag_cd(sys, wing, idxs) -> Float64
+    point_drag_cd(sys, wing, idxs) -> Float64
 
 Sum `point.drag_force` for points whose index is in `idxs`,
 project onto kite apparent wind, normalize by `q * A_proj`.
 """
-function _point_drag_cd(sys, wing, idxs)
-    va_hat_b, q_ref = _drag_coeff_ref(wing)
+function point_drag_cd(sys, wing, idxs)
+    va_hat_b, q_ref = drag_coeff_ref(wing)
     drag_w = zeros(3)
     for p in sys.points
         p.idx in idxs || continue
@@ -295,8 +295,8 @@ function compute_tether_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    return _point_drag_cd(sys, wing,
-        _tether_point_idxs(sys))
+    return point_drag_cd(sys, wing,
+        tether_point_idxs(sys))
 end
 
 """
@@ -310,7 +310,7 @@ function compute_bridle_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    tether_pts = _tether_point_idxs(sys)
+    tether_pts = tether_point_idxs(sys)
     bridle_idxs = Set{Int}()
     for p in sys.points
         p.idx in tether_pts && continue
@@ -318,7 +318,7 @@ function compute_bridle_drag_coeff(sam)
         p.idx == 1 && continue  # KCU
         push!(bridle_idxs, p.idx)
     end
-    return _point_drag_cd(sys, wing, bridle_idxs)
+    return point_drag_cd(sys, wing, bridle_idxs)
 end
 
 """
@@ -331,7 +331,7 @@ function compute_kcu_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    return _point_drag_cd(sys, wing, Set([1]))
+    return point_drag_cd(sys, wing, Set([1]))
 end
 
 """

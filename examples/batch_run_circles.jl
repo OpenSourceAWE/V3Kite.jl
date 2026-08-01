@@ -27,7 +27,7 @@ using Dates
 # Circular flight simulation function
 # =============================================================================
 
-function _unwrap_step(prev_uw, raw)
+function unwrap_step(prev_uw, raw)
     delta = raw - mod(prev_uw, 2pi)
     if delta > pi
         delta -= 2pi
@@ -204,9 +204,9 @@ function run_circles(;
             course_uw[1] = c_raw
             azimuth_uw[1] = az_raw
         else
-            course_uw[n_logged] = _unwrap_step(
+            course_uw[n_logged] = unwrap_step(
                 course_uw[n_logged-1], c_raw)
-            azimuth_uw[n_logged] = _unwrap_step(
+            azimuth_uw[n_logged] = unwrap_step(
                 azimuth_uw[n_logged-1], az_raw)
         end
         elevation_v[n_logged] = sys_state.elevation
