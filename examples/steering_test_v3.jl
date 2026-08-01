@@ -109,6 +109,20 @@ MIN_STEERING_FIT = START_STEERING / 2
 # with [0.0, 0.0, 40.0]
 #  c1                 :   0.3159 1/m ± 0.0003  (0.09 %)
 #  c2                 :  -0.3837 [-] ± 0.0573  (14.93 %)
+#
+# DEPOWER also changes the steering response, and by as much as the damping does
+# (2026-07-26, body_damping = [0.0, 0.0, 40.0], sweep extended to u_s = 0.300):
+#  depower 0.25, 150 m: c1 = 0.3159 1/m, c2 = -0.3837, delay 0.03 s
+#  depower 0.40, 200 m: c1 = 0.1513 1/m (0.06 %), c2 = 0.1951, delay 0.42 s
+#    extended to u_s = 0.50 at the same setting: c1 = 0.1495 (0.15 %), so the
+#    law stays LINEAR over the whole usable range — but the run DIVERGED the
+#    moment the amplitude reached u_s = 0.375, in plain bang-bang oscillation.
+#    The plant therefore caps out around u_s ~ 0.35 here, and G scatter rises
+#    9.8 % -> 19.9 % (residual RMS 1.10 -> 4.53 deg/s) approaching it.
+#  depower 0.55, 150 m: c1 = 0.1071 1/m (0.07 %), c2 = 0.3444, delay 0.55 s
+# i.e. depowering costs steering authority AND adds dead time (0.03 -> 0.55 s).
+# Both matter for figure-eight path following: see PlanFig8.md and
+# examples/simple_fig8.jl.
 s = init(V_WIND, TETHER_LENGTH; body_damping = [10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT)

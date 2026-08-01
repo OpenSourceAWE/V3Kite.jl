@@ -137,6 +137,8 @@ using KitePodModels: KCU
 
     include("test_turn_rate_id.jl")
 
+    include("test_fig8_controller.jl")
+
     include("test-interface.jl")
 
 end

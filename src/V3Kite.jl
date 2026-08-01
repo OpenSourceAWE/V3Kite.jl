@@ -48,10 +48,27 @@ include("ripple_metrics.jl")
 include("flight_data.jl")
 include("photogrammetry.jl")
 include("sim_helpers.jl")
+include("turn_rate_table.jl")
+include("fig8_controller.jl")
+include("fig8_metrics.jl")
 include("simulation.jl")
 include("stabilization.jl")
 include("wc_settings.jl")
 include("interface.jl")
+
+"""
+    __init__()
+
+Runs once per Julia session that loads V3Kite (including under a precompiled
+sysimage, unlike top-level `include`d code). Reads `data/turn_rate_coeffs.yaml`
+into [`turn_rate_coeffs`](@ref)'s table — see
+[`reload_turn_rate_table!`](@ref) to refresh it mid-session, e.g. after
+`examples/build_turn_rate_table.jl` appends rows.
+"""
+function __init__()
+    reload_turn_rate_table!()
+    return nothing
+end
 
 # Calibration exports
 # Base values (official KCU measurements)
@@ -118,6 +135,15 @@ export create_heading_pid, create_winch_pid
 export report_performance
 export build_replay_name
 export find_frame_syslog_idxs, build_replay_sys_struct
+
+# Figure-of-eight guidance exports
+export FigureEightSettings, FigureEightController
+export figure_eight_path, calc_attractor, navigate_fig8, set_path_center!
+export path_tangent
+export min_turn_radius, path_min_radius, path_radius_profile, check_pattern_feasible
+export V3_TURN_RATE_COEFFS, turn_rate_coeffs, V3_TURN_RATE_C1, V3_TURN_RATE_C2
+export reload_turn_rate_table!
+export fig8_metrics, print_fig8_metrics
 
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path

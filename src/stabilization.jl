@@ -88,7 +88,9 @@ model on purpose; it is part of the cache key for that reason.
 
 When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
-file.
+file. The cache file name encodes the settling inputs, including
+the elevation implied by the initial position, so runs that only
+differ in elevation get their own file instead of sharing one.
 """
 function settle_wing(config::V3SettleConfig;
                      position, velocity, heading,
@@ -104,14 +106,14 @@ function settle_wing(config::V3SettleConfig;
 end
 
 """
-    damping_tag(d) -> String
+    _num_tag(d) -> String
 
-Filename-safe tag for a damping coefficient, scalar or per-axis vector:
-`damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
-settled-geometry cache key.
+Filename-safe tag for a number, scalar or per-axis vector:
+`_num_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put damping coefficients and
+the settling elevation into the settled-geometry cache key.
 """
-damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
-damping_tag(d::AbstractVector) = join(damping_tag.(d), "-")
+_num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+_num_tag(d::AbstractVector) = join(_num_tag.(d), "-")
 
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
@@ -142,8 +144,15 @@ function settle_wing(config::V3SettleConfig, init_row;
     te_f = gc.reduce_te ? gc.te_frac : 1.0
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
+    # The settling elevation comes in through `init_row`'s position, not through
+    # `config`, but it selects a different equilibrium — without it in the key,
+    # two elevations share one cache entry and the second one silently gets the
+    # first one's geometry.
+    el_deg = rad2deg(KiteUtils.calc_elevation(
+        [init_row.x, init_row.y, init_row.z]))
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))" *
+        "_el$(_num_tag(round(el_deg, digits=1)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.system_yaml))[1])"
     # Mirrors the config/settings-YAML fallback in `setup_settling_model`,
@@ -158,15 +167,15 @@ function settle_wing(config::V3SettleConfig, init_row;
     # points' `body_frame_damping`, which is serialized with the geometry, so a
     # cached file carries whatever damping produced it. Without this, changing
     # `body_damping` against a warm cache silently changes nothing.
-    suffix *= "_bd$(damping_tag(config.body_damping))"
+    suffix *= "_bd$(_num_tag(config.body_damping))"
     for (rng, damp) in config.body_damping_overrides
-        suffix *= "_bd$(first(rng))t$(last(rng))-$(damping_tag(damp))"
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(_num_tag(damp))"
     end
     # World-frame damping only shapes the settling transient (it decays to
     # `min_damping`), but it still moves the equilibrium it converges to.
     if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
-        suffix *= "_wd$(damping_tag(config.world_damping))" *
-                  "_md$(damping_tag(config.min_damping))"
+        suffix *= "_wd$(_num_tag(config.world_damping))" *
+                  "_md$(_num_tag(config.min_damping))"
     end
     dest_struc = joinpath(
         data_path, "settled_$(suffix).bin")

@@ -415,7 +415,9 @@ for a `step!` simulation loop (see `examples/simple_parking.jl`).
 
 `v_wind_gnd` is the ground wind speed at the reference height [m/s] and
 `l_tether` the initial tether length [m]. `elevation` [deg] falls back to the
-settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
+settings value and is part of the settling cache key, so a run at a different
+elevation re-settles instead of reusing the geometry settled at another one.
+`upwind_dir` [rad] sets the wind direction. `depower_setpoint`
 is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 [s] size the logger and step count, falling back to `1/set.sample_freq` and
 `set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
@@ -471,6 +473,8 @@ function init(v_wind_gnd, l_tether;
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
+    _stash_turn_rate_conditions!(v_wind = v_wind_gnd, l_tether = l_tether,
+                                  system_yaml = system_yaml)
     # Winch-controller settings fall back to the file named in the `wc_settings`
     # field of system.yaml (needs the data path set above).
     isnothing(wc) && (wc = WC_Settings(wc_settings(system_yaml)))
