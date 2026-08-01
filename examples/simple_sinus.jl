@@ -43,21 +43,23 @@ MAX_HEADING      = 40.0     # Heading setpoint amplitude [deg]
 HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
-# The tracking error is almost pure phase lag, so it scales with 1/loop gain:
-# K = 1.1 gave 0.32 s lag (RMS 2.6°), K = 5.0 gives 0.05 s (RMS 0.49°). The
-# v3kite.jl baseline of K = 1.0 is enough there only because it flies at
-# 15.4 m/s — at the 9.5 m/s used here the turn rate per unit steering, and
-# hence the plant gain, is ~1.6x lower.
-HEADING_P = 5.0
+# The tracking error is almost pure phase lag, so it scales with 1/loop gain,
+# but only below the stability boundary. Sweep at the current `init` default
+# body_damping = [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
+# the same window): K = 1.2 keeps a
+# ~1.6x margin to the boundary at K ≈ 1.9; K = 1.6 tracks better (0.52°) but
+# sits right at the edge.
+HEADING_P = 1.2
 HEADING_I = false
-# Sustained derivative action degrades tracking (K = 4.5 with a constant
-# Td = 0.1: RMS 1.05° instead of 0.55°), but it is what damps the initial u_s
-# swing, so it is ramped to zero over the first heading period: p2p u_s during
-# t < 10 s drops 0.343 → 0.215 and the command no longer saturates. Since Td
-# has reached zero by the time the error is measured (t ≥ HEADING_PERIOD), the
-# settled RMS is unaffected — identical to 3 digits for Td = 0…0.5.
+# Sustained derivative action damps the fast mode — it keeps even K = 2.0 stable
+# (RMS 1.18°) — but it floors the settled RMS at ~1.2° regardless of K (K = 1.6
+# with a constant Td: 1.29° instead of 0.72° at K = 1.2). It is what damps the
+# initial u_s swing, so it is ramped to zero over the first heading period:
+# |u_s| during t < HEADING_PERIOD peaks at 0.050 rather than saturating. Since
+# Td has reached zero by the time the error is measured (t ≥ HEADING_PERIOD),
+# the settled RMS is unaffected.
 HEADING_D = 0.15
-MAX_STEERING = 0.175        # settled |u_s| peaks at 0.078, so this is not binding
+MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
 
 # ======================== INIT =========================== #
 
