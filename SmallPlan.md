@@ -9,5 +9,8 @@
 - include simple_fig8_plots.jl at the end of simple_fig8.jl
 - NEVER run julia from the command line
 
-## TODO
+## TODO - DONE -
 - make the required adaptions, run once, plot the results and wait
+
+## Next steps
+- get log file from working controller and plot it
