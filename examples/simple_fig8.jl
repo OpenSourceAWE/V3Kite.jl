@@ -90,6 +90,7 @@ end
 using Timers; tic()
 using V3Kite
 using DiscretePIDs: set_K!
+using LinearAlgebra: norm
 using Printf
 
 @info "simple_fig8.jl: figure-of-eight path following of the V3 kite."
@@ -110,13 +111,51 @@ SIM_TIME         = 30.0     # Total simulation time [s]; ~43 s per lap at
                             # lengthen the run or shorten ENTRY_TIME.
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
+WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
+                            # holds the tether length, and the drum only yields
+                            # as far as `winch_ff_scale` lets it (1.13 m over a
+                            # 30 s run at ff = 0.7). `true` = FORCE mode
+                            # (PlanFig8.md option 1): the drum holds a low-passed
+                            # reference force instead, so it pays out on every
+                            # dive and hauls in on every climb, with the mean
+                            # length kept by a slow trim. Gains live in
+                            # data/wc_settings.yaml (winch_force_tau,
+                            # winch_len_kp); see `winch_force_torque!`.
 TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # 150 -> 200 (2026-07-26): the minimum angular turn
                             # radius is rho = 1/(L*c1*u_s), so a LONGER tether
                             # lets the kite turn tighter in angular terms — the
                             # single most effective lever on pattern
                             # feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.40     # Depower setting held during the run [-]. The
+DEPOWER_SETPOINT = 0.40     # Depower setting held during the run [-].
+                            # 0.36 -> 0.40 (2026-08-01): REVERTED, see below.
+                            #
+                            # 0.40 -> 0.36 (2026-08-01, -10%): the entry is
+                            # turn-rate limited (steering pinned at 0.300 for the
+                            # whole dive, see CHI_DIVE), and depower is the only
+                            # lever left that changes the authority itself —
+                            # c1 = 0.1513 at 0.40 vs 0.3159 at 0.25, with the
+                            # dead time falling 0.42 s -> 0.03 s. PlanFig8.md's
+                            # standing note is that reel-out is what makes a low
+                            # depower survivable, and the winch now runs in force
+                            # mode, so the failure mode that closed this lever
+                            # (overspeed in a sustained turn) is the one the
+                            # compliant winch relieves.
+                            # RESULT: NO. Diverged at t = 21.7 s on the overspeed
+                            # guard, and violently: v_app 93.6 m/s (the 0.40 run
+                            # peaks at 26.6), tether force 6164 N vs 2434 N, lift
+                            # 11 kN with the drag going NEGATIVE. The winch did
+                            # its part — 13.4 m paid out, more than the 10.6 m at
+                            # 0.40 — and it made no difference, so reel-out at
+                            # this rate does NOT make a low depower survivable
+                            # here. The entry was unchanged too (steering still
+                            # pinned at 0.300 through the dive), so the extra
+                            # authority never even reached the trajectory before
+                            # the energy problem ended the run. PlanFig8.md's
+                            # "reel-out unlocks low depower" note is not
+                            # supported at 200 m with this pattern.
+                            #
+                            # Previously: 0.40 is the
                             # middle of the two settings that each fail alone at
                             # 150 m: 0.25 is agile (c1 = 0.3159) but cannot
                             # survive a sustained turn (open-loop divergence at
@@ -145,6 +184,105 @@ ELEVATION        = 73.0     # [deg] settling elevation = the natural parked
 # model was still relaxing. The guidance still runs during the park (its course
 # estimate is low-passed and needs warming up), but its output is not applied.
 PARK_TIME        = 5.0      # [s]
+
+# ---- Entry state machine: park -> dive -> hold -> fig8 -------------------- #
+# Modelled on the working controller's log (SmallPlan.md, "Reference run"). That
+# controller does NOT let the path guidance fly the descent: from the park it
+# commands a near-horizontal course open loop and lets the kite fall along the
+# sphere (no attractor at all — the logged attractor is NaN until handover),
+# flattens out for the last second, and hands over at the pattern's RIGHTMOST
+# point, at the centre elevation, already moving downwards into the first turn.
+#
+# WHY here: with the guidance flying the entry, every configuration tried so far
+# ends up orbiting the right-hand lobe — at EL_CENTER 40.5 the settled pattern
+# spans azimuth +1.3..+42.6° with ZERO centre crossings against a ±50° reference
+# centred on zero. The eight is symmetric; the way it is entered is not. The kite
+# arrives from the park on the right and never gets established on the left lobe.
+#
+# Reference timings (its park is 10 s, ours 5 s): dive 5.6 s covering 71 -> 42°
+# of elevation (~5.2°/s), hold 1.2 s covering the last 42 -> 27° (the kite is
+# fastest here, so this is the steepest part), handover at the centre elevation.
+ENTRY_PHASES     = true     # false = old behaviour, guidance engages at PARK_TIME
+CHI_DIVE         = -85.0    # [deg] course commanded during the dive. |chi| > 90
+                            # is descending, |chi| < 90 climbing, 90 exactly
+                            # horizontal.
+                            #
+                            # -100 -> -85 (2026-08-01): the entry is TURN-RATE
+                            # limited (see DIVE_EL_MARGIN below) — the kite never
+                            # reaches the commanded course, so a descending
+                            # command just adds to the fall it is already taking
+                            # while it turns out of the park. -85° asks it to
+                            # CLIMB slightly, spending the turn on azimuth travel
+                            # instead of altitude, which is what the reference's
+                            # ramp (98° -> 143°, shallow first) achieves.
+                            # RESULT: bit-identical to -100. Same phase times
+                            # (5.05 / 10.45 / 11.65 s), same handover (az 17.4°,
+                            # el 46.1°), same settled span (-4.7..49.2°), same
+                            # RMS d 5.99°. The steering command sits at exactly
+                            # +0.300 for the WHOLE dive, so the kite is turning
+                            # as hard as the plant allows and the numeric value
+                            # of the command is irrelevant — only its SIGN
+                            # reaches the plant. Within this authority the entry
+                            # cannot be shaped by CHI_DIVE, CHI_HOLD or
+                            # DIVE_EL_MARGIN at all; the only entry choice that
+                            # exists is which side to enter from. Getting a
+                            # shapeable entry needs more turn authority, i.e. a
+                            # lower depower (c1 0.1513 -> 0.3159), which the
+                            # force-mode winch may now make survivable.
+                            #
+                            # SIGN, measured 2026-08-01: a POSITIVE commanded
+                            # course drives the kite towards NEGATIVE azimuth
+                            # (+100° took it from az 0.1° to -18.6°). The
+                            # reference enters at the pattern's rightmost point,
+                            # i.e. positive azimuth, so the command is negative
+                            # here. This is the opposite of the reference log's
+                            # +98°, whose azimuth sign convention is mirrored.
+CHI_HOLD         = -90.0    # [deg] course commanded during the hold: exactly
+                            # horizontal, i.e. stop descending and let the kite
+                            # arrive at the pattern flat rather than diving into it
+DIVE_EL_MARGIN   = 15.0     # [deg] above EL_CENTER at which the dive ends and the
+                            # hold begins (reference: 42° vs a 26° centre = 16°)
+                            # 15 -> 5 (2026-08-01): at 15 the handover landed at
+                            # el 46.1°, 5.6° above the centre and well short of
+                            # the pattern's right edge. The reference hands over
+                            # AT the centre elevation; the hold itself then costs
+                            # ~1° here, so 5 aims the handover at ~centre + 4.
+                            # RESULT: WORSE. Handover elevation is right (39.1°
+                            # vs a 40.5° centre) but the azimuth went the wrong
+                            # way: 17.4° -> 7.7°, and the settled pattern lost
+                            # its centre crossing (1 -> 0, span 0.5..45.4°,
+                            # RMS d 5.99 -> 6.97°, min el 21.3 -> 20.2°).
+                            # WHY: during the hold the kite tracks az 16.8 ->
+                            # 7.7 while dropping 45.2 -> 39.1°, i.e. it flies
+                            # down-LEFT, not horizontally right as commanded.
+                            # It never reaches the commanded course at all — at
+                            # chi = -100° the great-circle geometry gives ~5.7°
+                            # of azimuth per degree of elevation lost, which
+                            # would be ~160° of azimuth over this descent; the
+                            # kite manages 17°. The entry is TURN-RATE limited,
+                            # so lengthening the dive does not carry it further
+                            # right, it only drops it lower in the same place.
+HOLD_TIME        = 1.2      # [s] duration of the hold, from the reference log
+#
+# FIRST RESULTS (2026-08-01, EL_CENTER 40.5, force mode, attr 15):
+#   - the phases fire as intended: park -> dive at 5.05 s, dive -> hold at
+#     10.45 s (el 55.2), hold -> fig8 at 11.65 s (az 17.4°, el 46.1°).
+#   - with CHI_DIVE = +100 the settled metrics came out IDENTICAL to the run
+#     without any state machine (RMS d 5.27°, span 1.3..42.6°, 0 crossings).
+#     That is not a bug: ENTRY_CHI_MAX was already clamping the guidance course
+#     to ±95° during the descent, so the "new" entry commanded almost exactly
+#     what the limiter had been commanding. The state machine's value is that
+#     the entry is now explicit and steerable, not that it changed the flight.
+#   - flipping to CHI_DIVE = -100 (entering from the RIGHT, as the reference
+#     does) is what actually moves the pattern: azimuth span 1.3..42.6° ->
+#     -4.7..+49.2° and 0 -> 1 centre crossing. Cost: RMS d 5.27 -> 5.99°, max
+#     7.88 -> 9.17°, steering back to 100% clamped (bang-bang, HF std 0.0000),
+#     elevation floor 23.2 -> 21.3°.
+# STILL NOT THE REFERENCE GEOMETRY: it hands over at az 17.4° / el 46.1°, i.e.
+# 5.6° ABOVE the pattern centre and nowhere near the rightmost point of a ±50°
+# eight. The reference hands over AT the centre elevation, at the far edge,
+# already turning down. Lowering DIVE_EL_MARGIN (and/or steepening CHI_DIVE) to
+# carry the dive further right and lower is the obvious next step.
 # In-plane body damping is a FLIGHT parameter here, not just a solver setting:
 # it sets c1 and hence the achievable turn radius (see the docstring). init's
 # default [0,0,40] is the most agile and the only one that flies this pattern
@@ -156,9 +294,68 @@ BODY_DAMPING     = [0.0, 0.0, 40.0]
 # check the feasibility margin printed at startup before changing these.
 F8_A             = 50.0     # Width of the eight (azimuth spans +-A)
 F8_B             = 20.0     # Height of the eight (elevation spans +-B/2)
+                            # 40/15 -> 50/20 (2026-08-01): REVERTED. The premise
+                            # was wrong and check_pattern_feasible said so before
+                            # the run even started: a SMALLER lemniscate is a
+                            # TIGHTER one. Tightest path radius 8.4° -> 6.4°
+                            # against a kite minimum of 6.3°, i.e. margin
+                            # 1.33 -> 1.02, right at the limit. The run aborted
+                            # at t = 19.1 s, 7 s after handover, with the kite
+                            # never getting past azimuth 19.2°. The reference
+                            # controller flies 40/15 because its ram-air kite has
+                            # several times this kite's turn authority, not
+                            # because a small pattern is easier. For the V3 the
+                            # margin improves with a BIGGER pattern or a longer
+                            # tether (rho = 1/(L*c1*u_s)).
+                            #
+                            # Tried 40/15 (2026-08-01): the working
+                            # controller's pattern (SmallPlan.md, "Reference
+                            # run"). Three separate levers — steering gain, entry
+                            # course, depower — have each failed to produce the
+                            # lobe crossover, all because the kite already turns
+                            # at its physical maximum (steering pinned at 0.300
+                            # through the whole entry) and still gains only ~17°
+                            # of azimuth. check_pattern_feasible has reported a
+                            # margin of just 1.19-1.30 throughout. A smaller
+                            # pattern raises that margin instead of asking the
+                            # kite for authority it does not have.
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
-EL_CENTER        = 50.0     # Pattern-centre elevation; spans 40-60° at B=20.
+EL_CENTER        = 40.5     # Pattern-centre elevation; spans 30.5-50.5° at B=20.
+                            # 45 -> 40.5 (2026-08-01, -10%): continuing down now
+                            # that the floor is known to be movable. 40.5 is the
+                            # second value of the old fixed-tether sweep below,
+                            # where it also diverged. Reference controller: 26°.
+                            # RESULT: survives 30 s as well, so the old floor is
+                            # gone for good. RMS d 6.79 -> 5.27°, max 10.02 ->
+                            # 7.88°, force CV 15.2 -> 9.2%, but the mean force
+                            # keeps climbing (2456 -> 2794 N) and the elevation
+                            # floor is down to 23.2°. Steering 96% clamped (45°
+                            # gave 92%), and the pattern drifted FURTHER off
+                            # centre: azimuth 1.3..42.6°, ZERO centre crossings
+                            # (45° had 2). Lower centres are survivable now but
+                            # do not by themselves produce the crossover — the
+                            # pattern is offset to the right, which points at the
+                            # entry/asymmetry, not at the centre elevation.
+                            #
+                            # 50 -> 45 (2026-08-01, -10%): RE-TEST. The failure
+                            # recorded below was on the FIXED-LENGTH tether; the
+                            # winch now runs in force mode (10.6 m of travel,
+                            # +2.1/-1.2 m/s), and that failure was an ENERGY
+                            # failure — overspeed in the power zone at 3494 N —
+                            # which is exactly what a paying-out winch relieves.
+                            # A tether that yields under load is the one change
+                            # since then that could plausibly move this floor.
+                            # RESULT: IT WORKS. 45° now SURVIVES the full 30 s
+                            # where it aborted at 17.4 s on the fixed tether, and
+                            # the steering finally comes off the clamp (92% vs
+                            # 100%). Cost: RMS d 4.93 -> 6.79°, max 7.77 ->
+                            # 10.02°, force 1675 -> 2456 N (CV 15.2%). The
+                            # elevation floor recorded below is therefore an
+                            # artefact of the FIXED-LENGTH winch, not a property
+                            # of the kite — the whole "50° is the floor" sweep is
+                            # worth re-running in force mode.
+                            #
                             # Tried 45.0 on the course-feedback loop
                             # (2026-08-01, -10%) — 45° was the lowest centre
                             # that FAILED the sweep below (18.4 s) back when the
@@ -189,7 +386,26 @@ EL_CENTER        = 50.0     # Pattern-centre elevation; spans 40-60° at B=20.
                             # energy side wins until reel-out exists.
                             # Pattern at this centre: 224 m wide x 70 m tall,
                             # 564 m of path per lap, tightest radius 26 m.
-ATTRACTOR_DIST   = 35.1     # Arc distance Q -> attractor [deg].
+ATTRACTOR_DIST   = 15.0     # Arc distance Q -> attractor [deg].
+                            #
+                            # 35.1 -> 15.0 (2026-08-01): a 35° lead is ~22% of a
+                            # lap, and the sweep below noted that part of its
+                            # advantage was the kite CUTTING CORNERS on a
+                            # smoother, higher trajectory rather than tracking
+                            # the pattern. With the winch in force mode the
+                            # cross-track error is 12.5° RMS and the flown eight
+                            # is far too small, so the lead is shortened to make
+                            # the guidance follow the path instead of the chord.
+                            # 10.0 is the other candidate but has a recorded
+                            # divergence at 13.6 s (see the 200 s sweep below).
+                            # RESULT (force mode, 30 s): RMS d 12.46 -> 4.97°,
+                            # max d 22.0 -> 7.9°, mean force 2621 -> 1673 N, and
+                            # the elevation floor holds at 35.5°. The shorter
+                            # lead recovers all of the tracking the moving
+                            # tether cost. Two things it does NOT fix: steering
+                            # is now clamped 100% of the time (was 93%), and the
+                            # settled pattern is one lobe, azimuth -3.9..+47.8°
+                            # against the +-50° reference.
                             #
                             # 19.8 -> 35.1 (2026-08-01): swept in 10% steps to
                             # MINIMIZE the RMS COURSE error (course - chi_cmd,
@@ -287,7 +503,43 @@ WALK_START       = 60.0     # [s] time after which the walk begins
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 5.0      # Gain at v_app == V_APP_REF (simple_sinus.jl value)
+HEADING_P        = 4.5      # Gain at v_app == V_APP_REF (simple_sinus.jl value)
+                            # 2.0 -> 4.5 (2026-08-01): REVERTED. The large cut
+                            # below bought 0.4° of RMS and cost a tripling of the
+                            # force ripple and 3.3° of elevation floor.
+                            #
+                            # 4.5 -> 2.0 (2026-08-01): the 10% step below did
+                            # nothing, so this was the deliberate large cut
+                            # (factor 2.25, outside the 10%-per-iteration rule)
+                            # meant to pull the steering command off its clamp.
+                            # RESULT: it does NOT come off the clamp — still 100%
+                            # saturated, but now as a pure BANG-BANG command
+                            # (steering HF std 0.0000, i.e. the command only ever
+                            # sits at +0.30 or -0.30 and never in between). RMS d
+                            # 4.93 -> 4.49°, max d 7.77 -> 8.34°, but the force
+                            # ripple triples (CV 10.4 -> 21.6%) and the elevation
+                            # floor drops 35.1 -> 31.8°. Pattern still one lobe
+                            # (-1.8..+46.9°). The gain is not the binding
+                            # constraint: the loop is authority-limited, so
+                            # scaling what it asks for only changes how it
+                            # saturates, not whether it does.
+                            #
+                            # 5.0 -> 4.5 (2026-08-01, -10%): at ATTRACTOR_DIST
+                            # 15 the steering command is clamped 100% of the
+                            # time, so the loop is running open — a lower gain
+                            # should bring it back inside its authority. Held to
+                            # the 10%-per-iteration rule; repeat if the effect is
+                            # within noise.
+                            # RESULT: within noise, as expected while saturated.
+                            # RMS d 4.97 -> 4.93°, max 7.88 -> 7.77°, min el 35.5
+                            # -> 35.1°, force 1673 -> 1675 N, still clamped 100%
+                            # of the time, pattern still one lobe (-3.8..+47.8°).
+                            # A gain the plant never applies cannot change the
+                            # flight: while |u_s| sits on its limit the loop is
+                            # open, so this knob only starts to act once the
+                            # command comes off the clamp. Either cut it much
+                            # harder (x2-x3, i.e. outside the 10% rule) or treat
+                            # the saturation itself as the thing to fix.
 HEADING_I        = false    # No integral action: a steady heading bias shows up
                             # as a steady cross-track error, which the guidance
                             # itself already corrects by pulling the attractor
@@ -325,11 +577,21 @@ V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 # exists to avoid a hard switch: heading and course differ by the drift angle
 # (~13-15° on the V3), so a step change of feedback signal at one speed would
 # step the steering command by HEADING_P * drift. Widen it if that shows.
-V_KITE_HEADING   = 5.0      # [m/s] at/below: pure heading feedback
-V_KITE_COURSE    = 10.0     # [m/s] at/above: pure course feedback ("high" per
+V_KITE_HEADING   = 0.0      # [m/s] at/below: pure heading feedback
+V_KITE_COURSE    = 0.001    # [m/s] at/above: pure course feedback ("high" per
                             # the flight note in SmallPlan.md; the lower edge is
                             # a choice — 5 m/s is just above the 4.2 m/s the
                             # kite drifts at during the park)
+                            #
+                            # 5.0/10.0 -> 0.0/0.001 (2026-08-01): DISABLES the
+                            # blend (w_course == 1 at any speed), i.e. pure
+                            # course feedback. This reproduces the conditions
+                            # the ATTRACTOR_DIST table above was swept under, to
+                            # test whether the blend is why that table's 30 s
+                            # survival at attr 35.1 no longer reproduces (three
+                            # runs today, incl. two winch variants, all diverged
+                            # at 17.6-18.0 s with min_el ~28° instead of 40.2°).
+                            # Restore 5.0/10.0 to re-enable the blend.
 MAX_STEERING     = 0.30     # Steering command limit [-]. OPTION 3 (raise the
                             # authority to relieve the 97% clamp saturation) is
                             # CLOSED — it does not work on this plant:
@@ -455,6 +717,12 @@ heading_pid = create_heading_pid(;
 el_center_cur = EL_CENTER
 entry_sign = 0              # latched sign of the entry descent limiter (0 = unset)
 
+# Entry state machine (see the parameter block). Codes match the reference
+# controller's log so both can be read with the same plotting scripts:
+#   0 = park, 1 = dive, 2 = hold, 3 = figure-eight guidance engaged.
+phase = 0
+hold_start = NaN            # [s] time the hold began
+
 toc("Start simulation loop...")
 
 # ==================== SIMULATION LOOP ==================== #
@@ -474,6 +742,24 @@ try
         chi_set, az_attr, el_attr, dmin =
             navigate_fig8(fec, Float64(s.sys_state.azimuth),
                           Float64(s.sys_state.elevation))
+
+        # ---- Entry state machine (park -> dive -> hold -> fig8) ------------ #
+        # Advances on elevation and time, never backwards. The guidance above
+        # keeps running through all phases so `dmin`/the attractor stay logged,
+        # but in phases 1-2 its course is discarded in favour of the open-loop
+        # entry command below — the point of the phases is that the descent is
+        # NOT flown by the path controller.
+        local el_deg = rad2deg(Float64(s.sys_state.elevation))
+        if !ENTRY_PHASES
+            global phase = t < PARK_TIME ? 0 : 3
+        elseif phase == 0 && t >= PARK_TIME
+            global phase = 1
+        elseif phase == 1 && el_deg <= el_center_cur + DIVE_EL_MARGIN
+            global phase = 2
+            global hold_start = t
+        elseif phase == 2 && t - hold_start >= HOLD_TIME
+            global phase = 3
+        end
 
         # Entry descent limiter (see the parameter block). Active only while the
         # kite is far off the path; on the path the raw guidance course passes
@@ -502,6 +788,15 @@ try
             sgn = abs(chi_set) < pi - ENTRY_CUT_MARGIN ?
                   (chi_set >= 0 ? 1 : -1) : entry_sign
             chi_cmd = sgn * deg2rad(ENTRY_CHI_MAX)
+        end
+
+        # Open-loop entry command. Overrides the guidance (and its limiter) for
+        # the dive and the hold; positive = towards positive azimuth, matching
+        # the reference controller, which enters the pattern from the right.
+        if phase == 1
+            chi_cmd = deg2rad(CHI_DIVE)
+        elseif phase == 2
+            chi_cmd = deg2rad(CHI_HOLD)
         end
 
         # Feedback angle: heading at low kite speed, course at high (see the
@@ -537,15 +832,21 @@ try
         # Park: hold zero steering while the settling transients decay. The PID
         # is still stepped (with zero error) so its derivative state is current
         # and engagement is bumpless.
-        rel_steering = if t < PARK_TIME
+        rel_steering = if phase == 0
             heading_pid(0.0, 0.0, 0.0)
             0.0
         else
             heading_pid(0.0, err, 0.0)
         end
 
-        # Position mode: `set_length` holds the tether length constant.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
+        # Winch: force mode pays out under load and trims the mean length back
+        # slowly; position mode holds the length outright (see WINCH_FORCE_MODE).
+        if WINCH_FORCE_MODE
+            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
+                  set_torque = winch_force_torque!(s, l0))
+        else
+            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
+        end
 
         # Overspeed guard: report the cause instead of letting it surface as an
         # opaque solver dt_epsilon abort a few steps later.
@@ -560,6 +861,7 @@ try
         # Logged after step! (which overwrites parts of sys_state). bearing is
         # the commanded course, so course - bearing is the path-following error
         # and heading - bearing is what the loop sees while w_course = 0.
+        s.sys_state.sys_state = Int16(phase)   # 0 park, 1 dive, 2 hold, 3 fig8
         s.sys_state.bearing = chi_cmd          # the course actually tracked
         s.sys_state.attractor .= (deg2rad(az_attr), deg2rad(el_attr))
         s.sys_state.var_01 = dmin              # cross-track error [deg]

@@ -24,10 +24,10 @@ Include it after running test_figure_eight.jl in the same REPL session to
     include("fig_eight_plots.jl")
 
 or run it standalone (fresh session or `julia --project fig_eight_plots.jl`),
-which loads the "fig8_run" log from the default wing's data path (a
-dedicated filename — not the "tmp_run" scratch name most other example
-scripts reuse, so this doesn't get clobbered by e.g. steering_test.jl or
-auto_parking.jl runs in the same data path).
+which loads the "fig8_reference" log from the default wing's data path. That
+name is deliberately NOT "fig8_run": simple_fig8.jl saves its own runs under
+"fig8_run" and would otherwise overwrite the reference log on every run (as it
+did once, on 2026-08-01).
 """
 
 using GLMakie, MakieControlPlots, KiteUtils, Printf
@@ -178,7 +178,7 @@ end
 #
 # Runs on every include. If a `syslog` from a test_figure_eight.jl run
 # exists in this REPL session it is plotted directly (PlanPlotting.md,
-# second step); otherwise the "fig8_run" log is loaded from the wing's data
+# second step); otherwise the "fig8_reference" log is loaded from the wing's data
 # path. The figure-eight geometry and settle-time globals set by
 # test_figure_eight.jl are used when defined, so both paths plot with the
 # parameters of the run.
@@ -188,7 +188,7 @@ wing_type = :ram
 if !isdefined(Main, :syslog) || !(Main.syslog isa KiteUtils.SysLog)
     @info "Loading simulation results for ram-air wing..."
     set_data_path("data")
-    syslog = load_log("fig8_run")
+    syslog = load_log("fig8_reference")
 end
 sl = syslog.syslog
 
@@ -200,7 +200,7 @@ sl = syslog.syslog
 if !isdefined(Main, :read_fig8_meta)
     include("fig8_log_meta.jl")
 end
-f8_defaults = read_fig8_meta("fig8_run")
+f8_defaults = read_fig8_meta("fig8_reference")
 if f8_defaults === nothing
     @warn "No figure-eight parameters in the log metadata — plotting the " *
           "desired path with the built-in defaults."

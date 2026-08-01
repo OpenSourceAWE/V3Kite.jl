@@ -16,6 +16,39 @@ parameters with no historical counterpart; tune on `examples/simple_parking.jl`
     winch_speed_ti = 2.0
     "Saturation of the inner speed loop's torque correction [N·m]"
     winch_torque_limit = 500.0
+    """
+    Scale on the force feed-forward, `τ = ff_scale·force_to_torque(F) + Δτ`.
+
+    `1.0` (the default) cancels the measured tether force exactly, which makes the
+    drum perfectly stiff — no reel-out however hard the kite pulls, whatever the PI
+    gains are (see the header of `data/wc_settings.yaml`). Below 1.0 the holding
+    torque falls short of the load and the drum pays out; this is the compliance
+    knob. Note the inner PI still integrates the resulting speed error away over
+    `winch_speed_ti`, so the compliance is transient unless `winch_speed_ti` is
+    raised to well above the timescale you want the winch to yield on.
+    """
+    winch_ff_scale = 1.0
+    """
+    Force mode only (`winch_force_torque!`): time constant of the low-pass that
+    turns the measured winch force into the reference force [s]. The drum yields to
+    everything faster than this and holds everything slower, so this is the winch's
+    compliance timescale — it should sit above the lap rate to let the kite trade
+    line length for speed within a lap.
+    """
+    winch_force_tau = 10.0
+    "Force mode only: length-trim gain, length error [m] → reference force [N/m]"
+    winch_len_kp = 100.0
+    """
+    Force mode only: viscous damping on the drum, reel-out speed [m/s] → reference
+    force [N·s/m]. Without it force mode has no velocity feedback at all — the drum
+    is a free mass on the `winch_len_kp` spring and its speed runs away (measured:
+    3.5 m/s of payout, `v_app` 49.6 m/s, run lost at t = 19.8 s). This is what makes
+    the winch compliant rather than free-wheeling; it opposes fast reel-out without
+    pinning the length the way the position cascade does.
+    """
+    winch_damp = 500.0
+    "Force mode only: floor on the reference force, keeps the tether taut [N]"
+    winch_force_min = 100.0
 end
 
 """

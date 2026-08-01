@@ -7,7 +7,7 @@
 The syslog records the FLOWN trajectory, but not the REFERENCE path it was
 flown against: F8_A/B/C/D, the pattern-center elevation and the statistics
 settle time only exist as globals of test_figure_eight.jl. A fresh session
-that just loads "fig8_run" (fig_eight_plots.jl's standalone path) therefore
+that just loads "fig8_reference" (fig_eight_plots.jl's standalone path) therefore
 had to fall back to hardcoded defaults and silently drew the wrong "desired"
 path whenever the run used different values.
 
@@ -55,7 +55,7 @@ function fig8_colmeta(; f8_a, f8_b, f8_c, f8_d, f8_el_center, settle_time)
 end
 
 """
-    read_fig8_meta(name="fig8_run"; path=get_data_path())
+    read_fig8_meta(name="fig8_reference"; path=get_data_path())
 
 Read the figure-eight parameters stored by [`fig8_colmeta`](@ref) from the
 log `name` in `path`. Returns a NamedTuple with the keyword names of
@@ -63,7 +63,7 @@ log `name` in `path`. Returns a NamedTuple with the keyword names of
 `settle_time`), or `nothing` if the file does not exist or was written
 before this metadata was added.
 """
-function read_fig8_meta(name = "fig8_run"; path = get_data_path())
+function read_fig8_meta(name = "fig8_reference"; path = get_data_path())
     # Arrow arrives via KiteUtils instead of being a direct dependency of
     # examples/Project.toml; getfield avoids the "not public in KiteUtils"
     # warning of KiteUtils.Arrow.

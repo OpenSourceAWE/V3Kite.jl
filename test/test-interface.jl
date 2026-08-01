@@ -179,14 +179,22 @@ end
     @test default.winch_speed_k == 30.0
     @test default.winch_speed_ti == 2.0
     @test default.winch_torque_limit == 500.0
+    # Default feed-forward is exact, i.e. a perfectly stiff drum; the active
+    # config deliberately differs (see below).
+    @test default.winch_ff_scale == 1.0
 
     # Loaded from data/wc_settings.yaml (see wc_settings: field of system.yaml).
     set_data_path(v3_data_path())
     loaded = WC_Settings("wc_settings.yaml")
     @test loaded.winch_pos_kp == default.winch_pos_kp
     @test loaded.winch_speed_k == default.winch_speed_k
-    @test loaded.winch_speed_ti == default.winch_speed_ti
     @test loaded.winch_torque_limit == default.winch_torque_limit
+    # Weak integral action, so the yield produced by winch_ff_scale below is not
+    # integrated away again within a lap.
+    @test loaded.winch_speed_ti == 20.0
+    # Compliant winch since 2026-08-01: the drum holds only 70 % of the tether
+    # force, so it pays out under load (header of data/wc_settings.yaml).
+    @test loaded.winch_ff_scale == 0.7
 end
 
 @testset "init / step! Interface" begin

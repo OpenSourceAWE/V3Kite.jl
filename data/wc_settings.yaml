@@ -2,8 +2,95 @@
 # struct via `WC_Settings("wc_settings.yaml")`. These are new parameters with no
 # historical counterpart; tune on examples/simple_parking.jl (constant-length
 # parking) and change them by at most 10 % per iteration.
+#
+# WHERE THE STIFFNESS LIVES (measured 2026-08-01). Cutting both PI gains
+# (kp 0.5 -> 0.05, k 30 -> 5) changes NOTHING about compliance: on a 30 s
+# simple_fig8.jl run the tether moved 200.00 -> 200.04 m and |v_reelout| stayed
+# <= 0.02 m/s while the winch force rose to 3460 N -- and the run diverged at
+# t = 17.8 s where the stiff baseline survived all 30 s. `winch_position_torque!`
+# (src/interface.jl) adds the PI correction to a force feed-forward computed from
+# the *measured* tether force, so at winch_ff_scale = 1 the holding torque
+# cancels the load exactly and the drum sees nothing to accelerate it, whatever
+# the gains are. The gains are therefore back at their original values and
+# `winch_ff_scale` is the compliance knob (PlanFig8.md finding 14).
 wc_settings:
   winch_pos_kp:       0.5    # Outer proportional gain: length error [m] -> reel-out speed setpoint [1/s]
   winch_speed_k:      30.0   # Inner speed-loop proportional gain: speed error [m/s] -> winch torque [N*m*s/m]
-  winch_speed_ti:     2.0    # Inner speed-loop integral time [s] (larger = weaker integral action)
+  winch_speed_ti:     20.0   # Inner speed-loop integral time [s] (larger = weaker integral action)
+                             # 2.0 -> 20.0 (2026-08-01): at 2 s the integrator nulled the
+                             # speed error left by winch_ff_scale < 1 within a couple of
+                             # seconds, so the drum yielded and was immediately hauled
+                             # back — 0.22 m of travel over a 30 s run. 20 s puts the
+                             # integrator well below the ~40 s lap rate, so the force
+                             # imbalance can accumulate into real line payout.
   winch_torque_limit: 500.0  # Saturation of the inner speed loop's torque correction [N*m]
+
+  # --- force mode (`winch_force_torque!`, PlanFig8.md option 1) --------------
+  # Used only when the example commands `set_torque = winch_force_torque!(s, l0)`
+  # instead of `set_length`; the three gains above are then unused. The drum holds
+  # a FORCE, so it pays out whenever the tether pulls harder than the low-passed
+  # reference -- compliance is set by the filter, not by yielding against a
+  # position loop.
+  winch_force_tau:  10.0     # Reference-force low-pass time constant [s]: the winch
+                             # yields to everything faster than this. Raise for a
+                             # softer winch.
+  winch_len_kp:     100.0    # Length trim [N/m]: 1 m too long -> +100 N of holding
+                             # force, ~6 % of the 1.6 kN mean, so the length loop is
+                             # far slower than a lap. Raise to keep length tighter.
+  winch_damp:       500.0    # Viscous damping [N*s/m]: reel-out speed -> reference
+                             # force. Force mode has no velocity feedback of its own,
+                             # so this is what separates "compliant" from
+                             # "free-wheeling". At 500, a 3.5 m/s payout meets 1.75 kN
+                             # of opposing force, comparable to the mean tether load.
+  winch_force_min:  100.0    # Floor on the reference force [N], keeps the tether taut
+                             #
+                             # FIRST RUN (simple_fig8.jl, tau 10 s / len_kp 100 N/m):
+                             # compliance is no longer the problem -- 19.4 m of travel and
+                             # 3.5 m/s peak reel-out, vs 1.13 m / 0.29 m/s in position mode
+                             # at ff = 0.7. The line paid out 19 m as the kite dived
+                             # (73° -> 37°) and started hauling back on the climb, which is
+                             # exactly the intended behaviour. BUT the run hit the overspeed
+                             # guard at t = 19.8 s (v_app 49.6 m/s, AoA -41.9°): force mode
+                             # has NO velocity feedback, so the drum is a free mass on the
+                             # length-trim spring and its speed runs away. Needs a damping
+                             # term (-k_d * v_reelout in the force setpoint) before the
+                             # timescale gains are worth tuning.
+                             #
+                             # WITH winch_damp = 500 (tau 10 s, len_kp 100 N/m): survives
+                             # the full 30 s. 10.56 m of travel, +2.06 / -1.24 m/s (out on
+                             # the dive, in on the climb), v_app peak 27.2 m/s (was 49.6).
+                             # The winch itself now behaves. What it costs is TRACKING:
+                             # RMS d 12.46° vs 4.05° in position mode, max 22.0°, min el
+                             # 34.2° vs 39.9°, mean force 2621 N vs 1613 N. The guidance
+                             # was tuned against a fixed-length tether and has not been
+                             # retuned for a moving one -- that, not the winch, is the
+                             # next thing to work on.
+  winch_ff_scale:     0.7    # Force feed-forward scale [-]: 1.0 = holds the load exactly
+                             # (perfectly stiff drum), below 1.0 the drum pays out under
+                             # load. 0.9 leaves 10 % of the tether force unbalanced.
+                             # Caveat: the inner PI integrates the resulting speed error
+                             # away over winch_speed_ti = 2 s, so the yield is transient
+                             # until Ti is raised well above the timescale of interest.
+                             #
+                             # MEASURED (simple_fig8.jl 30 s, attr 35.1, centre 50°):
+                             #   ff    Ti    length p-p   peak |v_ro|   t_end
+                             #   1.0*  2 s      0.040 m     0.020 m/s   17.8 s (*soft gains)
+                             #   0.9   2 s      0.156 m     0.066 m/s   17.6 s
+                             #   1.0   2 s      0.009 m     0.006 m/s   18.0 s (control)
+                             #   0.9   2 s      0.220 m     0.067 m/s   30.0 s (blend off)
+                             #   0.9   20 s     0.393 m     0.100 m/s   30.0 s (blend off)
+                             #   0.7   20 s     1.129 m     0.287 m/s   30.0 s (blend off)
+                             # Ti 2 -> 20 s bought 1.8x travel, ff 0.9 -> 0.7 a further
+                             # 2.9x -- i.e. payout scales with the unbalanced force
+                             # fraction (1 - ff), as expected. Flight quality is flat
+                             # across all of it (RMS d 4.18 / 4.14 / 4.05°, min el 40.3 /
+                             # 39.9 / 39.9°, force CV 8.1 / 8.0 / 8.3%), so the winch is
+                             # not what limits this configuration.
+                             # So the knob DOES work -- 17x more line motion than the
+                             # control at the same 3.4 kN -- but the caveat above
+                             # dominates: 0.16 m is still nothing. Raise winch_speed_ti
+                             # next, not ff.
+                             # NOTE the control also died at 18.0 s, i.e. within noise of
+                             # the other two: the ~17.8 s divergence is NOT the winch's
+                             # doing, and the 30 s baseline in simple_fig8.jl's
+                             # ATTRACTOR_DIST table no longer reproduces.

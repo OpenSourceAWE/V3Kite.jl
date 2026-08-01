@@ -23,8 +23,21 @@ Base.@kwdef mutable struct WinchPosController
     speed_pid::DiscretePID
     "Outer proportional gain, length error [m] → speed setpoint [m/s]"
     kp_pos::Float64 = WC_Settings().winch_pos_kp
+    "Scale on the force feed-forward; < 1 makes the drum pay out under load"
+    ff_scale::Float64 = WC_Settings().winch_ff_scale
     "Rate-limited speed setpoint carried between steps [m/s]"
     v_sp_prev::Float64 = 0.0
+    # --- force mode (`winch_force_torque!`) --------------------------------- #
+    "Time constant of the reference-force low-pass [s]"
+    force_tau::Float64 = WC_Settings().winch_force_tau
+    "Length-trim gain, length error [m] → reference force [N/m]"
+    len_kp::Float64 = WC_Settings().winch_len_kp
+    "Viscous damping on the drum, reel-out speed [m/s] → reference force [N·s/m]"
+    damp::Float64 = WC_Settings().winch_damp
+    "Floor on the reference force, keeps the tether taut [N]"
+    force_min::Float64 = WC_Settings().winch_force_min
+    "Low-passed reference force, `NaN` before the first force-mode step [N]"
+    f_lpf::Float64 = NaN
 end
 
 @with_kw mutable struct V3KITE <: AbstractKiteModel
@@ -383,8 +396,10 @@ length error (`set_length - unstretched_length(s)`) yields a reel-out speed
 setpoint, clamped to `±speed_limit` [m/s] and rate-limited by
 `acceleration_limit` [m/s²]. The inner PI loop (`s.winch_ctrl.speed_pid`) on
 the speed error yields a winch-torque correction, added to a force
-feed-forward `force_to_torque(winch_force(s), s.sys)` (the steady/gravity
-holding torque from the measured winch force). Returns the winch set torque
+feed-forward `ff_scale * force_to_torque(winch_force(s), s.sys)` (the
+steady/gravity holding torque from the measured winch force, scaled by
+`winch_ff_scale` — 1.0 holds the load exactly and makes the drum stiff, below
+1.0 it deliberately falls short so the winch pays out). Returns the winch set torque
 [N·m], applied directly as in `examples/reel_out_v3.jl`: at parking
 equilibrium (speed setpoint 0, measured speed 0) the correction vanishes and
 the output is exactly the holding torque.
@@ -400,8 +415,56 @@ function winch_position_torque!(s::V3KITE, set_length, speed_limit,
     ctrl.v_sp_prev = v_sp
     # Inner PI loop: speed error → torque correction.
     dtau = ctrl.speed_pid(v_sp, reel_out_speed(s), 0.0)
-    tau_ff = force_to_torque(winch_force(s), s.sys)
+    # Force feed-forward, scaled: at ff_scale = 1 it cancels the measured tether
+    # force exactly and the drum cannot pay out at any PI gain; below 1 the
+    # holding torque falls short of the load and the winch yields (WC_Settings).
+    tau_ff = ctrl.ff_scale * force_to_torque(winch_force(s), s.sys)
     return tau_ff + dtau
+end
+
+"""
+    winch_force_torque!(s::V3KITE, set_length) -> torque
+
+Force-mode winch controller (PlanFig8.md option 1): the drum is commanded to
+hold a *force*, not a length, so it pays out whenever the tether pulls harder
+than the reference and hauls in when it pulls less. Returns a torque to be
+passed to `step!` as `set_torque`, e.g.
+
+    step!(s; rel_steering, set_torque = winch_force_torque!(s, l0))
+
+The reference force is a first-order low-pass of the measured winch force with
+time constant `winch_force_tau`, plus a slow length trim
+`winch_len_kp * (l - set_length)` — a tether longer than the setpoint asks for
+more holding force, which hauls it back in — plus viscous damping
+`winch_damp * reel_out_speed(s)`, which opposes fast payout. The damping is not
+optional: force control gives the drum no velocity feedback, so trim alone
+leaves it a free mass on a spring. Because the reference tracks only
+the *mean* force, the drum yields to everything faster than `winch_force_tau`
+(the lap, the dive, gusts) while the mean length is still held. Raise
+`winch_force_tau` for a softer winch, raise `winch_len_kp` for tighter length
+keeping; they trade against each other, and `winch_len_kp` should stay small
+enough that the length loop is far slower than a lap.
+
+Contrast `winch_position_torque!`, which holds a length: even at
+`winch_ff_scale = 0.7` that one only ever yields by ~1 m because the position
+cascade pulls straight back. Nothing here reads the `winch_pos_kp` /
+`winch_speed_k` / `winch_speed_ti` gains — the two modes share only the winch.
+
+The reference force is initialised to the measured force on the first call, so
+engaging force mode from a settled state produces no torque step.
+"""
+function winch_force_torque!(s::V3KITE, set_length)
+    ctrl = s.winch_ctrl
+    f_now = winch_force(s)
+    isnan(ctrl.f_lpf) && (ctrl.f_lpf = f_now)
+    alpha = s.dt / (ctrl.force_tau + s.dt)
+    ctrl.f_lpf += alpha * (f_now - ctrl.f_lpf)
+    # Length trim (a spring) plus viscous damping. The damping term is what keeps
+    # the drum from free-wheeling: force control gives it no velocity feedback of
+    # its own, so spring alone is an undamped oscillator.
+    f_set = ctrl.f_lpf + ctrl.len_kp * (unstretched_length(s) - set_length) +
+            ctrl.damp * reel_out_speed(s)
+    return force_to_torque(max(f_set, ctrl.force_min), s.sys)
 end
 
 """
@@ -531,7 +594,10 @@ function init(v_wind_gnd, l_tether;
         Td = false, Ts = dt,
         umin = -wc.winch_torque_limit, umax = wc.winch_torque_limit)
     winch_ctrl = WinchPosController(speed_pid = speed_pid,
-        kp_pos = wc.winch_pos_kp, v_sp_prev = sys.winches[1].vel)
+        kp_pos = wc.winch_pos_kp, ff_scale = wc.winch_ff_scale,
+        force_tau = wc.winch_force_tau, len_kp = wc.winch_len_kp,
+        damp = wc.winch_damp, force_min = wc.winch_force_min,
+        v_sp_prev = sys.winches[1].vel)
 
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
