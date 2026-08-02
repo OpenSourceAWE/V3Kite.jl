@@ -8,7 +8,11 @@ within each section. Related plans: `PlanFig8.md`, `SmallPlan.md`, `PlanC1C2.md`
 Unless stated otherwise, metrics are measured over the settled window
 (`t >= PARK_TIME + ENTRY_TIME = 25 s`), `d` is the cross-track error, "clamped"
 is the fraction of samples with the steering command on `MAX_STEERING`, and
-"criteria" are the four printed by `print_fig8_metrics`.
+"criteria" are the ones printed by `print_fig8_metrics`. Entries dated before
+2026-08-02 were scored against **four** criteria (laps, RMS d, max d, elevation
+floor); the pattern-extent criteria (azimuth reach per side, elevation span)
+were added on 2026-08-02, so "4 of 4" in an older entry is not a pass under the
+current set — those runs were never scored on the size of the eight they flew.
 
 **Reading the older entries.** Everything dated 2026-08-01 or earlier was
 measured through the *relay* loop (`HEADING_P = 4.5`, steering clamped ~90-100 %
