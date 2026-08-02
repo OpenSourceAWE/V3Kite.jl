@@ -168,12 +168,17 @@ _make_test_controller(; kwargs...) =
         dt = 0.05
         tt = collect(0.0:dt:60.0)
         n = length(tt)
-        mk(azf) = (; time = tt,
+        # `steering` is the TAPE position and `set_steering` the command; the
+        # metrics read both (the tape rate limit is scored against `steering`),
+        # so a fixture missing either does not exercise the function at all.
+        mk(azf, elf = t -> deg2rad(45.0)) =
+                  (; time = tt,
                    azimuth = Float32.(azf.(tt)),
-                   elevation = fill(Float32(deg2rad(45.0)), n),
+                   elevation = Float32.(elf.(tt)),
                    heading = zeros(Float32, n),
                    var_01 = zeros(Float32, n),
                    set_steering = zeros(Float32, n),
+                   steering = zeros(Float32, n),
                    winch_force = [Float32[100, 0, 0, 0] for _ in 1:n])
 
         # a circle off to one side: oscillates about -40°, never crosses 0
@@ -189,6 +194,62 @@ _make_test_controller(; kwargs...) =
         laps = fig8_metrics(real8; settle_time = 0.0, az_center = 0.0).laps
         @test laps >= 5.0
         @test print_fig8_metrics(real8; settle_time = 0.0, az_center = 0.0).laps == laps
+    end
+
+    @testset "metrics_pattern_extent" begin
+        # The tracking criteria are all measured to the CLOSEST POINT of the
+        # path, so they say nothing about how much of the pattern was flown: a
+        # kite tracing a small eight, or one lobe's worth of it in half the wind
+        # window, sits on the path at every instant and scores RMS d = 0. These
+        # fixtures are exactly that — perfect tracking, wrong flight — and must
+        # fail on extent alone.
+        A, B, el_c, T = 40.0, 15.0, 26.0, 10.0
+        dt = 0.05
+        tt = collect(0.0:dt:60.0)
+        n = length(tt)
+        mk(azf, elf) = (; time = tt,
+                        azimuth = Float32.(azf.(tt)),
+                        elevation = Float32.(elf.(tt)),
+                        heading = zeros(Float32, n),
+                        var_01 = zeros(Float32, n),
+                        set_steering = zeros(Float32, n),
+                        steering = zeros(Float32, n),
+                        winch_force = [Float32[100, 0, 0, 0] for _ in 1:n])
+        # elevation of the lemniscate: sin(2wt), peak to peak B, scaled by `f`
+        el8(f) = t -> deg2rad(el_c + f * (B / 2) * sin(2 * 2pi * t / T))
+        score(sl) = print_fig8_metrics(sl; settle_time = 0.0, az_center = 0.0,
+                                       az_amplitude = A, el_height = B,
+                                       min_span_frac = 0.7)
+
+        # the pattern as commanded: full width both sides, full height
+        full = score(mk(t -> deg2rad(A * sin(2pi * t / T)), el8(1.0)))
+        @test isempty(full.criteria_failed)
+        @test full.criteria == 7          # 4 tracking + 2 azimuth reach + 1 span
+        @test full.az_reach_pos ≈ A rtol=0.01
+        @test full.az_reach_neg ≈ A rtol=0.01
+        @test full.el_fill ≈ 1.0 rtol=0.01
+
+        # a small eight about the same centre: tracked perfectly, 15% of the size
+        small = score(mk(t -> deg2rad(0.15A * sin(2pi * t / T)), el8(0.15)))
+        @test small.rms_d == 0.0          # nothing in the tracking numbers says so
+        @test count(f -> occursin("azimuth reach", f), small.criteria_failed) == 2
+        @test any(f -> occursin("elevation span", f), small.criteria_failed)
+
+        # one half of the wind window: azimuth 0..+A, never crossing the centre
+        half = score(mk(t -> deg2rad(A / 2 * (1 + sin(2pi * t / T))), el8(1.0)))
+        @test half.rms_d == 0.0
+        @test half.az_reach_pos >= 0.7A   # the flown lobe is full size ...
+        @test half.az_reach_neg < 1.0     # ... and there is no other lobe
+        @test count(f -> occursin("azimuth reach", f), half.criteria_failed) == 1
+        # and the failure names the side, so a log line is enough to diagnose it
+        @test any(f -> occursin("azimuth reach -", f), half.criteria_failed)
+
+        # without the geometry the extent is reported but not scored — the old
+        # four criteria, so an existing caller keeps its meaning
+        bare = print_fig8_metrics(mk(t -> deg2rad(0.15A * sin(2pi * t / T)), el8(0.15));
+                                  settle_time = 0.0, az_center = 0.0)
+        @test bare.criteria == 4
+        @test isnan(bare.az_fill_pos)
     end
 
     @testset "turn_rate_coeffs" begin
