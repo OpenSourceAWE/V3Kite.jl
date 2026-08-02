@@ -727,6 +727,37 @@ FIG8_PURE_COURSE = true     # In FIG8 mode (phase 3), feed back COURSE alone and
                             # a turn, swapping the feedback signal mid-turn for
                             # no benefit. `false` restores the pure speed
                             # schedule in every phase.
+STEERING_TRACK_TAPE = false # Clamp the steering command to within STEERING_LEAD
+                            # steps of tape travel of the MEASURED tape position
+                            # (`sys_state.steering`). SmallPlan.md proposed this
+                            # as "anti-windup against the real tape position".
+                            #
+                            # TRIED 2026-08-02 AT LEAD 3, AND IT IS A DISASTER —
+                            # kept only so nobody proposes it again:
+                            #
+                            #   metric        4-lap baseline   governor on
+                            #   RMS d              2.90°          58.10°
+                            #   min elevation     23.7°          -49.2° (!)
+                            #   laps               4.0            2.0
+                            #   peak tape slew    0.200/s        0.030/s
+                            #   criteria passed    4 of 4         0 of 4
+                            #
+                            # The mechanism: pinning the command to within 0.010
+                            # of the measured position makes THE CLAMP the
+                            # binding rate limit instead of the tape, and the
+                            # pair can then only advance as fast as the gap
+                            # allows — an effective actuator 6.7x SLOWER than the
+                            # real one. The kite lost the pattern and went below
+                            # the horizon.
+                            #
+                            # The premise was wrong anyway: since HEADING_P 4.5
+                            # -> 0.6 the tape saturates only 2% of the time, so
+                            # there was nothing to govern. Fixing the loop gain
+                            # already solved what this was meant to solve.
+STEERING_LEAD    = 3        # [steps] how far ahead of the tape the command may
+                            # sit when STEERING_TRACK_TAPE is on. 3 * 0.2 * dt =
+                            # 0.010 of travel. A LARGER lead is less harmful, not
+                            # more — but the whole idea is closed, see above.
 MAX_STEERING     = 0.30     # Steering command limit [-]. OPTION 3 (raise the
                             # authority to relieve the 97% clamp saturation) is
                             # CLOSED — it does not work on this plant:
@@ -988,6 +1019,27 @@ try
             0.0
         else
             heading_pid(0.0, err, 0.0)
+        end
+
+        # Reference governor against the REAL tape position (SmallPlan.md).
+        #
+        # The KCU tape slews at set.v_steering [1/s] and no faster, so a command
+        # far from where the tape currently is cannot be followed — it just puts
+        # the actuator on its rate limit, which costs amplitude and adds
+        # amplitude-dependent phase lag (measured: 62.7° at the loop's own
+        # frequency, before HEADING_P was fixed). Clamping the command to within
+        # STEERING_LEAD steps of travel of the MEASURED position keeps every
+        # command achievable, and the tape is never chasing a distant target.
+        #
+        # NOTE this is a governor, not classic anti-windup: with HEADING_I =
+        # false the PID has no integral state, so there is nothing to
+        # back-calculate. If integral action is ever enabled, the tracking term
+        # has to be added here as well, or the integrator will wind up against
+        # this clamp exactly as it would against umin/umax.
+        if STEERING_TRACK_TAPE && phase != 0
+            reach = STEERING_LEAD * s.set.v_steering * s.dt
+            u_act = Float64(s.sys_state.steering)
+            rel_steering = clamp(rel_steering, u_act - reach, u_act + reach)
         end
 
         # Winch: force mode pays out under load and trims the mean length back
