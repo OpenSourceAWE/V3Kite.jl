@@ -85,6 +85,7 @@ using V3Kite
 using DiscretePIDs: set_K!
 using KiteUtils: wc_settings   # resolves the wc-settings file named in PROJECT
 using LinearAlgebra: norm
+using Statistics: mean
 using Printf
 
 @info "simple_fig8.jl: figure-of-eight path following of the V3 kite."
@@ -769,6 +770,28 @@ print_fig8_metrics(sl; t_start = PARK_TIME, settle_time = ENTRY_TIME,
                    min_elevation = MIN_ELEVATION, az_center = 0.0,
                    az_amplitude = F8_A, el_height = F8_B,
                    min_span_frac = MIN_SPAN_FRAC)
+
+# Apparent wind speed over the pattern. Selected on the LOGGED PHASE (== 3),
+# not on a time window: phase 3 begins when the entry state machine hands over,
+# which depends on how the dive went, so a fixed window would mix entry samples
+# into the average on a slow entry and drop pattern samples on a fast one.
+# The mean is the value V_APP_REF should be set to — it anchors the 1/v_app gain
+# schedule, and only when it matches the speed actually flown does HEADING_P
+# read as the gain the kite really flies at (see the parameter block). The
+# applied gain is HEADING_P * V_APP_REF / v_app either way, so a mismatch
+# misreports the tuning rather than changing this run.
+let fig8 = findall(x -> Int(x) == 3, sl.sys_state)
+    if isempty(fig8)
+        @warn "Phase 3 never reached — no figure-eight apparent wind speed."
+    else
+        va = Float64.(sl.v_app[fig8])
+        @printf("  v_app over phase 3 (%.1f s): mean %.2f m/s, range %.2f … %.2f m/s \
+                 | V_APP_REF = %.1f (%+.1f%%)\n",
+                sl.time[fig8[end]] - sl.time[fig8[1]],
+                mean(va), minimum(va), maximum(va),
+                V_APP_REF, 100 * (mean(va) / V_APP_REF - 1))
+    end
+end
 
 # Plots come up with the run — the plotting script reuses the F8_* constants
 # defined above, so the reference overlay always matches the pattern flown.
