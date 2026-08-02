@@ -54,7 +54,7 @@ Log slot mapping (`step!` already fills `var_14`/`var_15`/`var_16`):
 | `var_04` | pattern-centre elevation [deg]            |
 | `var_05` | raw guidance course chi_set [rad]         |
 | `var_06` | regulated error (feedback - chi_cmd) [deg] |
-| `var_07` | 1 while the entry descent limiter is active |
+| `var_07` | entry descent limiter weight (0 = raw guidance, 1 = fully limited) |
 | `var_08` | course/heading blend weight (0 = heading, 1 = course) |
 | `var_09` | span-mean geometric AoA [deg]             |
 
@@ -378,12 +378,29 @@ MAX_STEERING     = 0.32     # Steering command limit [-]. Raising it to relieve
 # itself legitimately requires steep courses (chi_set = -118° on the path at the
 # lobe crossing), so once |d| < ENTRY_D_GATE the raw guidance course passes
 # through untouched. Set ENTRY_CHI_MAX = 180 to disable the limiter entirely.
+#
+# The handover is BLENDED over ENTRY_D_BLEND, not switched. As a hard gate it
+# stepped the commanded course by the full clamp violation in one timestep, and
+# the PID's D path turned that step into a spike that reversed the sign of the
+# command — see the tuning log, ENTRY_D_BLEND.
 ENTRY_CHI_MAX    = 95.0     # [deg] steepest commanded course while off-path. At
                             # 105° the descent from the 73° park still reached
                             # 45.6 m/s by elevation 40°; 95° is only 5° below the
                             # local horizontal, so the kite spirals down slowly
                             # enough for drag to bleed the energy it gains.
 ENTRY_D_GATE     = 12.0     # [deg] cross-track error below which it is bypassed
+ENTRY_D_BLEND    = 4.0      # [deg] width of the band ABOVE ENTRY_D_GATE over
+                            # which the limited and raw courses are blended:
+                            # fully limited at d >= GATE + BLEND, fully raw at
+                            # d <= GATE. 0 restores the old hard switch. Sized
+                            # against the rate d closes at (~3.4 deg/s here), so
+                            # 4° is ~1.2 s of traversal — 16x slower than the
+                            # 0.075 s derivative filter, hence tracked rather
+                            # than differentiated (D contribution ~0.05 instead
+                            # of the +0.73 the step produced). It also makes
+                            # CHATTER on the gate harmless: d is not monotonic,
+                            # and a hard switch re-fires the full step on every
+                            # recrossing.
 ENTRY_CUT_MARGIN = deg2rad(30.0)  # how close to ±180° chi_set must be before
                             # its sign is treated as degenerate and the latched
                             # tangent sign is used instead
@@ -510,7 +527,13 @@ try
         # through, because the pattern needs steep courses of its own.
         heading = Float64(s.sys_state.heading)
         chi_cmd = chi_set
-        if dmin > ENTRY_D_GATE && abs(chi_set) > deg2rad(ENTRY_CHI_MAX)
+        # Limiter weight: 1 = fully limited, 0 = raw guidance, linear in between
+        # over ENTRY_D_BLEND above the gate. With ENTRY_D_BLEND = 0 this is the
+        # old hard switch (the `>` keeps d == GATE on the raw side either way).
+        w_lim = ENTRY_D_BLEND > 0 ?
+                clamp((dmin - ENTRY_D_GATE) / ENTRY_D_BLEND, 0.0, 1.0) :
+                (dmin > ENTRY_D_GATE ? 1.0 : 0.0)
+        if w_lim > 0 && abs(chi_set) > deg2rad(ENTRY_CHI_MAX)
             # chi_set is the HOMING law (great-circle course to the attractor);
             # only its steepness is limited, never its homing intent. An earlier
             # version commanded the path tangent instead — pure feed-forward
@@ -531,7 +554,15 @@ try
             entry_sign == 0 && (global entry_sign = tang >= 0 ? 1 : -1)
             sgn = abs(chi_set) < pi - ENTRY_CUT_MARGIN ?
                   (chi_set >= 0 ? 1 : -1) : entry_sign
-            chi_cmd = sgn * deg2rad(ENTRY_CHI_MAX)
+            chi_lim = sgn * deg2rad(ENTRY_CHI_MAX)
+            # Blend on the WRAPPED difference, exactly as the heading/course
+            # feedback blend below: chi_lim and chi_set can straddle the ±180°
+            # cut (the limiter exists partly because chi_set hunts across it),
+            # and a plain convex combination would then sweep the command the
+            # long way round through zero. This form is continuous there and
+            # still returns chi_lim exactly at w_lim = 1 and chi_set exactly
+            # at w_lim = 0, so the blend adds no offset in either limit.
+            chi_cmd = wrap_to_pi(chi_set + w_lim * wrap_to_pi(chi_lim - chi_set))
         end
 
         # Open-loop entry command. Overrides the guidance (and its limiter) for
@@ -635,7 +666,12 @@ try
         s.sys_state.var_04 = el_center_cur     # pattern-centre elevation [deg]
         s.sys_state.var_05 = chi_set           # RAW guidance course [rad]
         s.sys_state.var_06 = rad2deg(err)      # REGULATED error [deg]
-        s.sys_state.var_07 = chi_cmd == chi_set ? 0.0 : 1.0  # entry limiter active
+        # Entry limiter weight, not a flag: 0 = raw guidance course, 1 = fully
+        # limited, fractional inside the ENTRY_D_BLEND band. Logged as the
+        # weight so the handover is visible as the ramp it now is — a plot that
+        # still shows a step here means ENTRY_D_BLEND is too narrow for the rate
+        # d is closing at.
+        s.sys_state.var_07 = abs(chi_set) > deg2rad(ENTRY_CHI_MAX) ? w_lim : 0.0
         s.sys_state.var_08 = w_course          # course/heading blend weight [-]
         # Whole-wing AoA. `sys_state.AoA` is the CENTRE PANEL only, which is
         # representative while the wing is loaded symmetrically but not in a

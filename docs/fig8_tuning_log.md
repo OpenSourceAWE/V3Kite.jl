@@ -573,6 +573,56 @@ POSITION — and the kite flew off to azimuth -65° and sat in a limit cycle for
 180 s with the cross-track error frozen at 24°. Latching the sign arbitrarily
 and then reversing mid-descent broke two further runs.
 
+## ENTRY_D_BLEND — the limiter handover was a step, not a switch (2026-08-02)
+
+The limiter's `d`-gate was a hard `if`, so releasing it stepped the commanded
+course by the whole clamp violation in ONE timestep. Measured at `t = 33.30 s`
+of the 2026-08-02 run (`fig8_run`):
+
+| t [s]   | d [deg] | chi_set  | chi_cmd  | err     | set_steering |
+|--------:|--------:|---------:|---------:|--------:|-------------:|
+| 33.2833 |  12.06  | +124.42° |  +95.00° | +65.9°  | -0.3200      |
+| 33.3083 |  11.995 | +124.46° | +124.46° | +35.8°  | +0.2100      |
+
+`d` crossed `ENTRY_D_GATE = 12.0`, `chi_cmd` jumped +95 -> +124.5°, and the
+regulated error stepped -29.7° (-0.517 rad). The PID's discrete derivative gain
+is `K*N*Td/(Td + N*dt) = 0.78*2*0.15/0.16667 = 1.40` there, so that step alone
+contributed **+0.73** against a P term of -0.49: the command left the -0.32
+clamp and REVERSED sign to +0.28 for ~0.075 s (the `N/Td` filter time constant)
+before returning to the clamp.
+
+Nothing in the plant moved — `d`, course, heading and `v_app` are all smooth
+through 33.3 s. It was a discontinuity in the REFERENCE, entirely self-inflicted
+by the gate.
+
+Fix: blend the limited and raw courses linearly over `ENTRY_D_BLEND = 4°` above
+the gate, on the WRAPPED difference (`chi_set + w*wrap_to_pi(chi_lim -
+chi_set)`, the same form as the heading/course feedback blend) so it stays
+continuous across the ±180° cut the limiter exists to tame. Replayed over the
+logged `chi_set`/`d` of that run, the largest phase-3 command step falls
+**29.46° -> 0.68°** (43x), and the 0.68° remainder is at `t = 36.28 s` where the
+limiter is already off (`w = 0`) — i.e. it is jitter in the raw guidance course
+itself, pre-existing and untouched by this change.
+
+Sizing: `d` closes at ~3.4 deg/s here, so 4° is ~1.2 s of traversal — 16x slower
+than the derivative filter, so the ramp is tracked rather than differentiated
+(D contribution ~0.05 instead of +0.73). It also makes gate CHATTER harmless:
+`d` is not monotonic, and a hard switch re-fires the full step on every
+recrossing. `ENTRY_D_BLEND = 0` restores the old switch.
+
+### Still open: the hold -> fig8 handover reverses the command by 175°
+
+Found while measuring the above, NOT fixed. At `t = 30.55 s` phase 2 -> 3 hands
+over from the open-loop `CHI_HOLD = -90°` to the limiter's `+95°`: a 175°
+reversal of the commanded course in one timestep, stepping `err` from -11.2° to
++163.8°. No spike is visible because the tape is already saturated at -0.32 on
+both sides, so the loop just stays pinned at the clamp — but the loop is being
+handed a reference it cannot act on, and the entry is turn-rate limited anyway.
+This is the entry state machine, a different mechanism from the `d`-gate, and
+worth its own look: the reference controller hands over at the pattern's
+rightmost point already moving into the first turn, which should not require a
+course reversal at all.
+
 ## ELEVATION — the settling-elevation cache bug
 
 `ELEVATION` currently has NO EFFECT on where the run starts (2026-07-26). It was
