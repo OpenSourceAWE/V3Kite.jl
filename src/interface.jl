@@ -611,7 +611,7 @@ end
     step!(s::V3KITE; rel_depower=0.0, rel_steering=0.0,
           v_wind_gnd=nothing, upwind_dir=nothing,
           set_torque=nothing, set_length=nothing,
-          speed_limit=Inf, acceleration_limit=Inf, prn=false)
+          speed_limit=Inf, acceleration_limit=Inf, vsm_interval=1, prn=false)
 
 Advance the simulation by `s.dt`, update `s.sys_state` (including
 `heading_rate`), and log it.
@@ -628,6 +628,12 @@ given, the cascaded position controller (`speed_limit` [m/s],
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
 is reported every 100 steps.
 
+`vsm_interval` is forwarded to `sim_step!`: the VSM aero load is recomputed
+every `vsm_interval` steps and held frozen inside the DAE in between (`0`
+disables the VSM update entirely). The default `1` is the tightest coupling
+available, so raising it only increases the aero lag — it is exposed for
+sweeps/speed trade-offs, not as a way to stabilize the explicit coupling.
+
 Each logged row carries both the command and the KCU's actual (tape-lagged)
 value for both channels, so plot scripts never need to re-declare a setpoint:
 
@@ -643,7 +649,8 @@ this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff).
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
                set_torque = nothing, set_length = nothing,
-               speed_limit = Inf, acceleration_limit = Inf, prn = false)
+               speed_limit = Inf, acceleration_limit = Inf, vsm_interval = 1,
+               prn = false)
     dt = s.dt
     t = s.sys_state.time + dt
 
@@ -676,7 +683,7 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
         force_to_torque(winch_force(s), s.sys)
     end
 
-    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval = 1)
+    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval)
         error("next_step! failed at t=$(round(t, digits=3)) s")
     end
 

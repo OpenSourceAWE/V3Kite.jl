@@ -154,7 +154,7 @@ DT               = 0.05/6   # Simulation timestep [s].
                             # structure shaking, not a logging artefact.
                             #
                             # WHERE IT COMES FROM: `step!` runs with
-                            # vsm_interval = 1 (src/interface.jl), i.e. the VSM
+                            # vsm_interval = 1 (VSM_INTERVAL below), i.e. the VSM
                             # aero load is refreshed once per dt and held FROZEN
                             # inside the DAE in between. That is an explicitly
                             # coupled aero-structure scheme, whose characteristic
@@ -185,6 +185,13 @@ DT               = 0.05/6   # Simulation timestep [s].
                             # NOTE this re-bases the trajectory:
                             # data/fig8_run_N10_baseline.arrow is no longer
                             # bit-comparable, only comparable on per-lap metrics.
+VSM_INTERVAL     = 2        # Steps between VSM aero updates; the load is held
+                            # frozen inside the DAE in between (0 disables the
+                            # update entirely). 1 is the TIGHTEST coupling
+                            # available, so this can only be raised — trading
+                            # aero lag for wall time. Exposed here to sweep the
+                            # explicit-coupling mode described under DT above,
+                            # not as a lever that can stabilize it.
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
@@ -1217,9 +1224,11 @@ try
         # slowly; position mode holds the length outright (see WINCH_FORCE_MODE).
         if WINCH_FORCE_MODE
             step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
-                  set_torque = winch_force_torque!(s, l0))
+                  set_torque = winch_force_torque!(s, l0),
+                  vsm_interval = VSM_INTERVAL)
         else
-            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
+            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+                  vsm_interval = VSM_INTERVAL)
         end
 
         # Overspeed guard: report the cause instead of letting it surface as an
