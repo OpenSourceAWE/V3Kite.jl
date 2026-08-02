@@ -48,15 +48,25 @@ command on the clamp 88 % of the time, tape rate-limited 91 %.
 
 ## Next steps
 
-1. **Lower `EL_CENTER` 40.5 -> 26**, in 10 % steps (40.5, 36.5, 32.8, 29.5,
-   26.6, 26.0), one run each. 26° is the reference controller's centre, so it is
-   a known-flyable operating point for a working controller on this pattern
-   family. Two forces pull opposite ways and both are documented below: a lower
-   centre IMPROVES the curvature margin (less `cos(elevation)` compression) but
-   pushes the pattern deeper into the power zone, where the energy limit binds.
-   Watch `v_app` and the tether force, not just RMS d — the failures at low
-   centre have all been energy failures. The old "50° is the floor" sweep is a
-   fixed-winch artefact and carries no weight.
+1. **Lower the pattern towards centre 26° — but the lever is `F8_B`, not
+   `EL_CENTER` alone.** Descent attempted 2026-08-02:
+
+   | `EL_CENTER` | bottom edge | result |
+   |---:|---:|:---|
+   | 40.5 | 30.5° | 4 of 4 criteria, RMS d 2.90° |
+   | **36.5** | 26.5° | 4 of 4, **RMS d 2.63°** — better, and energy flat (median v_app 25.9 -> 25.4 across the settled window) |
+   | 32.8 | 22.8° | **FAILED at 48.7 s** — undershot to 17.9°, 5° below the bottom edge, then 25.2 -> 32.6 m/s and 2404 -> 3811 N in five seconds |
+
+   Tracking IMPROVED all the way down (the curvature-margin argument works); it
+   is the bottom edge that kills the run, by putting the kite in the power zone
+   on the right-lobe turn. At `B = 20` the bottom sits 10° below the centre,
+   so centre 26 would mean a bottom at 16°. The reference controller reaches
+   centre 26 with `A = 40, B = 15` — a bottom at 18.5°. **Next run: reduce
+   `F8_B` at the current 36.5 centre**, then resume the descent. Note "pattern
+   size" is one of the levers whose closure was measured through the relay loop
+   (see History), so the "smaller is tighter" objection is untested at this
+   tuning — and the loop now has margin it did not have then (clamp 8 %, tape
+   2 %).
 2. **Extend the `ATTRACTOR_DIST` sweep below 10.** RMS d was still falling
    monotonically at the bottom edge of the swept range (2.85° at 10 vs 2.90° at
    the chosen 12.1), so the optimum has not been bracketed.

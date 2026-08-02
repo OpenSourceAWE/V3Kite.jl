@@ -356,7 +356,70 @@ F8_B             = 20.0     # Height of the eight (elevation spans +-B/2)
                             # kite for authority it does not have.
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
-EL_CENTER        = 40.5     # Pattern-centre elevation; spans 30.5-50.5° at B=20.
+EL_CENTER        = 36.5     # Pattern-centre elevation; spans 26.5-46.5° at B=20.
+                            #
+                            # 32.8 -> 36.5 (2026-08-02): REVERTED, rung 2 failed.
+                            #
+                            # 36.5 -> 32.8 (2026-08-02, -10.1%): rung 2 of the
+                            # descent. FAILED at t = 48.7 s, and the mechanism is
+                            # worth having: coming round the RIGHT lobe the kite
+                            # undershot to elevation 17.9°, five degrees BELOW
+                            # the pattern's own bottom edge (22.8° at this
+                            # centre). That put it deep in the power zone and
+                            # speed and force ran away together — 25.2 -> 32.6
+                            # m/s and 2404 -> 3811 N in the last five seconds.
+                            # Same lobe and same signature as the depower-0.36
+                            # failure at 37.6 s. Tracking was fine until it was
+                            # not (RMS d 3.55° includes the blowup).
+                            #
+                            # SO THE CENTRE IS NOT THE BINDING PARAMETER — the
+                            # pattern's BOTTOM EDGE is, and at B = 20 the bottom
+                            # sits 10° below the centre. The reference controller
+                            # reaches centre 26° with A = 40, B = 15, i.e. a
+                            # bottom at 18.5°; our B = 20 at centre 26 would put
+                            # the bottom at 16°. Reaching 26 almost certainly
+                            # needs B (and probably A) to come down with it, and
+                            # "pattern size" is one of the levers whose closure
+                            # was measured through the relay loop, so it is
+                            # untested at this tuning.
+                            #
+                            # RUNG 1 RESULT (40.5 -> 36.5): 4 of 4 criteria, and
+                            # BETTER — RMS d 2.90 -> 2.63°, max d 7.07 -> 6.22°,
+                            # clamp 12 -> 8%. The curvature-margin argument
+                            # working as predicted. Energy moved the wrong way
+                            # but only slightly: mean force 2432 -> 2655 N (+9%),
+                            # peak v_app 27.0 -> 27.9 m/s, elevation floor 23.7
+                            # -> 20.5°. Crucially it does NOT accumulate — median
+                            # v_app is 25.9 m/s over the first half of the
+                            # settled window and 25.4 over the second, i.e. flat
+                            # to falling. Azimuth span -51.6..+47.4°, so the
+                            # pattern now slightly OVER-flies the left lobe.
+                            #
+                            # 40.5 -> 36.5 (2026-08-02, -9.9%): step 1 of the
+                            # descent towards 26°, the reference controller's
+                            # centre — a known-flyable operating point for this
+                            # pattern family, so the target is not arbitrary.
+                            # Ladder: 40.5, 36.5, 32.8, 29.5, 26.6, 26.0.
+                            #
+                            # WHAT TO WATCH, and it is not RMS d. Two forces pull
+                            # opposite ways: a lower centre IMPROVES the curvature
+                            # margin (less cos(elevation) compression of the
+                            # azimuth axis) but pushes the pattern deeper into the
+                            # power zone. Every failure at low centre so far has
+                            # been an ENERGY failure — v_app and tether force run
+                            # away, the tracking looks fine until it does not
+                            # (depower 0.36 held RMS d 1.65° right up to a 27 ->
+                            # 42.7 m/s blowup at 37.6 s). So: peak v_app, mean and
+                            # peak force, and the elevation floor first; RMS d
+                            # second. Run at SIM_TIME 150, not 30 — a 30 s run
+                            # cannot see the failure this sweep is looking for.
+                            #
+                            # The 2026-08-01 entries below were all taken at
+                            # HEADING_P 4.5, i.e. through the relay loop, so their
+                            # RMS/clamp numbers do not transfer; their ENERGY
+                            # observations (mean force climbing as the centre
+                            # drops) do, and are the reason for the caution above.
+                            #
                             # 45 -> 40.5 (2026-08-01, -10%): continuing down now
                             # that the floor is known to be movable. 40.5 is the
                             # second value of the old fixed-tether sweep below,
