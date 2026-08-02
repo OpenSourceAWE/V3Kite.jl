@@ -162,7 +162,7 @@ fec = FigureEightController(FigureEightSettings(;
 #   delay  -> steering dead time, the limit on how fast the commanded course
 #             may rotate (the lever behind `attractor_dist` and `heading_d`)
 # turn_rate_coeffs interpolates for a `depower_setpoint` between identified grid
-# points (see PlanC1C2.md); a run using interpolated values says so rather than
+# points; a run using interpolated values says so rather than
 # reporting the margin as if it came from an identified one.
 coeffs = turn_rate_coeffs(fcs.body_damping, fcs.depower_setpoint)
 c1, c2, delay = coeffs.c1, coeffs.c2, coeffs.delay
