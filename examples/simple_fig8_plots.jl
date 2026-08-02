@@ -105,8 +105,9 @@ el_deg = rad2deg.(sl.elevation[rng])
 # than `norm.` so this script needs no LinearAlgebra import.
 v_kite = [sqrt(sum(abs2, v)) for v in sl.vel_kite[rng]]
 
-# Reference path at the FINAL pattern centre (var_04), so the overlay matches
-# the run even when the centre was walked (WALK_RATE > 0).
+# Reference path at the pattern centre the run logged (var_04). Read from the
+# LAST row rather than assumed constant, so a log whose centre moved during the
+# run still gets an overlay that matches where it ended up.
 el_c_end = Float64(sl.var_04[end])
 ref_az, ref_el = figure_eight_path(F8_A, F8_B, F8_C, F8_D, 0.0, el_c_end, 0.0, 361)
 

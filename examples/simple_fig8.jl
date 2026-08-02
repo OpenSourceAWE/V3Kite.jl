@@ -263,13 +263,6 @@ UP_LOOPS         = false    # Fly DOWN-loops: at large |azimuth| the kite passes
                             # the only configuration that crosses the centre
                             # instead of circling one lobe.
 
-# Optional walk of the pattern centre (PlanFig8.md STEP 4). 0 disables it; the
-# run then flies the whole time at EL_CENTER. Use it to move the pattern to a
-# lower, more force-optimal centre after a stable capture.
-WALK_RATE        = 0.0      # [deg/s] rate to walk the centre towards EL_FINAL
-EL_FINAL         = 25.0     # [deg] final pattern-centre elevation
-WALK_START       = 60.0     # [s] time after which the walk begins
-
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
@@ -504,7 +497,6 @@ heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, N = HEADING_D_N, dt = s.dt,
     umin = -MAX_STEERING, umax = MAX_STEERING)
 
-el_center_cur = EL_CENTER
 entry_sign = 0              # latched sign of the entry descent limiter (0 = unset)
 
 # Entry state machine (see the parameter block). Codes match the reference
@@ -520,13 +512,6 @@ toc("Start simulation loop...")
 try
     for _ in 1:s.steps
         t = s.sys_state.time
-
-        # Optional walk of the pattern centre (STEP 4). Runs before the
-        # guidance so it sees the updated path this step.
-        if WALK_RATE > 0 && t >= WALK_START && el_center_cur > EL_FINAL
-            global el_center_cur = max(EL_FINAL, el_center_cur - WALK_RATE * s.dt)
-            set_path_center!(fec, 0.0, el_center_cur)
-        end
 
         # L0 attractor guidance -> commanded course [rad].
         chi_set, az_attr, el_attr, dmin =
@@ -544,7 +529,7 @@ try
             global phase = t < PARK_TIME ? 0 : 3
         elseif phase == 0 && t >= PARK_TIME
             global phase = 1
-        elseif phase == 1 && el_deg <= el_center_cur + DIVE_EL_MARGIN
+        elseif phase == 1 && el_deg <= EL_CENTER + DIVE_EL_MARGIN
             global phase = 2
             global hold_start = t
         elseif phase == 2 && t - hold_start >= HOLD_TIME
@@ -696,7 +681,7 @@ try
         s.sys_state.var_01 = dmin              # cross-track error [deg]
         s.sys_state.var_02 = az_attr           # attractor azimuth [deg]
         s.sys_state.var_03 = el_attr           # attractor elevation [deg]
-        s.sys_state.var_04 = el_center_cur     # pattern-centre elevation [deg]
+        s.sys_state.var_04 = EL_CENTER         # pattern-centre elevation [deg]
         s.sys_state.var_05 = chi_set           # RAW guidance course [rad]
         s.sys_state.var_06 = rad2deg(err)      # REGULATED error [deg]
         # Entry limiter weight, not a flag: 0 = raw guidance course, 1 = fully
