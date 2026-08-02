@@ -111,7 +111,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # lag for wall time. Exposed to sweep the coupling
                             # mode described under DT, not as a lever that can
                             # stabilize it.
-V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
+V_WIND           = 8.0     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
                             # as far as `winch_ff_scale` lets it (1.13 m over a
@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.36     # Depower setting held during the run [-]. Sets the
+DEPOWER_SETPOINT = 0.34     # Depower setting held during the run [-]. Sets the
                             # operating point of the turn-rate law: 0.25 is agile
                             # (c1 = 0.3159) but cannot survive a sustained turn,
                             # 0.55 survives but is far too sluggish
@@ -222,7 +222,7 @@ EL_CENTER        = 26.0     # Pattern-centre elevation; spans 16-36° at B=20.
                             # probably A) coming down with the centre — the
                             # reference flies A = 40, B = 15 at this centre.
 
-ATTRACTOR_DIST   = 8        # Arc distance Q -> attractor [deg]. Guarded with
+ATTRACTOR_DIST   = 10        # Arc distance Q -> attractor [deg]. Guarded with
                             # `@isdefined` so a sweep driver can set it in the
                             # REPL before `include`ing this file and have its
                             # value survive (same pattern as F8_* in
