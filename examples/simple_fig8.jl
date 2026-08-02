@@ -294,7 +294,7 @@ try
         # angle means heading feedback tracks the path with a standing offset. On
         # the pattern the kite is also fast enough that the schedule asks for
         # course anyway — it just dips into the band during the slow part of a
-        # turn and swaps the feedback signal mid-manoeuvre, which is the failure
+        # turn and swaps the feedback signal mid-manoeuver, which is the failure
         # mode recorded in SmallPlan.md (|v_kite| crossed the 10 m/s edge twice
         # in the 15-27 s window of the 2026-08-02 run, 9.8% of it inside the
         # band). The entry phases keep the schedule: during park and dive the

@@ -256,7 +256,7 @@ function calc_attractor(fec::FigureEightController, azimuth, elevation)
     dists = [_dist(azimuth, elevation, az[i], el[i]) for i in 1:n]
 
     # Candidate index set: local window around the previous Q for continuity,
-    # or the whole path when off-path / not yet initialised.
+    # or the whole path when off-path / not yet initialized.
     total_len = sum(fec.seg_len)
     use_window = fec.has_prev && fes.search_window > 0 && total_len > 0 &&
                  dists[fec.last_idx] <= fes.reacquire_dist

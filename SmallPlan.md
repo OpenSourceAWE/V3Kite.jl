@@ -36,7 +36,7 @@ command on the clamp 88 % of the time, tape rate-limited 91 %.
 | parameter | value | note |
 |:---|---:|:---|
 | `HEADING_P` | **0.6** | derived from phase margin, not swept — see "How it was fixed" |
-| `HEADING_D` | 0.15 | untouched since the loop was linearised; re-examine |
+| `HEADING_D` | 0.15 | untouched since the loop was linearized; re-examine |
 | `DEPOWER_SETPOINT` | **0.40** | 0.36 crosses the centre but diverges at 37.6 s on energy |
 | `ATTRACTOR_DIST` | **12.1** | swept 10 .. 20, full table in the parameter's comment block |
 | `EL_CENTER` | 40.5 | **next target: 26** (see next steps) |
@@ -110,7 +110,7 @@ AoA/acceleration zigzag before recording it in a parameter's comment block.**
    4-lap log is kept as `data/fig8_run_N10_baseline.arrow` (`fig8_run` is
    overwritten by every run).
 5. Reconsider `HEADING_D = 0.15`. Derivative action against a 0.72 s effective
-   delay is destabilising; it was irrelevant while saturated, and has never been
+   delay is destabilizing; it was irrelevant while saturated, and has never been
    examined with the loop linear. **Half-done 2026-08-02**: the visible ~5-8 Hz
    ripple on `u_s` was traced to the D path's noise gain, and
    `HEADING_D_N = 2.0` (new, forwarded through `create_heading_pid`) cut the
@@ -165,7 +165,7 @@ its limit **66.5 % of the time**, at exactly 0.200 s⁻¹ = `v_steering` in
 
 That is a rate limiter: amplitude attenuation plus amplitude-DEPENDENT phase
 lag. It explains the one result the authority story never fit — `MAX_STEERING`
-0.30 -> 0.33 made things WORSE and 0.375 destabilised the bare plant. Under an
+0.30 -> 0.33 made things WORSE and 0.375 destabilized the bare plant. Under an
 amplitude ceiling more authority helps; under a rate limit a larger command
 means longer slewing and more lag.
 
