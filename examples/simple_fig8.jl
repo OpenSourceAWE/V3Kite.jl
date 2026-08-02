@@ -221,8 +221,8 @@ EL_CENTER        = 26.0     # Pattern-centre elevation; spans 16-36° at B=20.
                             # largest cross-track errors. Next lever is B (and
                             # probably A) coming down with the centre — the
                             # reference flies A = 40, B = 15 at this centre.
-@isdefined(ATTRACTOR_DIST) || (
-ATTRACTOR_DIST   = 12.1)    # Arc distance Q -> attractor [deg]. Guarded with
+
+ATTRACTOR_DIST   = 8        # Arc distance Q -> attractor [deg]. Guarded with
                             # `@isdefined` so a sweep driver can set it in the
                             # REPL before `include`ing this file and have its
                             # value survive (same pattern as F8_* in
@@ -261,7 +261,7 @@ WALK_START       = 60.0     # [s] time after which the walk begins
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 0.6      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
+HEADING_P        = 1.0      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
                             # plant psi_dot = c1*v_a*u_s is an INTEGRATOR of gain
                             # c1*v_a = 3.66 rad/s per unit u_s at flight speed, so
                             # the crossover is omega_c = K*3.66. Against the
@@ -340,7 +340,7 @@ FIG8_PURE_COURSE = false    # In FIG8 mode (phase 3), feed back COURSE alone and
                             # a turn, swapping the feedback signal mid-turn for
                             # no benefit. `false` restores the pure speed
                             # schedule in every phase.
-MAX_STEERING     = 0.30     # Steering command limit [-]. Raising it to relieve
+MAX_STEERING     = 0.32     # Steering command limit [-]. Raising it to relieve
                             # the clamp saturation is CLOSED: at 0.33 the loop
                             # goes violently unstable (diverged at t = 30.9 s,
                             # peak turn rate 949 deg/s) and at 0.375 the PLANT
