@@ -11,7 +11,7 @@
 - don't iterate automatically — one change, one run, report, wait.
   EXCEPTION: when a minimization is explicitly requested ("minimize X"), a
   sweep is allowed: one parameter at a time, 10% steps, results recorded in
-  that parameter's comment block in `simple_fig8.jl`.
+  that field's docstring in `src/fc_settings.jl`.
 - change existing tuning parameters by at most 10% per iteration
 
 ## Status 2026-08-02 — the figure eight flies
@@ -310,9 +310,11 @@ downward-left, already inside the first down-turn.
 - `examples/Project.toml` pins `MakieControlPlots = "0.1.12"`; 0.1.9's
   legend-height probe throws `only(owned)` on any `plotx` figure with legends on
   more than one row.
-- `ATTRACTOR_DIST` and `SHOW_PLOTS` in `simple_fig8.jl` are `@isdefined`-guarded
-  so a sweep driver can set them in the REPL. NOTE the footgun: a stale global
-  silently overrides the file. The startup `@info` line prints the lead in use.
+- Every tuning parameter is a field of `FC_Settings` (`src/fc_settings.jl`),
+  read from `data/fc_settings.yaml` into the global `fcs`. Both `fcs` and
+  `SHOW_PLOTS` in `simple_fig8.jl` are `@isdefined`-guarded so a sweep driver
+  can set them in the REPL. NOTE the footgun: a stale `fcs` silently overrides
+  the file. The startup `@info` lines print the values in use.
 
 ### AoA: why it looked wrong, and what is true
 

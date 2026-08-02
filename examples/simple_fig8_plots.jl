@@ -15,11 +15,11 @@ Loads the "fig8_run" log saved by simple_fig8.jl. Produces three figures:
    centre), heading and course vs the commanded course, the course-tracking
    error, steering command vs the KCU's actual tape-lagged value, tether force,
    and tether length against the length setpoint. The last two belong together:
-   at `COMPLIANCE > 0` the drum holds a low-passed force rather than a length,
+   at `compliance > 0` the drum holds a low-passed force rather than a length,
    so it pays out on every dive and hauls in on every climb, and the length
-   panel is where that shows — the excursion scales with `COMPLIANCE` itself.
+   panel is where that shows — the excursion scales with `compliance` itself.
    The setpoint line is the length at `t = 0`, which is exactly the `l0` the run
-   trims back to (both come from the first logged row). At `COMPLIANCE = 0` the
+   trims back to (both come from the first logged row). At `compliance = 0` the
    two lines should sit on top of each other to within a centimetre. The bottom
    panel is the entry state machine (`sys_state`, 0-based as logged: 0 park,
    1 dive, 2 hold, 3 fig8 — the legend repeats the mapping), which dates every
@@ -31,7 +31,7 @@ Loads the "fig8_run" log saved by simple_fig8.jl. Produces three figures:
    against. Those two speeds are plotted in one panel on purpose: they differ by
    roughly the wind speed, and `|vel_kite|` is the signal the heading/course
    blend is scheduled on, so this is where a mid-manoeuvre crossing of the
-   `V_KITE_HEADING`/`V_KITE_COURSE` band shows up.
+   `v_kite_heading`/`v_kite_course` band shows up.
 
 The AoA panel carries two curves because they answer different questions.
 `AoA` is the VSM's CENTRE PANEL angle, the one `update_sys_state!` logs; the
@@ -61,7 +61,7 @@ carries the same errors wrapped to ±180°.
 Judge path following by `chi - chi_set`. The third curve in the error panel is
 the error the PID actually regulated (`var_06`): the loop feeds back heading at
 low kite speed and course at high, blending in between
-(`V_KITE_HEADING`/`V_KITE_COURSE` in simple_fig8.jl, weight logged in `var_08`),
+(`v_kite_heading`/`v_kite_course` in `FC_Settings`, weight logged in `var_08`),
 so that curve rides on `psi - chi_set` at low speed and on `chi - chi_set` at
 high. On logs written before the blend existed it coincides with
 `psi - chi_set`.
@@ -82,17 +82,15 @@ using MakieControlPlots
 using LaTeXStrings
 using V3Kite
 
-# Pattern geometry, used only to redraw the reference path. simple_fig8.jl
-# `include`s this file at the end of a run, so whatever it defined wins and the
-# overlay cannot drift out of sync with the run; these values are the fallback
-# for running this script standalone against an existing "fig8_run" log.
-@isdefined(F8_A) || (F8_A = 50.0)
-@isdefined(F8_B) || (F8_B = 20.0)
-@isdefined(F8_C) || (F8_C = 0.0)
-@isdefined(F8_D) || (F8_D = 0.0)
-
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
+
+# Pattern geometry, used only to redraw the reference path. simple_fig8.jl
+# `include`s this file at the end of a run with its `fcs` still in scope, so the
+# overlay cannot drift out of sync with the run; standalone against an existing
+# "fig8_run" log the settings file is read instead, which is the same source the
+# run itself used unless it was overridden in the REPL.
+@isdefined(fcs) || (fcs = FC_Settings("fc_settings.yaml"))
 syslog = load_log("fig8_run")
 sl = syslog.syslog
 
@@ -111,7 +109,7 @@ el_deg = rad2deg.(sl.elevation[rng])
 
 # Kite speed |vel_kite|, plotted against v_app because the two are far apart on
 # this kite and it is the SLOW one that the heading/course blend is scheduled on
-# (V_KITE_HEADING/V_KITE_COURSE in simple_fig8.jl): parked, v_app is already ~9
+# (v_kite_heading/v_kite_course in FC_Settings): parked, v_app is already ~9
 # m/s of ambient wind while the kite itself barely moves. Written out rather
 # than `norm.` so this script needs no LinearAlgebra import.
 v_kite = [sqrt(sum(abs2, v)) for v in sl.vel_kite[rng]]
@@ -120,7 +118,8 @@ v_kite = [sqrt(sum(abs2, v)) for v in sl.vel_kite[rng]]
 # LAST row rather than assumed constant, so a log whose centre moved during the
 # run still gets an overlay that matches where it ended up.
 el_c_end = Float64(sl.var_04[end])
-ref_az, ref_el = figure_eight_path(F8_A, F8_B, F8_C, F8_D, 0.0, el_c_end, 0.0, 361)
+ref_az, ref_el = figure_eight_path(fcs.f8_a, fcs.f8_b, fcs.f8_c, fcs.f8_d,
+                                   0.0, el_c_end, 0.0, 361)
 
 # --- angles for the psi/chi panel ---------------------------------------- #
 # Plotted UNWRAPPED: the raw ±180° traces jump at the branch cut, the three

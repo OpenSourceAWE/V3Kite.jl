@@ -54,6 +54,7 @@ include("fig8_metrics.jl")
 include("simulation.jl")
 include("stabilization.jl")
 include("wc_settings.jl")
+include("fc_settings.jl")
 include("interface.jl")
 
 """
@@ -151,6 +152,9 @@ export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 
 # Winch-controller settings export
 export WC_Settings
+
+# Figure-eight flight-controller settings export
+export FC_Settings
 
 # Interface exports
 export init, step!, warmup!
