@@ -294,6 +294,13 @@ HEADING_D_N      = 2.0      # Derivative filter: maximum gain of the D path,
                             # change: same flight, 33% less peak tape slew.
 V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
 V_APP_MIN        = 10.0      # Lower clamp on v_app, limits the gain boost [m/s]
+ENTRY_GAIN       = 0.25     # Factor on HEADING_P during the ENTRY phases (dive
+                            # and hold, phases 1-2); phase 3 flies at the full
+                            # gain. The entry is turn-rate limited — the steering
+                            # command sits on its clamp for the whole dive — so
+                            # detuning the loop there costs nothing in tracking
+                            # and takes the command off the clamp, which is the
+                            # only way to shape the descent from the loop side.
 
 # WHAT THE LOOP REGULATES: heading at low KITE speed, course at high.
 # The guidance commands a COURSE, so course is the signal that actually closes
@@ -580,8 +587,11 @@ try
         # Gain scheduling: turn rate ~ u_s * v_app, so K ~ 1/v_app. Still on
         # APPARENT wind speed — that is the plant gain; only the choice of
         # feedback angle above schedules on kite speed.
+        # The entry phases run at ENTRY_GAIN * HEADING_P; the pattern itself
+        # (phase 3) at the full gain.
         v_app = max(Float64(s.sys_state.v_app), V_APP_MIN)
-        set_K!(heading_pid, HEADING_P * V_APP_REF / v_app, 0.0, err)
+        K_phase = phase == 3 ? HEADING_P : ENTRY_GAIN * HEADING_P
+        set_K!(heading_pid, K_phase * V_APP_REF / v_app, 0.0, err)
         # Park: hold zero steering while the settling transients decay. The PID
         # is still stepped (with zero error) so its derivative state is current
         # and engagement is bumpless.
