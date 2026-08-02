@@ -113,7 +113,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # mode described under DT, not as a lever that can
                             # stabilize it.
 V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
-COMPLIANCE       = 0.1      # How soft the winch is [-]. 
+COMPLIANCE       = 0.5      # How soft the winch is [-]. 
                             #
                             # WHAT IT SCALES. In force mode the drum holds a
                             # low-passed reference force, and a load above that
@@ -145,7 +145,8 @@ COMPLIANCE       = 0.1      # How soft the winch is [-].
                             # sides to agree to the millimeter. Note the default
                             # winch_ff_scale of 0.7 is NOT used at 0: it yields
                             # 1.13 m over 30 s, which is soft, not constant.
-TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
+TETHER_LENGTH    = 200.0    # Initial tether length [m], held more or less constant.
+                            # Tested in the range 150m to 300m
                             # The minimum angular turn radius is
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
