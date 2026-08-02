@@ -110,7 +110,7 @@ using Printf
 # it should differ in, and `include` this file. Nothing below reads a global
 # parameter — `fcs` is the single source.
 set_data_path(v3_data_path())
-@isdefined(fcs) || (fcs = FC_Settings("fc_settings.yaml"))
+fcs = FC_Settings("fc_settings.yaml")
 
 # ======================== INIT =========================== #
 
