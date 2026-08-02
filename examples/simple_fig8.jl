@@ -330,7 +330,7 @@ V_KITE_COURSE    = 10.0     # [m/s] at/above: pure course feedback ("high" per
                             # kite drifts at during the park). With
                             # FIG8_PURE_COURSE on, this band governs the ENTRY
                             # only.
-FIG8_PURE_COURSE = true     # In FIG8 mode (phase 3), feed back COURSE alone and
+FIG8_PURE_COURSE = false    # In FIG8 mode (phase 3), feed back COURSE alone and
                             # ignore the V_KITE_* schedule; the entry phases keep
                             # it. This is SmallPlan.md's "gate on phase instead
                             # of speed" option. Rationale: path following is a
@@ -340,20 +340,6 @@ FIG8_PURE_COURSE = true     # In FIG8 mode (phase 3), feed back COURSE alone and
                             # a turn, swapping the feedback signal mid-turn for
                             # no benefit. `false` restores the pure speed
                             # schedule in every phase.
-STEERING_TRACK_TAPE = false # Clamp the steering command to within STEERING_LEAD
-                            # steps of tape travel of the MEASURED tape position
-                            # (`sys_state.steering`). SmallPlan.md proposed this
-                            # as "anti-windup against the real tape position".
-                            # CLOSED — tried at lead 3 and it makes THE CLAMP the
-                            # binding rate limit instead of the tape, an effective
-                            # actuator 6.7x slower than the real one; the kite
-                            # lost the pattern and went below the horizon. The
-                            # premise is gone anyway: since HEADING_P 4.5 -> 0.6
-                            # the tape saturates only 2% of the time.
-STEERING_LEAD    = 3        # [steps] how far ahead of the tape the command may
-                            # sit when STEERING_TRACK_TAPE is on. 3 * 0.2 * dt =
-                            # 0.010 of travel. A LARGER lead is less harmful, not
-                            # more — but the whole idea is closed, see above.
 MAX_STEERING     = 0.30     # Steering command limit [-]. Raising it to relieve
                             # the clamp saturation is CLOSED: at 0.33 the loop
                             # goes violently unstable (diverged at t = 30.9 s,
@@ -604,27 +590,6 @@ try
             0.0
         else
             heading_pid(0.0, err, 0.0)
-        end
-
-        # Reference governor against the REAL tape position (SmallPlan.md).
-        #
-        # The KCU tape slews at set.v_steering [1/s] and no faster, so a command
-        # far from where the tape currently is cannot be followed — it just puts
-        # the actuator on its rate limit, which costs amplitude and adds
-        # amplitude-dependent phase lag (measured: 62.7° at the loop's own
-        # frequency, before HEADING_P was fixed). Clamping the command to within
-        # STEERING_LEAD steps of travel of the MEASURED position keeps every
-        # command achievable, and the tape is never chasing a distant target.
-        #
-        # NOTE this is a governor, not classic anti-windup: with HEADING_I =
-        # false the PID has no integral state, so there is nothing to
-        # back-calculate. If integral action is ever enabled, the tracking term
-        # has to be added here as well, or the integrator will wind up against
-        # this clamp exactly as it would against umin/umax.
-        if STEERING_TRACK_TAPE && phase != 0
-            reach = STEERING_LEAD * s.set.v_steering * s.dt
-            u_act = Float64(s.sys_state.steering)
-            rel_steering = clamp(rel_steering, u_act - reach, u_act + reach)
         end
 
         # Winch: force mode pays out under load and trims the mean length back
