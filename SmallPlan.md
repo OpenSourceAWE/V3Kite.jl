@@ -42,12 +42,45 @@ command on the clamp 88 % of the time, tape rate-limited 91 %.
 | `EL_CENTER` | 40.5 | **next target: 26** (see next steps) |
 | `MAX_STEERING` | 0.30 | command; the tape delivers 0.300 peak, 2 % rate-saturated |
 | `SIM_TIME` | 150 | left long for lap counting; restore to 30 for routine tuning |
+| `DT` | **0.05/6** | halved 2026-08-02 against a numerical instability, see below |
 | winch | force mode | `WINCH_FORCE_MODE = true` |
 | entry | phased, from the right | `CHI_DIVE < 0`, `DIVE_EL_MARGIN = 15` |
 | feedback | pure course in phase 3 | `FIG8_PURE_COURSE = true` |
 
+### The 30 Hz mode — not every abort is an energy failure (2026-08-02)
+
+The 150 s run at `HEADING_D_N = 2.0` stopped at t = 46.07 s on the overspeed
+guard. It is **not** an energy failure and **not** the filter's fault:
+
+- `v_app` is flat at 27 m/s and the tether force flat at ~3.1 kN until the
+  FINAL timestep, where `v_app` jumps 26.6 -> 67.9 m/s in one `dt`. The guard
+  reported a symptom one step late.
+- What actually diverges is a step-to-step (2·`dt` = 30 Hz) oscillation of the
+  wing, growing ~1.3-1.4x per sample from t = 45.0: AoA zigzag 0.14° -> 1.6° ->
+  6.5° -> 47.7°, kite-acceleration zigzag 10 -> 14 -> 73 -> 7621 m/s².
+  Centre-panel and span-mean AoA alternate in ANTIPHASE, so it is the structure.
+- The N=2 and N=10 trajectories agree to **0.3°** in azimuth+elevation over the
+  whole 46 s and to ~2 % on per-lap peak force. The surviving N=10 baseline
+  carries the same mode for all 150 s (Nyquist acceleration content 10-30 m/s²
+  in every 5 s window, AoA zigzag touching 0.99° at t = 22 s and recovering).
+
+Cause: `step!` runs with `vsm_interval = 1`, i.e. the VSM aero load is refreshed
+once per `dt` and held frozen inside the DAE in between — an explicitly coupled
+aero-structure scheme, whose characteristic instability is a growing 2·`dt`
+oscillation appearing first at maximum dynamic pressure. That is where it
+appears: bottom of the right lobe, ~3.2 kN, elevation ~21°.
+
+Fix applied: `DT` 0.05/3 -> 0.05/6, halving the aero lag for ~4x margin, at 2x
+wall time per run. `HEADING_D_N = 2.0` kept. **Consequence for tuning: the model
+rides this mode permanently at this operating point, so a run that dies with
+flat `v_app` and force is a numerics result, not a parameter verdict — check the
+AoA/acceleration zigzag before recording it in a parameter's comment block.**
+
 ## Next steps
 
+0. **Re-establish the baseline at `DT = 0.05/6`.** A 150 s run is needed before
+   any further parameter verdict; `data/fig8_run_N10_baseline.arrow` is no
+   longer bit-comparable, only comparable on per-lap metrics.
 1. **Lower the pattern towards centre 26° — but the lever is `F8_B`, not
    `EL_CENTER` alone.** Descent attempted 2026-08-02:
 
@@ -73,10 +106,18 @@ command on the clamp 88 % of the time, tape rate-limited 91 %.
 3. **Re-run the four untested "closed" levers** — entry course, entry timing,
    pattern size, `HEADING_P` around 0.6 — under the fixed loop. Two of the six
    reversed on re-test; the other four were measured through a relay.
-4. **Restore `SIM_TIME = 30`** for routine tuning.
+4. ~~**Restore `SIM_TIME = 30`** for routine tuning.~~ Done 2026-08-02. The 150 s
+   4-lap log is kept as `data/fig8_run_N10_baseline.arrow` (`fig8_run` is
+   overwritten by every run).
 5. Reconsider `HEADING_D = 0.15`. Derivative action against a 0.72 s effective
    delay is destabilising; it was irrelevant while saturated, and has never been
-   examined with the loop linear.
+   examined with the loop linear. **Half-done 2026-08-02**: the visible ~5-8 Hz
+   ripple on `u_s` was traced to the D path's noise gain, and
+   `HEADING_D_N = 2.0` (new, forwarded through `create_heading_pid`) cut the
+   2..25 Hz command RMS 0.00505 -> 0.00225 with the flight unchanged — see the
+   parameter's comment block. The gain itself is still untouched: at the loop's
+   0.1 Hz the D path contributes a gain of 1.005 and 5.4° of phase lead, so
+   `HEADING_D = 0` is the obvious A/B and costs almost nothing on paper.
 6. Switch the overspeed guard's abort message from `sys_state.AoA` (centre
    panel) to `span_mean_aoa` — it currently reports a stall that did not happen.
 

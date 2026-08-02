@@ -101,7 +101,7 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
-SIM_TIME         = 150.0    # Total simulation time [s]; ~43 s per lap at
+SIM_TIME         = 150.0     # Total simulation time [s]; ~43 s per lap at
                             # v_app 13 m/s, plus the descent from the park.
                             # 30 -> 150 (2026-08-02): a DELIBERATE one-off
                             # exception to SmallPlan.md's 30 s cap, taken after
@@ -115,10 +115,76 @@ SIM_TIME         = 150.0    # Total simulation time [s]; ~43 s per lap at
                             # needs ~130 s of flight, so 150 s gives it a fair
                             # chance; the first 120 s also line up with
                             # data/fig8_reference.arrow for a like-for-like read.
-                            # PUT THIS BACK TO 30 for routine tuning runs: the
-                            # metrics window opens at PARK_TIME + ENTRY_TIME =
-                            # 25 s, so a 30 s run measures only its last 5 s.
-DT               = 0.05/3   # Simulation timestep [s]
+                            # 150 -> 30 again (2026-08-02) once that question was
+                            # answered (4 laps, 4 of 4 criteria). NOTE the metrics
+                            # window opens at PARK_TIME + ENTRY_TIME = 25 s, so a
+                            # 30 s run scores only its last 5 s and `laps` is
+                            # meaningless — judge short runs on RMS d, the
+                            # elevation floor and the tape metrics, and go back to
+                            # 150 for anything that has to be counted in laps.
+DT               = 0.05/6   # Simulation timestep [s].
+                            #
+                            # 0.05/3 -> 0.05/6 (2026-08-02): NOT a tuning
+                            # parameter — this is a NUMERICAL stability fix, and
+                            # it costs 2x wall time per run.
+                            #
+                            # The 150 s run at HEADING_D_N = 2.0 stopped at
+                            # t = 46.07 s on the overspeed guard, but the guard
+                            # reported a symptom one step late: v_app is FLAT at
+                            # 27 m/s and the tether force flat at ~3.1 kN until
+                            # the final timestep, where v_app jumps 26.6 -> 67.9
+                            # m/s in one dt. That is not the energy runaway that
+                            # killed depower 0.36 and EL_CENTER 32.8, which crept
+                            # over seconds.
+                            #
+                            # The real failure is a step-to-step (2*dt = 30 Hz)
+                            # oscillation of the WING, growing ~1.3-1.4x per
+                            # sample from t = 45.0:
+                            #
+                            #   t [s]   AoA zigzag   |acc| zigzag   v_app  force
+                            #   45.0      0.14°          10          26.8   3142
+                            #   45.2      1.6°           14          26.9   3165
+                            #   45.9      6.5°           73          27.3   3108
+                            #   46.0     47.7°          253          27.4   3323
+                            #   46.05    39.3°         7621          26.6   3850
+                            #
+                            # Centre-panel AoA and span-mean AoA alternate in
+                            # ANTIPHASE each step and the kite acceleration
+                            # carries the same Nyquist content, so it is the
+                            # structure shaking, not a logging artefact.
+                            #
+                            # WHERE IT COMES FROM: `step!` runs with
+                            # vsm_interval = 1 (src/interface.jl), i.e. the VSM
+                            # aero load is refreshed once per dt and held FROZEN
+                            # inside the DAE in between. That is an explicitly
+                            # coupled aero-structure scheme, whose characteristic
+                            # instability is exactly a growing 2*dt oscillation
+                            # appearing first at maximum dynamic pressure — which
+                            # is where and when this one appears (bottom of the
+                            # right lobe, ~3.2 kN, elevation ~21°). Halving dt
+                            # halves the aero lag and gives ~4x margin on the
+                            # mode. abs_tol/rel_tol = 0.01 in data/settings.yaml
+                            # leave nothing to absorb it either, but tightening
+                            # them does not touch the coupling lag.
+                            #
+                            # HEADING_D_N is NOT the cause and was not reverted:
+                            # the N=2 and N=10 trajectories agree to 0.3° in
+                            # azimuth+elevation over the whole 46 s and to ~2% on
+                            # per-lap peak force, and the surviving N=10 baseline
+                            # carries the SAME marginal mode for all 150 s (its
+                            # Nyquist acceleration content is 10-30 m/s² in every
+                            # 5 s window, its AoA zigzag touches 0.99° at t = 22 s
+                            # and recovers). The model rides this mode
+                            # permanently at this operating point; a
+                            # roundoff-level difference decides whether it trips.
+                            #
+                            # Raising the in-plane BODY_DAMPING would also damp
+                            # it, at the cost of the turn authority the pattern
+                            # needs (see the docstring), so that route stays shut.
+                            #
+                            # NOTE this re-bases the trajectory:
+                            # data/fig8_run_N10_baseline.arrow is no longer
+                            # bit-comparable, only comparable on per-lap metrics.
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
@@ -732,6 +798,48 @@ HEADING_I        = false    # No integral action: a steady heading bias shows up
                             # back onto the path. Try a finite Ti only if a
                             # persistent one-sided cross-track offset remains.
 HEADING_D        = 0.15     # Derivative time [s], damps the initial transient
+HEADING_D_N      = 2.0      # Derivative filter: maximum gain of the D path,
+                            # which is K*Td*s/(1 + s*Td/N). Flat at K below
+                            # N/(2*pi*Td) Hz, rising to N*K above it.
+                            # 10 (the DiscretePIDs default) -> 2 (2026-08-02),
+                            # after u_s was seen carrying a visible high-frequency
+                            # ripple. MEASURED on the 150 s 4-lap log, settled
+                            # window t = 30..150 s: the fed-back course and
+                            # heading carry only BROADBAND noise (~0.003°, no
+                            # peak), while the command has 0.00505 RMS in
+                            # 2..25 Hz, peaking at 7.95 Hz. That peak is not a
+                            # plant mode — multiplying the measured error-noise
+                            # spectrum by the PID's own magnitude reproduces both
+                            # the shape and the 7.95 Hz peak, which sits where the
+                            # rising D gain meets the falling noise floor. With
+                            # N = 10 the corner is at 10.6 Hz and the HF gain
+                            # 10*K; at N = 2 it is 2.1 Hz and 2*K.
+                            # At the loop's own 0.1 Hz the D path contributes a
+                            # gain of 1.005 and 5.4° of phase lead either way, so
+                            # this is a filter change, not a gain change.
+                            # The delivered tape barely saw the ripple (HF RMS
+                            # 0.00027, 19x smaller than the command), so the cost
+                            # was never flight quality — it was that command-side
+                            # slew (RMS 0.89 /s against the 0.2 /s tape limit) is
+                            # mostly noise, which makes every rate metric measured
+                            # on set_steering unreadable.
+                            # RESULT, verified two ways. (a) Offline replay of the
+                            # PID over the BASELINE log's own error signal, so the
+                            # only difference is the filter: HF (2..25 Hz) command
+                            # RMS 0.00505 -> 0.00225 (-56%), band ratios 0.77 /
+                            # 0.54 / 0.43 / 0.39 over 2-4 / 4-8 / 8-15 / 15-25 Hz
+                            # against 0.80 / 0.52 / 0.36 / 0.31 predicted, while
+                            # the 0.05..0.5 Hz content — everything the loop
+                            # actually uses — moved 0.0549 -> 0.0551 (+0.4%).
+                            # (b) A 30 s run against the baseline over the same
+                            # 25..30 s window: RMS d 3.14 -> 3.10°, min elevation
+                            # 22.2 -> 22.3°, azimuth span identical to 0.2°, and
+                            # peak TAPE slew 0.171 -> 0.115 /s (-33%) — same
+                            # flight, less actuator work.
+                            # Do NOT judge this on a 17..30 s window: there the
+                            # command's own transients (clamped 8% of the time)
+                            # dominate the HF tails through the P path and hide
+                            # the effect (band ratios only 0.92 / 0.79 / 0.71).
 V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
 V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 
@@ -940,7 +1048,7 @@ lead_time = deg2rad(ATTRACTOR_DIST) * TETHER_LENGTH / V_APP_REF
                ATTRACTOR_DIST, lead_time, V_APP_REF, delay, lead_time / delay)
 
 heading_pid = create_heading_pid(;
-    K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,
+    K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, N = HEADING_D_N, dt = s.dt,
     umin = -MAX_STEERING, umax = MAX_STEERING)
 
 el_center_cur = EL_CENTER

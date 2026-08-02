@@ -634,14 +634,21 @@ function save_and_load_log(logger, name; path=nothing)
 end
 
 """
-    create_heading_pid(; K, Ti, Td, dt, umin, umax) -> DiscretePID
+    create_heading_pid(; K, Ti, Td, N, dt, umin, umax) -> DiscretePID
 
 Create a heading PID controller with standard V3 kite conventions.
 Gains `Ti` and `Td` accept `false` to disable integral/derivative.
+
+`N` is the derivative filter's maximum gain: the D path is
+`K*Td*s / (1 + s*Td/N)`, so it amplifies measurement noise by up to `N*K`
+above the corner `N/(2*pi*Td)` [Hz]. `DiscretePIDs` defaults to 10, which on a
+course loop closed at ~0.1 Hz is 10x noise gain bought for a few degrees of
+phase lead; pass a smaller `N` to filter the derivative harder without touching
+the loop's behaviour at its working frequency.
 """
-function create_heading_pid(; K=1.0, Ti=false, Td=false,
+function create_heading_pid(; K=1.0, Ti=false, Td=false, N=10.0,
                              dt, umin=-1.0, umax=1.0)
-    return DiscretePID(; K, Ti, Td, Ts=dt, umin, umax)
+    return DiscretePID(; K, Ti, Td, N, Ts=dt, umin, umax)
 end
 
 """
