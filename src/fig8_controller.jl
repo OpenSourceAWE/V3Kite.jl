@@ -53,7 +53,7 @@ tightest curvature is smaller than `ρ` cannot be flown however the PID is tuned
 # `V3_TURN_RATE_C2` used to live here as a hand-maintained `Dict` (one row per
 # identified `(body_damping, depower)`). They now live in `turn_rate_table.jl`
 # (included before this file), backed by `data/turn_rate_coeffs.yaml` and
-# interpolated in depower — see PlanC1C2.md.
+# interpolated in depower.
 
 """
     figure_eight_path(A, B, C, D, x0, y0, theta, num_points)
@@ -180,7 +180,7 @@ end
 
 Move the reference path to a new center [deg] and rebuild it in place. Used to
 walk the pattern center gradually from the capture elevation down to the
-force-optimal one (see PlanFig8.md STEP 4): a large instantaneous step demands a
+force-optimal one: a large instantaneous step demands a
 heading change big enough to fight the airframe's own dynamics instead of being
 smoothly captured by the guidance.
 """
