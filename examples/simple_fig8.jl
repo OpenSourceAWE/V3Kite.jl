@@ -5,7 +5,7 @@
 Figure-of-eight path following of the V3 kite via the `init`/`step!` interface.
 
 The kite starts parked at ~73° and reaches the pattern through a four-phase
-entry (park -> dive -> hold -> fig8, see ENTRY_PHASES). Once engaged, the L0
+entry (park -> dive -> hold -> fig8). Once engaged, the L0
 attractor guidance (`src/fig8_controller.jl`) commands a course and a PID (as in
 `simple_sinus.jl` / `simple_auto_parking.jl`) tracks it with the steering tape.
 
@@ -196,7 +196,6 @@ WARMUP_TIME      = 2.0      # [s]
 # Reference timings (its park is 10 s, ours 5 s): dive 5.6 s covering 71 -> 42°
 # of elevation (~5.2°/s), hold 1.2 s covering the last 42 -> 27° (the kite is
 # fastest here, so this is the steepest part), handover at the centre elevation.
-ENTRY_PHASES     = true     # false = old behaviour, guidance engages at PARK_TIME
 CHI_DIVE         = -85.0    # [deg] course commanded during the dive. |chi| > 90
                             # is descending, |chi| < 90 climbing, 90 exactly
                             # horizontal. SIGN, measured: a POSITIVE commanded
@@ -573,9 +572,7 @@ try
         # entry command below — the point of the phases is that the descent is
         # NOT flown by the path controller.
         local el_deg = rad2deg(Float64(s.sys_state.elevation))
-        if !ENTRY_PHASES
-            global phase = t < PARK_TIME ? 0 : 3
-        elseif phase == 0 && t >= PARK_TIME
+        if phase == 0 && t >= PARK_TIME
             global phase = 1
         elseif phase == 1 && el_deg <= EL_CENTER + DIVE_EL_MARGIN
             global phase = 2
