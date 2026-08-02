@@ -88,7 +88,7 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
-SIM_TIME         = 50.0    # Total simulation time [s]; ~43 s per lap at v_app
+SIM_TIME         = 150.0    # Total simulation time [s]; ~43 s per lap at v_app
                             # 13 m/s, plus the descent from the park. The metrics
                             # window opens at PARK_TIME + ENTRY_TIME = 25 s, so a
                             # 30 s run scores only its last 5 s and `laps` is
