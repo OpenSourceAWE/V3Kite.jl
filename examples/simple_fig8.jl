@@ -197,11 +197,6 @@ WARMUP_TIME      = 2.0      # [s]
 # Reference timings (its park is 10 s, ours 5 s): dive 5.6 s covering 71 -> 42°
 # of elevation (~5.2°/s), hold 1.2 s covering the last 42 -> 27° (the kite is
 # fastest here, so this is the steepest part), handover at the centre elevation.
-#
-# NOTE the entry is TURN-RATE LIMITED at this depower: the steering command sits
-# at its clamp for the whole dive, so only the SIGN of CHI_DIVE reaches the
-# plant and the entry cannot be shaped by the three constants below — the only
-# entry choice that exists is which side to enter from. See the tuning log.
 ENTRY_PHASES     = true     # false = old behaviour, guidance engages at PARK_TIME
 CHI_DIVE         = -85.0    # [deg] course commanded during the dive. |chi| > 90
                             # is descending, |chi| < 90 climbing, 90 exactly
@@ -240,32 +235,8 @@ EL_CENTER        = 26.0     # Pattern-centre elevation; spans 16-36° at B=20.
                             # every failure at low centre has been an ENERGY
                             # failure (v_app and force run away while the tracking
                             # still looks fine).
-                            #
-                            # WHAT BINDS NOW is the pattern's BOTTOM EDGE, not the
-                            # centre: at B = 20 the bottom sits at 16° and the
-                            # kite undershoots it by ~5° on EVERY lap, leaving
-                            # 0.9° of margin on MIN_ELEVATION and producing the
-                            # largest cross-track errors. Next lever is B (and
-                            # probably A) coming down with the centre — the
-                            # reference flies A = 40, B = 15 at this centre.
-
-ATTRACTOR_DIST   = 10        # Arc distance Q -> attractor [deg]. Guarded with
-                            # `@isdefined` so a sweep driver can set it in the
-                            # REPL before `include`ing this file and have its
-                            # value survive (same pattern as F8_* in
-                            # simple_fig8_plots.jl); the number here is the
-                            # default for a plain run. NOTE the footgun: a stale
-                            # ATTRACTOR_DIST left in the REPL by a sweep silently
-                            # wins over this value. The startup @info line prints
-                            # the lead actually used — read it.
-                            #
-                            # Swept 10..20: RMS d rises monotonically with the
-                            # lead (2.85 -> 3.58°) while force ripple falls the
-                            # other way, and there is a survival cliff between
-                            # 16.11 and 17.72 (both die at ~41 s). 12.1 is the
-                            # shortest lead giving the full 4 laps and 8 centre
-                            # crossings; a shorter lead flies a fuller eight, not
-                            # merely a better-tracked one.
+ 
+ATTRACTOR_DIST   = 10       # Arc distance Q -> attractor [deg]. 
 UP_LOOPS         = false    # Fly DOWN-loops: at large |azimuth| the kite passes
                             # the azimuth extreme moving downwards. The flag
                             # reverses the traversal direction of the reference
@@ -448,6 +419,19 @@ V_APP_ABORT      = 45.0     # [m/s] stop the run above this apparent wind speed
 # the tracking statistics start.
 ENTRY_TIME       = 52.0     # [s] after PARK_TIME
 MIN_ELEVATION    = 10.0     # [deg] floor criterion, evaluated over the WHOLE run
+MIN_SPAN_FRAC    = 0.7      # Pattern-SIZE criterion: the mean per-lobe azimuth
+                            # reach must be at least this fraction of F8_A on
+                            # EACH side, and the elevation span this fraction of
+                            # F8_B. Every other criterion is measured against
+                            # the CLOSEST POINT of the path, so all of them pass
+                            # on a kite flying a small eight, or one lobe in half
+                            # the wind window — it is on the path, it just is not
+                            # going anywhere on it. Sized against the flown spans
+                            # on record: the reference run holds azimuth
+                            # -43.5..+42.2° against A = 40 (fill 1.06/1.09) and
+                            # an elevation span of 19.9° against B = 15 (1.33),
+                            # so 0.7 has real margin against a good run while a
+                            # degenerate one lands far below it.
 
 # ======================== INIT =========================== #
 
@@ -750,8 +734,16 @@ save_log(s.logger, "fig8_run"; colmeta = timestamp_colmeta())
 
 syslog = load_log("fig8_run")
 sl = syslog.syslog
+# The pattern geometry is passed in, not just the log: without it the tracking
+# criteria are blind to SIZE. Cross-track error is measured to the closest point
+# of the path, so a kite flying a small eight — or one lobe's worth of it in half
+# the wind window — is close to the path at every instant and scores a low RMS d.
+# `az_amplitude`/`el_height` add the reach criteria that catch that (see
+# MIN_SPAN_FRAC).
 print_fig8_metrics(sl; t_start = PARK_TIME, settle_time = ENTRY_TIME,
-                   min_elevation = MIN_ELEVATION, az_center = 0.0)
+                   min_elevation = MIN_ELEVATION, az_center = 0.0,
+                   az_amplitude = F8_A, el_height = F8_B,
+                   min_span_frac = MIN_SPAN_FRAC)
 
 # Plots come up with the run — the plotting script reuses the F8_* constants
 # defined above, so the reference overlay always matches the pattern flown.
