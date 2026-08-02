@@ -234,6 +234,40 @@ end
 const RHO_SL = 1.225
 
 """
+Smallest drag coefficient at which a lift-to-drag ratio is still
+meaningful. Below it the wing is essentially unloaded and the ratio
+is reported as `NaN` rather than a number (see `drag_floor`).
+Chosen an order of magnitude below any loaded state: the parked V3
+flies at L/D_wing ~ 5.8, so its wing CD is of order 0.1.
+"""
+const LD_CD_MIN = 0.01
+
+"""
+    drag_floor(sam; cd_min=LD_CD_MIN) -> Float64
+
+Smallest drag force [N] at which a lift-to-drag ratio is still
+meaningful, `cd_min * q * A_proj` at the current apparent wind speed.
+
+WHY this exists: `compute_lift` is a norm and therefore non-negative,
+while `compute_drag`/`compute_tether_drag` are SIGNED projections onto
+the apparent-wind direction. When the wing unloads — the settling-to-
+dynamics transient at the start of a run, or any moment the aero force
+turns nearly normal to `v_a` — that denominator passes through zero and
+`lift / drag` produces an arbitrarily large spike from an arbitrarily
+small force. A floor in Newton cannot express "small" here, because the
+force scale itself moves with `v_app^2`; a floor on the COEFFICIENT can.
+
+Returns `Inf` when there is no apparent wind at all, so every ratio
+formed against it is `NaN`.
+"""
+function drag_floor(sam; cd_min = LD_CD_MIN)
+    wing = sam.sys_struct.wings[1]
+    norm(wing.va_b) < 1e-6 && return Inf
+    _, q_ref = drag_coeff_ref(wing)
+    return cd_min * q_ref
+end
+
+"""
     tether_point_idxs(sys) -> Set{Int}
 
 Collect all point indices that belong to tether segments.

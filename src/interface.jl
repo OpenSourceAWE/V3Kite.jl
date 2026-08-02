@@ -519,6 +519,18 @@ unstable at fixed `dt = 0.001` somewhere between 15 and 20 on the
 configuration tolerates it — a diverged settling now fails loudly rather than
 caching broken geometry. See PlanSuppressOscillations.md for the sweep.
 
+`warmup_time` [s] runs the returned model forward that long before handing it
+back, with the controls held at the settled values, and then discards those
+steps (see `warmup!`). `0.0`, the default, keeps the old behaviour. Its purpose
+is the handover: the settled geometry is an equilibrium of the SETTLING model
+(`dt = 0.001`, damped, winch braked), not of the model the run integrates, so
+without a warm-up the first second of every log is the difference between the
+two relaxing — the winch releasing, the drum taking up the load, the wing
+finding its dynamic trim. `warmup_force_mode` selects which winch the warm-up
+relaxes against and must match what the run will command: `true` engages
+`winch_force_torque!` at the current length (the default), `false` holds the
+length via `set_length`. Cost is `warmup_time / dt` full steps of wall time.
+
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
 the returned instance, and the winch is left un-braked.
@@ -533,6 +545,8 @@ function init(v_wind_gnd, l_tether;
               wc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
+              warmup_time = 0.0,
+              warmup_force_mode = true,
               remake = false)
     # Elevation fallback comes from the on-disk settings.
     set_data_path(v3_data_path())
@@ -569,8 +583,17 @@ function init(v_wind_gnd, l_tether;
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
 
-    # Un-brake the winch (the settled binary is serialized with brake=true).
+    # Un-brake the winch (the settled binary is serialized with brake=true) and
+    # hand the drum a holding torque for the load it is already carrying. The
+    # settled state was found with the length KINEMATICALLY FIXED, so the
+    # serialized `set_value` is whatever settling left there — release the brake
+    # without replacing it and the drum's first consistent-initial-condition
+    # solve sees a free drum holding nothing, which is a torque step at t = 0
+    # even though `winch_force_torque!` starts from the measured force one step
+    # later. `winch.force` is populated in the settled state (it is the same
+    # field `winch_force` reads every step).
     sys.winches[1].brake = false
+    init_winch_torque!(sys)
 
     set = sam.set
     set.wind_vec = wind_vec
@@ -602,9 +625,14 @@ function init(v_wind_gnd, l_tether;
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
 
-    return V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
+    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
         winch_ctrl = winch_ctrl)
+
+    warmup_time > 0 && warmup!(s, warmup_time;
+                               depower = depower_setpoint,
+                               force_mode = warmup_force_mode)
+    return s
 end
 
 """
@@ -644,7 +672,10 @@ value for both channels, so plot scripts never need to re-declare a setpoint:
 
 Depower uses a spare slot because `SysState` has no `set_depower` field; the
 actual values are filled by `update_sys_state!`. The remaining spare slots
-this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff).
+this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff). Both are
+`NaN` while the wing is unloaded, i.e. whenever the drag falls below
+`drag_floor` — the ratio is not meaningful there and reporting a number would
+be reporting a spike (see `drag_floor` for why the gate is on the coefficient).
 """
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
@@ -697,8 +728,14 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     s.sys_state.var_14 = rel_depower
     lift, wing_drag = lift_drag(s)
     _, _, total_d = total_drag(s)
-    s.sys_state.var_15 = wing_drag > 1e-6 ? lift / wing_drag : 0.0
-    s.sys_state.var_16 = total_d > 1e-6 ? lift / total_d : 0.0
+    # Both ratios are gated on a PHYSICAL drag floor, not on `> 1e-6` N: the
+    # drag is a signed projection onto v_a and passes through zero whenever the
+    # wing unloads, which turned a vanishing force into a large L/D (see
+    # `drag_floor`). Below the floor the ratio is NaN — a gap in the plot — so
+    # an unloaded instant reads as "not measurable" instead of as a peak.
+    d_min = drag_floor(s.sam)
+    s.sys_state.var_15 = wing_drag > d_min ? lift / wing_drag : NaN
+    s.sys_state.var_16 = total_d > d_min ? lift / total_d : NaN
     log!(s.logger, s.sys_state)
 
     if prn
@@ -714,5 +751,74 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                        i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
     end
+    return nothing
+end
+
+"""
+    warmup!(s::V3KITE, warmup_time; depower, force_mode=true) -> nothing
+
+Relax `s` into an equilibrium of ITS OWN model, then throw the relaxation away:
+step the model forward `warmup_time` seconds with zero steering, the depower
+held at `depower` and the winch in the mode the run will use, and afterwards
+replace the logger and `sys_state` so the run's first logged row is again
+`t = 0`. Called by `init` when `warmup_time > 0`.
+
+WHY: `settle_wing` returns an equilibrium of the SETTLING model — `dt = 0.001`,
+heavily damped, winch braked, so the tether length is held kinematically. The
+run integrates a different model: the brake is off, the drum holds a torque
+instead of a length, and the aero load is applied at the run's `dt`. The
+settled state is therefore not a fixed point of the model that starts at
+`t = 0`, and the difference shows up as a decaying transient over the first
+second or so of every log — visible in tether force, AoA and (sharply,
+because it is a ratio of two forces that both dip) in the logged L/D.
+
+The park phase of a controller script already exists to let that decay before
+the controller engages; the warm-up is the same idea moved to where it belongs,
+so the transient is not part of the run's data at all. It is deliberately NOT
+free: it costs `warmup_time / dt` full steps, and it is real integration, not a
+re-settle — if the model has no equilibrium at this condition (a diverging run)
+the warm-up diverges with it, which is a true result and not a warm-up failure.
+
+`force_mode` must match what the caller will command afterwards: `true` engages
+`winch_force_torque!` against the current length (and leaves its reference-force
+low-pass initialised, so the run starts with force mode already engaged),
+`false` holds the length with `set_length`. Warming up against the wrong winch
+would hand the run exactly the discontinuity this is meant to remove.
+
+The integrator clock keeps running across the warm-up; only the logged time is
+restarted, which is what `step!` advances (`t = s.sys_state.time + dt`). The
+progress lines `step!` prints during the warm-up are counted against `s.steps`
+and can be ignored.
+"""
+function warmup!(s::V3KITE, warmup_time; depower = 0.0, force_mode = true)
+    n = round(Int, warmup_time / s.dt)
+    n < 1 && return nothing
+    if n > s.steps
+        # The warm-up logs through the run's logger before that log is thrown
+        # away, and the logger holds `steps + 1` rows.
+        @warn "warmup_time is longer than the whole run; clamping to sim_time."
+        n = s.steps
+    end
+    @info @sprintf("init: warming up %.2f s (%d steps) with the winch in %s mode...",
+                   warmup_time, n, force_mode ? "force" : "position")
+    # Hold the length the model arrived at; the run re-references to wherever
+    # the warm-up leaves it (`l0` is read from `sys_state` after `init` returns).
+    l_hold = unstretched_length(s)
+    for _ in 1:n
+        if force_mode
+            step!(s; rel_depower = depower, rel_steering = 0.0,
+                  set_torque = winch_force_torque!(s, l_hold))
+        else
+            step!(s; rel_depower = depower, rel_steering = 0.0,
+                  set_length = l_hold)
+        end
+    end
+    # Discard the warm-up: a fresh logger and a `sys_state` rebuilt from the
+    # model, which also re-logs the (now relaxed) t = 0 row.
+    logger, sys_state = create_logger(s.sam, s.steps)
+    s.logger = logger
+    s.sys_state = sys_state
+    s.sys_state.time = 0.0
+    s.last_step_time = NaN
     return nothing
 end

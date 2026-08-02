@@ -111,7 +111,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # lag for wall time. Exposed to sweep the coupling
                             # mode described under DT, not as a lever that can
                             # stabilize it.
-V_WIND           = 6.0     # Ground wind speed at reference height [m/s]
+V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
                             # as far as `winch_ff_scale` lets it (1.13 m over a
@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.28     # Depower setting held during the run [-]. Sets the
+DEPOWER_SETPOINT = 0.26     # Depower setting held during the run [-]. Sets the
                             # operating point of the turn-rate law: 0.25 is agile
                             # (c1 = 0.3159) but cannot survive a sustained turn,
                             # 0.55 survives but is far too sluggish
@@ -152,6 +152,18 @@ ELEVATION        = 73.0     # [deg] settling elevation = the natural parked
 # model was still relaxing. The guidance still runs during the park (its course
 # estimate is low-passed and needs warming up), but its output is not applied.
 PARK_TIME        = 5.0      # [s]
+# Warm-up, run INSIDE `init` and discarded (see `warmup!`). The park above lets
+# the settling transients decay; this lets them decay BEFORE t = 0, so they are
+# not in the log at all. They are not the run's data: `settle_wing` returns an
+# equilibrium of the settling model (dt = 0.001, damped, winch braked) and the
+# first second of the run is that state relaxing into an equilibrium of the
+# model actually being integrated — the brake released, the drum taking up the
+# load at its own torque, the aero applied at the run's dt. It showed up most
+# sharply in the logged L/D, which is a ratio of two forces that both dip while
+# the wing is unloaded. Costs WARMUP_TIME / DT full steps of wall time (240 at
+# 2 s), and must be long enough to cover the decay — the transient under
+# investigation peaked at t = 0.66 s. 0.0 disables it.
+WARMUP_TIME      = 2.0      # [s]
 
 # ---- Entry state machine: park -> dive -> hold -> fig8 -------------------- #
 # Modelled on the working controller's log (SmallPlan.md, "Reference run"). That
@@ -434,7 +446,10 @@ MIN_ELEVATION    = 10.0     # [deg] floor criterion, evaluated over the WHOLE ru
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
     elevation = ELEVATION,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT)
+    system_yaml = PROJECT,
+    # The warm-up must relax against the winch the loop below will command,
+    # or it hands the run the very discontinuity it exists to remove.
+    warmup_time = WARMUP_TIME, warmup_force_mode = WINCH_FORCE_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]

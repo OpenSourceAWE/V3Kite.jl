@@ -122,7 +122,7 @@ export create_logger, ramp_factor, timestamp_colmeta, log_created_at
 export init_winch_torque!, force_to_torque, winch_force_torque!
 export sim_step!, log_state!, should_report
 export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
-export compute_drag_coeff, compute_lift_coeff
+export compute_drag_coeff, compute_lift_coeff, drag_floor
 export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
 export compute_kite_aoa, compute_bridle_euler, span_mean_aoa
@@ -153,7 +153,7 @@ export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 export WC_Settings
 
 # Interface exports
-export init, step!
+export init, step!, warmup!
 export lift_drag, total_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height, cl_cd, winch_force, reel_out_speed, states, spring_forces
 export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir, calc_heading, calc_course
 export kite_ref_frame, calc_orient_quat, orient_euler

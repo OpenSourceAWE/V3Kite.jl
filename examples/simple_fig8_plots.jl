@@ -33,7 +33,11 @@ show that curve as a flat zero.
 
 The L/D panel likewise shows two: `var_15` is the wing alone and `var_16` the
 effective value with tether, bridle and KCU drag included (both filled by
-`step!`). The second is what actually sets the achievable speed.
+`step!`). The second is what actually sets the achievable speed. A GAP in
+either curve is not missing data: `step!` writes `NaN` whenever the drag drops
+below `drag_floor`, i.e. while the wing is unloaded and the ratio would be a
+vanishing force divided into itself. Logs written before that guard existed
+show those instants as a spike instead.
 
 The guidance commands a COURSE (direction of travel) while the inner loop
 regulates HEADING (where the nose points), so the angle panel shows all three:

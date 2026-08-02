@@ -134,6 +134,55 @@ pattern. 0.40 survived 29 s open-loop at 150 m — better than 0.25, short of
 `rho = 1/(L*c1*u_s)`, so a longer tether lets the kite turn tighter in angular
 terms — the single most effective lever on pattern feasibility after `c1`.
 
+## WARMUP_TIME — the first second of every log was not flight
+
+`0 -> 2.0 s` (2026-08-02). Symptom: a sharp peak in the logged L/D at
+`t = 0.66 s`, i.e. 79 steps into the PARK, with the controller commanding
+nothing.
+
+Two candidates, and they need opposite fixes:
+
+1. **A division artefact.** `compute_lift` is a norm and non-negative, while
+   `compute_drag` is a SIGNED projection onto `v_a`. When the wing unloads that
+   denominator passes through zero, and the old guard in `step!` was
+   `wing_drag > 1e-6` N — a threshold that is strict at 40 m/s and meaningless
+   at 8, because the force scale moves with `v_app^2`. A vanishing force
+   divided into itself is an arbitrarily large L/D.
+2. **A real transient.** `settle_wing` returns an equilibrium of the SETTLING
+   model (`dt = 0.001`, damped, winch braked, so the length is held
+   kinematically). The run integrates a different model: brake off, drum on a
+   torque, aero at the run's `dt`. The settled state is not a fixed point of
+   the model that starts at `t = 0`.
+
+Tested in that order. (1) alone did NOT remove the peak: the gate was moved
+onto the drag COEFFICIENT (`drag_floor`, `LD_CD_MIN = 0.01` — an order of
+magnitude below the ~0.1 a loaded V3 wing carries) and below it `var_15`/
+`var_16` are now `NaN`, a gap rather than a number. The peak survived, which
+proves the drag never got that small and the ratio was finite and real.
+
+(2) removed it. Two changes at the handover, both in `init`:
+
+- `init_winch_torque!(sys)` immediately after `brake = false`. The function
+  already existed and `init` never called it, so the drum was released holding
+  whatever `set_value` the cached settled binary carried.
+- `warmup!` (new, `interface.jl`): step the real model `WARMUP_TIME` seconds
+  with zero steering, depower at the settled value and the winch in the mode
+  the run will command, then replace the logger and `sys_state` so the run's
+  first logged row is `t = 0` again. `warmup_force_mode` MUST match
+  `WINCH_FORCE_MODE` — warming up against the wrong winch hands the run the
+  discontinuity the warm-up exists to absorb.
+
+Confirmed rather than assumed: after the change `count(isnan, sl.var_15) == 0`,
+so the peak is genuinely relaxed away and is not the new guard masking it. Had
+that count been nonzero we would have shipped a hidden spike and believed it
+fixed. The guard stays in as dormant protection for an unloaded wing mid-lap.
+
+This is the same idea as `PARK_TIME`, moved before `t = 0`: the park lets the
+settling transients decay before the controller engages, the warm-up lets them
+decay before anything is logged. Cost is `WARMUP_TIME / DT` full steps (240 at
+2 s) on every run. 2 s was chosen to cover the 0.66 s peak with margin, not
+measured as the decay time.
+
 ## Entry state machine (`CHI_DIVE`, `CHI_HOLD`, `DIVE_EL_MARGIN`)
 
 First results (2026-08-01, `EL_CENTER` 40.5, force mode, attractor 15):
