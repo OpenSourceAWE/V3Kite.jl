@@ -388,7 +388,7 @@ V_APP_ABORT      = 45.0     # [m/s] stop the run above this apparent wind speed
 
 # Metrics window: park plus the time allowed to settle onto the pattern before
 # the tracking statistics start.
-ENTRY_TIME       = 20.0     # [s] after PARK_TIME
+ENTRY_TIME       = 38.0     # [s] after PARK_TIME
 MIN_ELEVATION    = 10.0     # [deg] floor criterion, evaluated over the WHOLE run
 
 # ======================== INIT =========================== #
