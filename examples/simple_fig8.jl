@@ -80,6 +80,7 @@ end
 using Timers; tic()
 using V3Kite
 using DiscretePIDs: set_K!
+using KiteUtils: wc_settings   # resolves the wc-settings file named in PROJECT
 using LinearAlgebra: norm
 using Printf
 
@@ -112,16 +113,41 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # mode described under DT, not as a lever that can
                             # stabilize it.
 V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
-WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
-                            # holds the tether length, and the drum only yields
-                            # as far as `winch_ff_scale` lets it (1.13 m over a
-                            # 30 s run at ff = 0.7). `true` = FORCE mode
-                            # (PlanFig8.md option 1): the drum holds a low-passed
-                            # reference force instead, so it pays out on every
-                            # dive and hauls in on every climb, with the mean
-                            # length kept by a slow trim. Gains live in
-                            # data/wc_settings.yaml (winch_force_tau,
-                            # winch_len_kp); see `winch_force_torque!`.
+COMPLIANCE       = 0.1      # How soft the winch is [-]. REPLACES the old
+                            # WINCH_FORCE_MODE flag: `1.0` is that flag's `true`
+                            # (FORCE mode at the tuned gains, PlanFig8.md option
+                            # 1) and `0.0` its `false`, only stiffer — see below.
+                            #
+                            # WHAT IT SCALES. In force mode the drum holds a
+                            # low-passed reference force, and a load above that
+                            # reference stretches the length trim like a spring:
+                            # the steady-state yield is dF / winch_len_kp, so the
+                            # compliance IS 1/winch_len_kp [m/N]. The knob divides
+                            # both winch_len_kp and winch_damp (data/wc_settings.yaml)
+                            # by COMPLIANCE, so yield scales linearly with it while
+                            # their ratio — the length loop's own time constant —
+                            # is left alone. The result is a softer or stiffer
+                            # winch of the SAME character, not a different one.
+                            # winch_force_tau is untouched: that sets WHICH
+                            # frequencies the drum yields to, not by how much.
+                            # Values above 1.0 are meaningful (2.0 = twice as
+                            # soft); the useful range is bounded by the runaway
+                            # recorded in data/wc_settings.yaml, where force mode
+                            # with no damping at all lost the run at t = 19.8 s.
+                            #
+                            # AT EXACTLY 0 the controller changes, because an
+                            # infinitely stiff spring is not representable: the
+                            # run switches to POSITION mode (`set_length = l0`)
+                            # with winch_ff_scale = 1.0, where the holding torque
+                            # cancels the measured load exactly and the drum sees
+                            # nothing to accelerate it — 0.009 m of travel over a
+                            # 30 s run, i.e. a constant unstretched tether length.
+                            # The limit is continuous in BEHAVIOUR (COMPLIANCE
+                            # 0.01 already means winch_len_kp = 10 kN/m) but not
+                            # in code path, so a sweep should not expect the two
+                            # sides to agree to the millimetre. Note the default
+                            # winch_ff_scale of 0.7 is NOT used at 0: it yields
+                            # 1.13 m over 30 s, which is soft, not constant.
 TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # The minimum angular turn radius is
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
@@ -151,7 +177,7 @@ ELEVATION        = 73.0     # [deg] settling elevation = the natural parked
 # guidance engaged at t=0 and drove the steering straight to its clamp while the
 # model was still relaxing. The guidance still runs during the park (its course
 # estimate is low-passed and needs warming up), but its output is not applied.
-PARK_TIME        = 5.0      # [s]
+PARK_TIME        = 2.0      # [s]
 # Warm-up, run INSIDE `init` and discarded (see `warmup!`). The park above lets
 # the settling transients decay; this lets them decay BEFORE t = 0, so they are
 # not in the log at all. They are not the run's data: `settle_wing` returns an
@@ -431,18 +457,41 @@ V_APP_ABORT      = 45.0     # [m/s] stop the run above this apparent wind speed
 
 # Metrics window: park plus the time allowed to settle onto the pattern before
 # the tracking statistics start.
-ENTRY_TIME       = 48.0     # [s] after PARK_TIME
+ENTRY_TIME       = 52.0     # [s] after PARK_TIME
 MIN_ELEVATION    = 10.0     # [deg] floor criterion, evaluated over the WHOLE run
 
 # ======================== INIT =========================== #
 
+# Winch compliance (see COMPLIANCE). Applied to the gains BEFORE `init`, because
+# the warm-up runs inside it and has to relax against the same winch the loop
+# below commands. `init` loads this file itself when `wc` is not passed; here it
+# is loaded first so the scaling can be applied to it.
+COMPLIANCE >= 0 || error("COMPLIANCE must be >= 0, got $COMPLIANCE")
+set_data_path(v3_data_path())
+wc = WC_Settings(wc_settings(PROJECT))
+if COMPLIANCE > 0
+    # Compliance is 1/winch_len_kp; winch_damp goes with it so the length loop's
+    # time constant (damp/len_kp) does not move.
+    wc.winch_len_kp /= COMPLIANCE
+    wc.winch_damp /= COMPLIANCE
+    @info @sprintf("Winch: FORCE mode at COMPLIANCE = %.2f — len_kp %.0f N/m, \
+                    damp %.0f N·s/m, tau %.1f s.",
+                   COMPLIANCE, wc.winch_len_kp, wc.winch_damp, wc.winch_force_tau)
+else
+    # Perfectly stiff: the holding torque cancels the measured load exactly, so
+    # the drum has nothing to accelerate it whatever the PI gains are.
+    wc.winch_ff_scale = 1.0
+    @info "Winch: POSITION mode at COMPLIANCE = 0 — constant unstretched length \
+           (winch_ff_scale = 1.0)."
+end
+
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
     elevation = ELEVATION,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT,
+    system_yaml = PROJECT, wc,
     # The warm-up must relax against the winch the loop below will command,
     # or it hands the run the very discontinuity it exists to remove.
-    warmup_time = WARMUP_TIME, warmup_force_mode = WINCH_FORCE_MODE)
+    warmup_time = WARMUP_TIME, warmup_force_mode = COMPLIANCE > 0)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
@@ -652,8 +701,9 @@ try
         rel_depower = (phase == 1 || phase == 2) ? ENTRY_DEPOWER : DEPOWER_SETPOINT
 
         # Winch: force mode pays out under load and trims the mean length back
-        # slowly; position mode holds the length outright (see WINCH_FORCE_MODE).
-        if WINCH_FORCE_MODE
+        # slowly, at the stiffness COMPLIANCE scaled the gains to; COMPLIANCE = 0
+        # holds the length outright (see the parameter block).
+        if COMPLIANCE > 0
             step!(s; rel_depower, rel_steering,
                   set_torque = winch_force_torque!(s, l0),
                   vsm_interval = VSM_INTERVAL)

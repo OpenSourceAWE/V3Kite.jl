@@ -13,8 +13,14 @@ Loads the "fig8_run" log saved by simple_fig8.jl. Produces three figures:
    added a third near-coincident curve and obscured the two that matter;
 2. a stacked time-series figure: cross-track error, elevation (with the pattern
    centre), heading and course vs the commanded course, the course-tracking
-   error, steering command vs the KCU's actual tape-lagged value, and tether
-   force;
+   error, steering command vs the KCU's actual tape-lagged value, tether force,
+   and tether length against the length setpoint. The last two belong together:
+   at `COMPLIANCE > 0` the drum holds a low-passed force rather than a length,
+   so it pays out on every dive and hauls in on every climb, and the length
+   panel is where that shows — the excursion scales with `COMPLIANCE` itself.
+   The setpoint line is the length at `t = 0`, which is exactly the `l0` the run
+   trims back to (both come from the first logged row). At `COMPLIANCE = 0` the
+   two lines should sit on top of each other to within a centimetre;
 3. an aerodynamics figure: angle of attack and lift-to-drag ratio, with the
    apparent wind speed and the kite speed `|vel_kite|` underneath to read both
    against. Those two speeds are plotted in one panel on purpose: they differ by
@@ -148,6 +154,13 @@ display(p1)
 sleep(0.1)
 
 @info "Plotting the time series..."
+# Tether length, and the setpoint the run trims back to. `l_tether` is a vector
+# per sample (one entry per tether) and the V3 has one, hence the `getindex`,
+# as for `winch_force`. The setpoint is the t = 0 length — the same row the run
+# reads its `l0` from — drawn as a constant so payout and haul-in are readable
+# as displacement from it rather than as an absolute number.
+l_tether = getindex.(sl.l_tether[rng], 1)
+l_set = fill(Float64(sl.l_tether[1][1]), length(rng))
 p2 = plotx(
     sl.time[rng],
     sl.var_01[rng],
@@ -156,7 +169,8 @@ p2 = plotx(
      rad2deg.(onto(chi_u, chi, chiset))],
     [err_course, err_heading, Float64.(sl.var_06[rng])],
     (100.0 .* sl.steering[rng], 100.0 .* sl.set_steering[rng]),
-    getindex.(sl.winch_force[rng], 1);
+    getindex.(sl.winch_force[rng], 1),
+    [l_tether, l_set];
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 18,
     legendsize = 16,
@@ -167,6 +181,7 @@ p2 = plotx(
         L"\Delta\chi~[°]",
         L"u_{\mathrm{s}}~[\%]",
         L"F_{\mathrm{tether}}~[\mathrm{N}]",
+        L"l_{\mathrm{tether}}~[\mathrm{m}]",
     ],
     labels = [
         nothing,
@@ -176,6 +191,7 @@ p2 = plotx(
          L"\mathrm{regulated}"],
         [L"u_{\mathrm{s}}", L"u_{\mathrm{s,set}}"],
         nothing,
+        [L"l_{\mathrm{tether}}", L"l_{0}"],
     ],
     fig = fig_name * " – time series",
 )

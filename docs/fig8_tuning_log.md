@@ -168,9 +168,11 @@ proves the drag never got that small and the ratio was finite and real.
 - `warmup!` (new, `interface.jl`): step the real model `WARMUP_TIME` seconds
   with zero steering, depower at the settled value and the winch in the mode
   the run will command, then replace the logger and `sys_state` so the run's
-  first logged row is `t = 0` again. `warmup_force_mode` MUST match
-  `WINCH_FORCE_MODE` — warming up against the wrong winch hands the run the
-  discontinuity the warm-up exists to absorb.
+  first logged row is `t = 0` again. `warmup_force_mode` MUST match the winch
+  the run will command (`COMPLIANCE > 0`; the flag was `WINCH_FORCE_MODE` when
+  this was written) — warming up against the wrong winch hands the run the
+  discontinuity the warm-up exists to absorb. The gains must therefore be
+  scaled BEFORE `init`, since the warm-up runs inside it.
 
 Confirmed rather than assumed: after the change `count(isnan, sl.var_15) == 0`,
 so the peak is genuinely relaxed away and is not the new guard masking it. Had
