@@ -188,8 +188,6 @@ feas.feasible ||
 # needs to cover that arc; `delay` is how long the plant takes to react at all.
 # `v_app_ref` is the crosswind speed actually flown, which is what this
 # kinematic estimate needs.
-# Reported, not enforced: the recorded failure at `attractor_dist` = 10°
-# (lead 1.2 s against a 0.42 s dead time) is one data point, not a threshold.
 lead_time = deg2rad(fcs.attractor_dist) * fcs.tether_length / fcs.v_app_ref
 @info @sprintf("Attractor lead %.1f° ≈ %.1f s of flight at v_app %.1f m/s, \
                 vs %.2f s steering dead time (ratio %.1f).",
