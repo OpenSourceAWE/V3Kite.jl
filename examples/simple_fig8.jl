@@ -105,10 +105,7 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 # Every tuning parameter of the run lives in `data/fc_settings.yaml` and is
-# documented field by field in `src/fc_settings.jl` (`FC_Settings`), so a sweep
-# can vary them without editing this script: load the struct, assign the fields
-# it should differ in, and `include` this file. Nothing below reads a global
-# parameter — `fcs` is the single source.
+# documented field by field in `src/fc_settings.jl` (`FC_Settings`).    
 set_data_path(v3_data_path())
 fcs = FC_Settings("fc_settings.yaml")
 
