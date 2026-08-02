@@ -239,17 +239,23 @@ end
 
     @testset "step! position mode (set_length)" begin
         t0 = s.sys_state.time
-        # Three steps: the previous torque-mode step left residual winch speed,
-        # and the position PI loop (Ti = 2s) needs more than one 0.05s step to
-        # bring it back down. The decay from that transient is smooth and
-        # monotone (1.31, 1.06, 0.89, 0.73, ... m/s), so two steps sit right on
-        # the 1.0 bound below — the third gives it margin.
+        # Three steps: the previous torque-mode step left residual winch speed
+        # that the position loop needs more than one 0.05 s step to work off
+        # (1.34, 1.28, 1.23 m/s here). It does NOT come back to ~0: since
+        # 2026-08-01 the drum is deliberately compliant (winch_ff_scale = 0.7,
+        # data/wc_settings.yaml), so the holding torque falls 30 % short of the
+        # load and the winch keeps creeping out at ~1 m/s until the growing
+        # length error turns the outer loop around (peak drift ≈ 3.2 m at
+        # t ≈ 5 s, then hauled back in). What position mode guarantees on this
+        # timescale is only that the speed stays bounded and the length stays
+        # near l0 — see the wc_settings testset above for the compliance knob.
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
         @test s.sys_state.time ≈ t0 + 3 * s.dt
         @test isfinite(unstretched_length(s))
-        @test abs(reel_out_speed(s)) < 1.0  # holding l0: speed setpoint ≈ 0
+        @test abs(reel_out_speed(s)) < 2.0                # bounded, no runaway
+        @test abs(unstretched_length(s) - l0) < 0.5       # ≈ 0.19 m of creep
     end
 
     @testset "step! live wind update" begin
