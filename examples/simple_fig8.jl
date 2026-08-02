@@ -88,7 +88,7 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
-SIM_TIME         = 150.0    # Total simulation time [s]; ~43 s per lap at v_app
+SIM_TIME         = 50.0    # Total simulation time [s]; ~43 s per lap at v_app
                             # 13 m/s, plus the descent from the park. The metrics
                             # window opens at PARK_TIME + ENTRY_TIME = 25 s, so a
                             # 30 s run scores only its last 5 s and `laps` is
@@ -301,6 +301,20 @@ ENTRY_GAIN       = 0.25     # Factor on HEADING_P during the ENTRY phases (dive
                             # detuning the loop there costs nothing in tracking
                             # and takes the command off the clamp, which is the
                             # only way to shape the descent from the loop side.
+ENTRY_DEPOWER    = 0.34     # Depower held during the ENTRY phases (dive and
+                            # hold, phases 1-2); the park and phase 3 fly at
+                            # DEPOWER_SETPOINT. A higher depower than the
+                            # pattern's is the second lever on the descent: it
+                            # lowers c1 (less turn authority, which the entry
+                            # does not need — it is clamp-limited anyway) and
+                            # unloads the wing, bleeding some of the energy the
+                            # dive from the 73° park converts out of height.
+                            # The park is excluded on purpose: `init` settles at
+                            # DEPOWER_SETPOINT, and changing the tape during the
+                            # park would inject exactly the transient the park
+                            # exists to let decay. Both transitions are rate
+                            # limited by the KCU tape speed inside `step!`, so
+                            # the change is a ramp, not a step.
 
 # WHAT THE LOOP REGULATES: heading at low KITE speed, course at high.
 # The guidance commands a COURSE, so course is the signal that actually closes
@@ -412,7 +426,7 @@ V_APP_ABORT      = 45.0     # [m/s] stop the run above this apparent wind speed
 
 # Metrics window: park plus the time allowed to settle onto the pattern before
 # the tracking statistics start.
-ENTRY_TIME       = 38.0     # [s] after PARK_TIME
+ENTRY_TIME       = 48.0     # [s] after PARK_TIME
 MIN_ELEVATION    = 10.0     # [deg] floor criterion, evaluated over the WHOLE run
 
 # ======================== INIT =========================== #
@@ -633,14 +647,18 @@ try
             heading_pid(0.0, err, 0.0)
         end
 
+        # Depower: ENTRY_DEPOWER during the dive and the hold, DEPOWER_SETPOINT
+        # during the park and on the pattern (see the parameter block).
+        rel_depower = (phase == 1 || phase == 2) ? ENTRY_DEPOWER : DEPOWER_SETPOINT
+
         # Winch: force mode pays out under load and trims the mean length back
         # slowly; position mode holds the length outright (see WINCH_FORCE_MODE).
         if WINCH_FORCE_MODE
-            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
+            step!(s; rel_depower, rel_steering,
                   set_torque = winch_force_torque!(s, l0),
                   vsm_interval = VSM_INTERVAL)
         else
-            step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+            step!(s; rel_depower, rel_steering, set_length = l0,
                   vsm_interval = VSM_INTERVAL)
         end
 
