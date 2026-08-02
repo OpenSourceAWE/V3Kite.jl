@@ -67,6 +67,11 @@ kite speed and course at high (`V_KITE_HEADING`/`V_KITE_COURSE`, scheduled on
 course is fed back at any speed (`FIG8_PURE_COURSE`), so `var_08` is 1
 throughout phase 3 and the schedule governs the entry only.
 
+The `sys_state` field carries the ENTRY STATE MACHINE (0 park, 1 dive, 2 hold,
+3 fig8), using the same codes as the reference controller's log so both can be
+read with the same scripts; `simple_fig8_plots.jl` draws it as the bottom panel
+of the time-series figure.
+
 The dated record of how these parameters were arrived at — sweeps, reverted
 attempts and the failures behind each closed lever — is in
 `docs/fig8_tuning_log.md`. Add new findings there, not here.
@@ -152,15 +157,7 @@ TETHER_LENGTH    = 200.0    # Initial tether length [m], held more or less const
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
 DEPOWER_SETPOINT = 0.26     # Depower setting held during the run [-]. Sets the
-                            # operating point of the turn-rate law: 0.25 is agile
-                            # (c1 = 0.3159) but cannot survive a sustained turn,
-                            # 0.55 survives but is far too sluggish
-                            # (c1 = 0.1071, dead time 0.55 s) and flies a circle
-                            # instead of the pattern. 0.40 gives c1 = 0.1513 and a
-                            # 0.42 s dead time. Lowering it to 0.36 has been tried
-                            # twice, most recently under the current loop, and
-                            # both times the run diverged on energy — reel-out
-                            # does not make it survivable at 200 m.
+                            # operating point of the turn-rate law.
 # NOTE: ELEVATION currently has NO EFFECT on where the run starts. `settle_wing`'s
 # cache key does not include the settling elevation, so the existing 73° geometry
 # is reused (verified: logged elevation at t = 0 is 73.0°). Forcing `remake=true`
@@ -196,12 +193,6 @@ WARMUP_TIME      = 2.0      # [s]
 # sphere (no attractor at all — the logged attractor is NaN until handover),
 # flattens out for the last second, and hands over at the pattern's RIGHTMOST
 # point, at the centre elevation, already moving downwards into the first turn.
-#
-# WHY here: with the guidance flying the entry, every configuration tried ended
-# up orbiting the right-hand lobe, with zero centre crossings against a ±50°
-# reference centred on zero. The eight is symmetric; the way it is entered is
-# not. The kite arrives from the park on the right and never gets established on
-# the left lobe.
 #
 # Reference timings (its park is 10 s, ours 5 s): dive 5.6 s covering 71 -> 42°
 # of elevation (~5.2°/s), hold 1.2 s covering the last 42 -> 27° (the kite is

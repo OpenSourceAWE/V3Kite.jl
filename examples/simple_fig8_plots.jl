@@ -20,7 +20,12 @@ Loads the "fig8_run" log saved by simple_fig8.jl. Produces three figures:
    panel is where that shows — the excursion scales with `COMPLIANCE` itself.
    The setpoint line is the length at `t = 0`, which is exactly the `l0` the run
    trims back to (both come from the first logged row). At `COMPLIANCE = 0` the
-   two lines should sit on top of each other to within a centimetre;
+   two lines should sit on top of each other to within a centimetre. The bottom
+   panel is the entry state machine (`sys_state`, 0-based as logged: 0 park,
+   1 dive, 2 hold, 3 fig8 — the legend repeats the mapping), which dates every
+   feature above it — an anomaly inside phase 1-2 is
+   the open-loop entry, one inside phase 3 is the path controller, and they are
+   not diagnosed the same way;
 3. an aerodynamics figure: angle of attack and lift-to-drag ratio, with the
    apparent wind speed and the kite speed `|vel_kite|` underneath to read both
    against. Those two speeds are plotted in one panel on purpose: they differ by
@@ -161,6 +166,18 @@ sleep(0.1)
 # as displacement from it rather than as an absolute number.
 l_tether = getindex.(sl.l_tether[rng], 1)
 l_set = fill(Float64(sl.l_tether[1][1]), length(rng))
+# Entry state machine, logged by simple_fig8.jl to the `sys_state` field as
+# 0 = park, 1 = dive, 2 = hold, 3 = fig8 guidance engaged. Plotted as its own
+# panel because it shares units with nothing else, and drawn LAST so it sits
+# against the time axis every other panel is read against: the three step edges
+# are what date the dive, the handover and the start of the pattern.
+#
+# The legend spells the mapping out at the LOGGED values, which are 0-based.
+# They are not a display choice: `fig_eight_plots.jl` finds the handover with
+# `findfirst(==(3), sl.sys_state)`, and the codes are shared with the reference
+# controller's log so the two can be read with the same scripts. Renumbering
+# the panel 1..4 would make it disagree with both.
+state = Float64.(sl.sys_state[rng])
 p2 = plotx(
     sl.time[rng],
     sl.var_01[rng],
@@ -170,7 +187,8 @@ p2 = plotx(
     [err_course, err_heading, Float64.(sl.var_06[rng])],
     (100.0 .* sl.steering[rng], 100.0 .* sl.set_steering[rng]),
     getindex.(sl.winch_force[rng], 1),
-    [l_tether, l_set];
+    [l_tether, l_set],
+    state;
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 18,
     legendsize = 16,
@@ -182,6 +200,7 @@ p2 = plotx(
         L"u_{\mathrm{s}}~[\%]",
         L"F_{\mathrm{tether}}~[\mathrm{N}]",
         L"l_{\mathrm{tether}}~[\mathrm{m}]",
+        L"\mathrm{state}~[-]",
     ],
     labels = [
         nothing,
@@ -192,6 +211,9 @@ p2 = plotx(
         [L"u_{\mathrm{s}}", L"u_{\mathrm{s,set}}"],
         nothing,
         [L"l_{\mathrm{tether}}", L"l_{0}"],
+        # A bare label, not a vector: this channel is passed as a plain vector,
+        # and plotx only reads a scalar label in that case (see plotx.jl:169).
+        L"0=\mathrm{park},~1=\mathrm{dive},~2=\mathrm{hold},~3=\mathrm{fig8}",
     ],
     fig = fig_name * " – time series",
 )
