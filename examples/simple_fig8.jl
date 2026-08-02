@@ -142,7 +142,7 @@ COMPLIANCE       = 0.1      # How soft the winch is [-].
                             # The limit is continuous in BEHAVIOUR (COMPLIANCE
                             # 0.01 already means winch_len_kp = 10 kN/m) but not
                             # in code path, so a sweep should not expect the two
-                            # sides to agree to the millimetre. Note the default
+                            # sides to agree to the millimeter. Note the default
                             # winch_ff_scale of 0.7 is NOT used at 0: it yields
                             # 1.13 m over 30 s, which is soft, not constant.
 TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
