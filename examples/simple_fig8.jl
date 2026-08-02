@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.30     # Depower setting held during the run [-]. Sets the
+DEPOWER_SETPOINT = 0.28     # Depower setting held during the run [-]. Sets the
                             # operating point of the turn-rate law: 0.25 is agile
                             # (c1 = 0.3159) but cannot survive a sustained turn,
                             # 0.55 survives but is far too sluggish
