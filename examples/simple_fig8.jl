@@ -293,7 +293,7 @@ HEADING_D_N      = 2.0      # Derivative filter: maximum gain of the D path,
                             # either way, so this is a filter change, not a gain
                             # change: same flight, 33% less peak tape slew.
 V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
-V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
+V_APP_MIN        = 10.0      # Lower clamp on v_app, limits the gain boost [m/s]
 
 # WHAT THE LOOP REGULATES: heading at low KITE speed, course at high.
 # The guidance commands a COURSE, so course is the signal that actually closes
