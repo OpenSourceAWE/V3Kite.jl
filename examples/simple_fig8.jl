@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-Figure-of-eight path following of the V3 kite via the `init`/`step!` interface
-(see PlanFig8.md).
+Figure-of-eight path following of the V3 kite via the `init`/`step!` interface.
 
 The kite starts parked at ~73° and reaches the pattern through a four-phase
 entry (park -> dive -> hold -> fig8, see ENTRY_PHASES). Once engaged, the L0
 attractor guidance (`src/fig8_controller.jl`) commands a course and a PID (as in
 `simple_sinus.jl` / `simple_auto_parking.jl`) tracks it with the steering tape.
 
-# Why the pattern is large and low
+# Why the pattern is large
 
 Neither is a free choice. The V3's identified turn-rate law fixes the smallest
 angular turn radius the kite can fly:
@@ -19,8 +18,7 @@ angular turn radius the kite can fly:
 
 `c1` depends strongly on the `body_damping` passed to `init` (see
 `V3_TURN_RATE_COEFFS`): across the identified range it changes the achievable
-turn radius by 5.6x, from 6.9° at `[0, 0, 40]` to 38.5° at `[20, 20, 40]`. In
-plane body damping is therefore a FLIGHT parameter here, not a solver setting.
+turn radius by 5.6x, from 6.9° at `[0, 0, 40]` to 38.5° at `[20, 20, 40]`. 
 
 The tightest curvature of a lemniscate in (azimuth, elevation) is not at the
 lobe tip but on the lobe's upper shoulder, and it collapses as the pattern is
@@ -252,16 +250,27 @@ UP_LOOPS         = false    # Fly DOWN-loops: at large |azimuth| the kite passes
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 0.4      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
-                            # plant psi_dot = c1*v_a*u_s is an INTEGRATOR of gain
+HEADING_P        = 0.1941   # Gain at v_app == V_APP_REF, i.e. the gain actually
+                            # applied in phase 3, since V_APP_REF is the phase-3
+                            # flight speed. Was 0.1747 against a V_APP_REF of 30,
+                            # and 0.4 against 13.1 before that; all three are the
+                            # SAME applied gain (0.1941*27 = 0.1747*30 = 0.4*13.1
+                            # = 5.24) — only the anchor moved, the flown loop is
+                            # unchanged.
+                            #
+                            # Stability bound, for context: the plant
+                            # psi_dot = c1*v_a*u_s is an INTEGRATOR of gain
                             # c1*v_a = 3.66 rad/s per unit u_s at flight speed, so
                             # the crossover is omega_c = K*3.66. Against the
                             # 0.72 s measured tape lag a delay needs
-                            # omega_c*T_d <~ 0.8 rad, giving HEADING_P ~ 0.46; the
+                            # omega_c*T_d <~ 0.8 rad, giving K <~ 0.46; the
                             # optimistic 0.383 s small-signal dead time gives
-                            # 0.86. 0.6 sits between the two.
+                            # 0.86. The flown 0.194 sits a factor of roughly 2.5
+                            # inside the tighter bound — it is what flies well,
+                            # not what the bound permits.
                             #
-                            # The earlier 4.5 was ~8x over gain, i.e. a relay:
+                            # The earlier 4.5 (old V_APP_REF = 13.1 anchor, so
+                            # ~1.97 applied) was ~8x over gain, i.e. a relay:
                             # it clamped at 6.7° of course error, exceeded by 88%
                             # of phase-3 samples, and the kite turned at a median
                             # 43.5 deg/s against the 8.3 deg/s the guidance asked
@@ -283,7 +292,21 @@ HEADING_D_N      = 2.0      # Derivative filter: maximum gain of the D path,
                             # contributes a gain of 1.005 and 5.4° of phase lead
                             # either way, so this is a filter change, not a gain
                             # change: same flight, 33% less peak tape slew.
-V_APP_REF        = 13.1     # Reference apparent wind speed for the schedule [m/s]
+V_APP_REF        = 27.0     # Apparent wind speed actually flown during phase 3
+                            # [m/s], the average at the conditions configured
+                            # here. Serves two roles, and they agree only because
+                            # this is the real speed: it anchors the 1/v_app gain
+                            # schedule (so HEADING_P reads as the gain the kite
+                            # really flies at), and it sets the kinematics below
+                            # (how long the kite needs to cover a given arc).
+                            # Only the product HEADING_P * V_APP_REF is physical,
+                            # so the 30 -> 27 correction was paired with the
+                            # inverse scaling of HEADING_P above: same flight,
+                            # the anchor is now the measured average. Was 13.1
+                            # before that, a parking speed carried over from
+                            # simple_auto_parking.jl that the kite never flies
+                            # here; that anchor also overstated the attractor
+                            # lead below.
 V_APP_MIN        = 10.0      # Lower clamp on v_app, limits the gain boost [m/s]
 ENTRY_GAIN       = 0.25     # Factor on HEADING_P during the ENTRY phases (dive
                             # and hold, phases 1-2); phase 3 flies at the full
@@ -508,8 +531,10 @@ feas.feasible ||
 # Dead-time context for ATTRACTOR_DIST. The attractor sits ATTRACTOR_DIST of arc
 # ahead of the kite, so the commanded course turns over roughly the time the
 # kite needs to cover that arc; `delay` is how long the plant takes to react at
-# all. Reported, not enforced: the recorded failure at ATTRACTOR_DIST = 10°
-# (lead 2.7 s against a 0.42 s dead time) is one data point, not a threshold.
+# all. V_APP_REF is the crosswind speed actually flown, which is what this
+# kinematic estimate needs.
+# Reported, not enforced: the recorded failure at ATTRACTOR_DIST = 10°
+# (lead 1.2 s against a 0.42 s dead time) is one data point, not a threshold.
 lead_time = deg2rad(ATTRACTOR_DIST) * TETHER_LENGTH / V_APP_REF
 @info @sprintf("Attractor lead %.1f° ≈ %.1f s of flight at v_app %.1f m/s, \
                 vs %.2f s steering dead time (ratio %.1f).",
