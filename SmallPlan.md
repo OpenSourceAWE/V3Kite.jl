@@ -279,9 +279,14 @@ downward-left, already inside the first down-turn.
 - `print_fig8_metrics` measures from `PARK_TIME + ENTRY_TIME` = 25 s, i.e. over
   the last 5 s of a 30 s run. Either drop `ENTRY_TIME` to ~7 s, or treat the
   printed criteria as informational at that length.
-- Worth adding: centre crossings per minute, and flown azimuth span against
-  `F8_A`. A run can track well (small RMS d) while flying an eight far smaller
-  than the reference, and no current metric reports that.
+- **Done (2026-08-02):** flown azimuth reach against `F8_A` and elevation span
+  against `F8_B` are now metrics *and* criteria — `print_fig8_metrics` takes
+  `az_amplitude`/`el_height` and fails a run below `min_span_frac` (0.7) of
+  either, per side in azimuth. A run can track well (small RMS d) while flying
+  an eight far smaller than the reference, or only one lobe of it, and nothing
+  else reports that: every other criterion is measured to the closest point of
+  the path. Centre crossings per minute is still not reported (`laps` is, over
+  the whole settled window).
 - `check_pattern_feasible` computes its margin from `MAX_STEERING`, i.e. from
   the COMMAND. Every feasibility margin in this plan (1.19, 1.33, 1.61, ...) is
   optimistic by roughly the tape's attenuation.

@@ -636,6 +636,8 @@ the two sets of numbers separately, never a single averaged verdict.
 | RMS cross-track error (settled) | < 3° | the earlier ram-air branch reached ~1.0-1.8° |
 | max cross-track error (settled) | < 8° | no per-lap excursion |
 | **worst-case elevation, whole run** | **> 10°** | `min_elevation_all`, not `min_elevation_settled` — the floor is a safety limit, so a breach during the entry transient counts as a breach |
+| **azimuth reach, each side** | **≥ 0.7·`A`** | `az_reach_pos`/`az_reach_neg`, the mean per-lobe extreme. Tested per side, never as one span: everything above is measured to the *closest point* of the path, so a small eight — or one lobe flown in half the wind window — passes all of it while never leaving the path |
+| **elevation span (settled)** | **≥ 0.7·`B`** | same hole in the vertical: `el_span`, the other half of "flying the pattern it was asked for" |
 | tether-force CV | report | baseline for the later reel-out work |
 | HF steering content | report | ringing/chatter watchdog; units differ from the original, so establish a V3 baseline rather than importing a threshold |
 | solver survives to `SIM_TIME` | yes | no early `next_step!` failure |
