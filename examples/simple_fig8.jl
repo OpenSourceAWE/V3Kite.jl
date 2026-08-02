@@ -111,7 +111,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # lag for wall time. Exposed to sweep the coupling
                             # mode described under DT, not as a lever that can
                             # stabilize it.
-V_WIND           = 8.0     # Ground wind speed at reference height [m/s]
+V_WIND           = 6.0     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
                             # as far as `winch_ff_scale` lets it (1.13 m over a
@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.32     # Depower setting held during the run [-]. Sets the
+DEPOWER_SETPOINT = 0.30     # Depower setting held during the run [-]. Sets the
                             # operating point of the turn-rate law: 0.25 is agile
                             # (c1 = 0.3159) but cannot survive a sustained turn,
                             # 0.55 survives but is far too sluggish
@@ -261,7 +261,7 @@ WALK_START       = 60.0     # [s] time after which the walk begins
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 1.0      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
+HEADING_P        = 0.6      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
                             # plant psi_dot = c1*v_a*u_s is an INTEGRATOR of gain
                             # c1*v_a = 3.66 rad/s per unit u_s at flight speed, so
                             # the crossover is omega_c = K*3.66. Against the
