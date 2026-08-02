@@ -127,7 +127,7 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # rho = 1/(L*c1*u_s), so a LONGER tether lets the kite
                             # turn tighter in angular terms — the most effective
                             # lever on pattern feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.34     # Depower setting held during the run [-]. Sets the
+DEPOWER_SETPOINT = 0.32     # Depower setting held during the run [-]. Sets the
                             # operating point of the turn-rate law: 0.25 is agile
                             # (c1 = 0.3159) but cannot survive a sustained turn,
                             # 0.55 survives but is far too sluggish
@@ -185,9 +185,9 @@ CHI_DIVE         = -85.0    # [deg] course commanded during the dive. |chi| > 90
 CHI_HOLD         = -90.0    # [deg] course commanded during the hold: exactly
                             # horizontal, i.e. stop descending and let the kite
                             # arrive at the pattern flat rather than diving into it
-DIVE_EL_MARGIN   = 15.0     # [deg] above EL_CENTER at which the dive ends and the
+DIVE_EL_MARGIN   = 7.0     # [deg] above EL_CENTER at which the dive ends and the
                             # hold begins (reference: 42° vs a 26° centre = 16°)
-HOLD_TIME        = 1.2      # [s] duration of the hold, from the reference log
+HOLD_TIME        = 0.8      # [s] duration of the hold, from the reference log
 
 # In-plane body damping is a FLIGHT parameter here, not just a solver setting:
 # it sets c1 and hence the achievable turn radius (see the docstring). init's
