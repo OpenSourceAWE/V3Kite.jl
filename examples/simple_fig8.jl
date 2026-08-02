@@ -113,10 +113,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # mode described under DT, not as a lever that can
                             # stabilize it.
 V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
-COMPLIANCE       = 0.1      # How soft the winch is [-]. REPLACES the old
-                            # WINCH_FORCE_MODE flag: `1.0` is that flag's `true`
-                            # (FORCE mode at the tuned gains, PlanFig8.md option
-                            # 1) and `0.0` its `false`, only stiffer — see below.
+COMPLIANCE       = 0.1      # How soft the winch is [-]. 
                             #
                             # WHAT IT SCALES. In force mode the drum holds a
                             # low-passed reference force, and a load above that
