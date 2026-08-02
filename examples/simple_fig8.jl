@@ -185,7 +185,7 @@ DT               = 0.05/6   # Simulation timestep [s].
                             # NOTE this re-bases the trajectory:
                             # data/fig8_run_N10_baseline.arrow is no longer
                             # bit-comparable, only comparable on per-lap metrics.
-VSM_INTERVAL     = 2        # Steps between VSM aero updates; the load is held
+VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # frozen inside the DAE in between (0 disables the
                             # update entirely). 1 is the TIGHTEST coupling
                             # available, so this can only be raised — trading
@@ -429,7 +429,7 @@ F8_B             = 20.0     # Height of the eight (elevation spans +-B/2)
                             # kite for authority it does not have.
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
-EL_CENTER        = 36.5     # Pattern-centre elevation; spans 26.5-46.5° at B=20.
+EL_CENTER        = 26.0     # Pattern-centre elevation; spans 26.5-46.5° at B=20.
                             #
                             # 32.8 -> 36.5 (2026-08-02): REVERTED, rung 2 failed.
                             #
