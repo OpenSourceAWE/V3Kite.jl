@@ -111,7 +111,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # lag for wall time. Exposed to sweep the coupling
                             # mode described under DT, not as a lever that can
                             # stabilize it.
-V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
+V_WIND           = 4.5     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
                             # as far as `winch_ff_scale` lets it (1.13 m over a
@@ -213,7 +213,7 @@ BODY_DAMPING     = [0.0, 0.0, 40.0]
 # SMALLER lemniscate is a TIGHTER one: the reference controller's 40/15 drops
 # the margin to 1.02 and does not fly here.
 F8_A             = 50.0     # Width of the eight (azimuth spans +-A)
-F8_B             = 20.0     # Height of the eight (elevation spans +-B/2)
+F8_B             = 15.0     # Height of the eight (elevation spans +-B/2)
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
 EL_CENTER        = 26.0     # Pattern-centre elevation; spans 16-36° at B=20.
@@ -273,7 +273,7 @@ WALK_START       = 60.0     # [s] time after which the walk begins
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 0.6      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
+HEADING_P        = 0.4      # Gain at v_app == V_APP_REF. DERIVED, not tuned: the
                             # plant psi_dot = c1*v_a*u_s is an INTEGRATOR of gain
                             # c1*v_a = 3.66 rad/s per unit u_s at flight speed, so
                             # the crossover is omega_c = K*3.66. Against the
@@ -293,7 +293,7 @@ HEADING_I        = false    # No integral action: a steady heading bias shows up
                             # itself already corrects by pulling the attractor
                             # back onto the path. Try a finite Ti only if a
                             # persistent one-sided cross-track offset remains.
-HEADING_D        = 0.15     # Derivative time [s], damps the initial transient
+HEADING_D        = 0.12     # Derivative time [s], damps the initial transient
 HEADING_D_N      = 2.0      # Derivative filter: maximum gain of the D path,
                             # which is K*Td*s/(1 + s*Td/N). Flat at K below
                             # N/(2*pi*Td) Hz, rising to N*K above it. 2 rather
