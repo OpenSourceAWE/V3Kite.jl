@@ -111,7 +111,7 @@ VSM_INTERVAL     = 1        # Steps between VSM aero updates; the load is held
                             # lag for wall time. Exposed to sweep the coupling
                             # mode described under DT, not as a lever that can
                             # stabilize it.
-V_WIND           = 4.5     # Ground wind speed at reference height [m/s]
+V_WIND           = 5.0     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
                             # holds the tether length, and the drum only yields
                             # as far as `winch_ff_scale` lets it (1.13 m over a
@@ -212,7 +212,7 @@ BODY_DAMPING     = [0.0, 0.0, 40.0]
 # check the feasibility margin printed at startup before changing these. Note a
 # SMALLER lemniscate is a TIGHTER one: the reference controller's 40/15 drops
 # the margin to 1.02 and does not fly here.
-F8_A             = 50.0     # Width of the eight (azimuth spans +-A)
+F8_A             = 45.0     # Width of the eight (azimuth spans +-A)
 F8_B             = 15.0     # Height of the eight (elevation spans +-B/2)
 F8_C             = 0.0      # Size of the right part
 F8_D             = 0.0      # Asymmetry factor
