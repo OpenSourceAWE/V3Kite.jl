@@ -125,7 +125,7 @@ export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
 export compute_drag_coeff, compute_lift_coeff
 export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
-export compute_kite_aoa, compute_bridle_euler
+export compute_kite_aoa, compute_bridle_euler, span_mean_aoa
 export compute_wing_incidence
 export compute_bridle_pitch_angle
 export chord_ref_mid

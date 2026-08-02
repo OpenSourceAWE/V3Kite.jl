@@ -423,6 +423,42 @@ function compute_wing_incidence(sys)
 end
 
 """
+    span_mean_aoa(sys) -> Float64
+
+Span-averaged geometric angle of attack of the wing [rad], the mean of the
+VSM's per-panel `alpha_geometric_dist`.
+
+Use this rather than `SysState.AoA` whenever the number is meant to describe
+the *whole wing*. `update_sys_state!` fills `AoA` from the single centre panel
+of `alpha_geometric_dist`, which is representative only while the wing is
+loaded symmetrically: steering twists the two halves in opposite directions, so
+in a turn the centre panel misses the spanwise spread entirely.
+
+Panels whose local velocity is too small for an angle to be defined are logged
+as `NaN` by the VSM; they are skipped here, and the result is `NaN` only if
+every panel is. Returns `NaN` for a wing without a VSM solver (e.g. a
+`PlateWing`), where no spanwise distribution exists — see
+[`compute_wing_incidence`](@ref) for a purely geometric whole-wing angle that
+does not need one.
+"""
+function span_mean_aoa(sys)
+    wing = sys.wings[1]
+    hasproperty(wing, :vsm_solver) || return NaN
+    alphas = wing.vsm_solver.sol.alpha_geometric_dist
+    # Same wrap as update_sys_state! applies to the centre panel: the VSM
+    # returns some panels as `pi + atan(...)`, which would otherwise average
+    # against the others as if it were a large positive angle.
+    n = 0
+    acc = 0.0
+    for a in alphas
+        isnan(a) && continue
+        n += 1
+        acc += mod(a + pi, 2pi) - pi
+    end
+    return n == 0 ? NaN : acc / n
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle

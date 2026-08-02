@@ -27,10 +27,18 @@ window is empty.
 The elevation floor is reported both over the settled window and over the
 **whole run** (`min_elevation_all`) — the latter is the success criterion,
 because a floor breach during the entry transient still counts as a breach.
+
+Steering is reported on BOTH sides of the actuator, and the pair is the point:
+`steering_sat_frac`/`max_steering_used` describe the command, while
+`tape_rate_frac`/`max_steering_delivered` describe what the KCU tape actually
+did. `v_steering` [1/s] is the tape's rate limit and must match the `kcu:`
+section of the settings YAML in use (0.2 for every V3 settings file shipped
+here); it is a keyword rather than a constant so a log from a differently
+configured KCU can still be scored correctly.
 """
 function fig8_metrics(sl; t_start = 0.0, settle_time = 10.0, hf_window = 0.5,
                       lap_frac = 0.5, min_excursion = deg2rad(5.0),
-                      az_center = nothing)
+                      az_center = nothing, v_steering = 0.2)
     stats_start = t_start + settle_time
     settled = findall(>=(stats_start), sl.time)
     isempty(settled) && return nothing
@@ -97,10 +105,30 @@ function fig8_metrics(sl; t_start = 0.0, settle_time = 10.0, hf_window = 0.5,
 
     # Steering saturation: fraction of the settled window spent within 2% of
     # the largest commanded magnitude (a proxy for the clamp, which is not
-    # logged). High values mean the clamp is binding — raise MAX_STEERING.
+    # logged).
     us = abs.(Float64.(sl.set_steering[settled]))
     us_max = maximum(us)
     sat_frac = us_max > 0 ? count(>=(0.98 * us_max), us) / length(us) : 0.0
+
+    # TAPE rate saturation — the honest companion to `sat_frac` above.
+    #
+    # `set_steering` is the COMMAND and `steering` is what the KCU tape actually
+    # reached; on the V3 they are nothing like each other. The tape is rate
+    # limited to `v_steering` [1/s] (the `kcu:` section of the settings YAML),
+    # and measured on a 2026-08-02 figure-eight run the command sat on its
+    # ±0.300 clamp 88% of the time while the tape reached it in 0% of samples —
+    # it was slewing at its limit for 67% of them instead. Reading `sat_frac`
+    # alone therefore says "out of steering authority" when the truth is "out of
+    # steering RATE", and the two call for opposite fixes: more amplitude makes
+    # a rate-limited actuator worse, because a larger command means longer
+    # slewing and more phase lag (measured: 62.7° at the loop's own 0.181 Hz,
+    # against 24.7° for the identified small-signal dead time).
+    act = Float64.(sl.steering[settled])
+    tape_rate = length(act) > 1 ? abs.(diff(act)) ./ dt : Float64[]
+    tape_rate_frac = isempty(tape_rate) ? 0.0 :
+        count(>=(0.95 * v_steering), tape_rate) / length(tape_rate)
+    max_tape_rate = isempty(tape_rate) ? 0.0 : maximum(tape_rate)
+    max_steering_delivered = maximum(abs.(act))
 
     return (;
         stats_start,
@@ -118,6 +146,10 @@ function fig8_metrics(sl; t_start = 0.0, settle_time = 10.0, hf_window = 0.5,
         turnrate_hf_std = turnrate_hf,
         max_steering_used = us_max,
         steering_sat_frac = sat_frac,
+        max_steering_delivered,
+        tape_rate_frac,
+        max_tape_rate,
+        v_steering,
     )
 end
 
@@ -132,9 +164,9 @@ function print_fig8_metrics(sl; t_start = 0.0, settle_time = 10.0,
                             hf_window = 0.5, min_elevation = 10.0,
                             max_rms_d = 3.0, max_d_limit = 8.0, min_laps = 3.0,
                             lap_frac = 0.5, min_excursion = deg2rad(5.0),
-                            az_center = nothing)
+                            az_center = nothing, v_steering = 0.2)
     m = fig8_metrics(sl; t_start, settle_time, hf_window, lap_frac, min_excursion,
-                     az_center)
+                     az_center, v_steering)
     if m === nothing
         @warn "No settled samples — no figure-eight metrics."
         return nothing
@@ -148,6 +180,9 @@ function print_fig8_metrics(sl; t_start = 0.0, settle_time = 10.0,
     @printf("  steering: peak |u_s|=%.3f, %.0f%% of time within 2%% of it | HF std: steering=%.4f turnrate=%.2f°/s\n",
             m.max_steering_used, 100 * m.steering_sat_frac,
             m.steering_hf_std, m.turnrate_hf_std)
+    @printf("  tape: delivered peak |u_s|=%.3f of %.3f commanded | RATE-limited %.0f%% of the time (peak %.3f/s of %.3f/s)\n",
+            m.max_steering_delivered, m.max_steering_used,
+            100 * m.tape_rate_frac, m.max_tape_rate, m.v_steering)
 
     checks = [
         ("laps >= $(min_laps)",            m.laps >= min_laps),

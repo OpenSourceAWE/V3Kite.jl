@@ -4,15 +4,36 @@
 """
 Plotting for simple_fig8.jl results.
 
-Loads the "fig8_run" log saved by simple_fig8.jl. Produces two figures:
+Loads the "fig8_run" log saved by simple_fig8.jl. Produces three figures:
 
-1. the flown pattern in the (azimuth, elevation) plane, with the reference
-   lemniscate and the attractor track overlaid — the plot that shows at a glance
-   whether the pattern is being flown or only approximated;
+1. the flown pattern in the (azimuth, elevation) plane against the reference
+   lemniscate — the plot that shows at a glance whether the pattern is being
+   flown or only approximated. The attractor track (`var_02`/`var_03`) is
+   deliberately NOT drawn: it hugs the reference path by construction, so it
+   added a third near-coincident curve and obscured the two that matter;
 2. a stacked time-series figure: cross-track error, elevation (with the pattern
    centre), heading and course vs the commanded course, the course-tracking
    error, steering command vs the KCU's actual tape-lagged value, and tether
-   force.
+   force;
+3. an aerodynamics figure: angle of attack and lift-to-drag ratio, with the
+   apparent wind speed and the kite speed `|vel_kite|` underneath to read both
+   against. Those two speeds are plotted in one panel on purpose: they differ by
+   roughly the wind speed, and `|vel_kite|` is the signal the heading/course
+   blend is scheduled on, so this is where a mid-manoeuvre crossing of the
+   `V_KITE_HEADING`/`V_KITE_COURSE` band shows up.
+
+The AoA panel carries two curves because they answer different questions.
+`AoA` is the VSM's CENTRE PANEL angle, the one `update_sys_state!` logs; the
+span-mean (`var_09`, written by simple_fig8.jl) averages every panel. They
+agree while the wing is loaded symmetrically and separate in a turn, where
+steering twists the two halves the opposite way — so their gap is a direct read
+on how hard the wing is being worked, which matters here because the steering
+sits on its clamp for most of the pattern. Logs written before `var_09` existed
+show that curve as a flat zero.
+
+The L/D panel likewise shows two: `var_15` is the wing alone and `var_16` the
+effective value with tether, bridle and KCU drag included (both filled by
+`step!`). The second is what actually sets the achievable speed.
 
 The guidance commands a COURSE (direction of travel) while the inner loop
 regulates HEADING (where the nose points), so the angle panel shows all three:
@@ -73,6 +94,13 @@ rng = 2:length(sl.time)
 az_deg = rad2deg.(sl.azimuth[rng])
 el_deg = rad2deg.(sl.elevation[rng])
 
+# Kite speed |vel_kite|, plotted against v_app because the two are far apart on
+# this kite and it is the SLOW one that the heading/course blend is scheduled on
+# (V_KITE_HEADING/V_KITE_COURSE in simple_fig8.jl): parked, v_app is already ~9
+# m/s of ambient wind while the kite itself barely moves. Written out rather
+# than `norm.` so this script needs no LinearAlgebra import.
+v_kite = [sqrt(sum(abs2, v)) for v in sl.vel_kite[rng]]
+
 # Reference path at the FINAL pattern centre (var_04), so the overlay matches
 # the run even when the centre was walked (WALK_RATE > 0).
 el_c_end = Float64(sl.var_04[end])
@@ -104,11 +132,11 @@ err_heading = rad2deg.(wrap_to_pi.(psi .- chiset))
 
 @info "Plotting the pattern..."
 p1 = plotxy(
-    [az_deg, ref_az, Float64.(sl.var_02[rng])],
-    [el_deg, ref_el, Float64.(sl.var_03[rng])];
+    [az_deg, ref_az],
+    [el_deg, ref_el];
     xlabel = L"\mathrm{azimuth}~[°]",
     ylabel = L"\mathrm{elevation}~[°]",
-    legend = [L"\mathrm{flown}", L"\mathrm{reference}", L"\mathrm{attractor}"],
+    legend = [L"\mathrm{flown}", L"\mathrm{reference}"],
     fig = fig_name * " – pattern",
 )
 display(p1)
@@ -147,6 +175,30 @@ p2 = plotx(
     fig = fig_name * " – time series",
 )
 display(p2)
+sleep(0.1)
+
+@info "Plotting the aerodynamics..."
+p3 = plotx(
+    sl.time[rng],
+    [rad2deg.(Float64.(sl.AoA[rng])), Float64.(sl.var_09[rng])],
+    [Float64.(sl.var_15[rng]), Float64.(sl.var_16[rng])],
+    [Float64.(sl.v_app[rng]), v_kite];
+    xlabel = L"\mathrm{time}~[\mathrm{s}]",
+    ysize = 18,
+    legendsize = 16,
+    ylabels = [
+        L"\alpha~[°]",
+        L"L/D~[-]",
+        L"v~[\mathrm{m/s}]",
+    ],
+    labels = [
+        [L"\alpha_{\mathrm{centre}}", L"\alpha_{\mathrm{span~mean}}"],
+        [L"\mathrm{wing}", L"\mathrm{effective}"],
+        [L"v_{\mathrm{app}}", L"|v_{\mathrm{kite}}|"],
+    ],
+    fig = fig_name * " – aerodynamics",
+)
+display(p3)
 sleep(0.1)
 
 nothing

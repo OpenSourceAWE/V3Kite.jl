@@ -73,13 +73,16 @@ Log slot mapping (`step!` already fills `var_14`/`var_15`/`var_16`):
 | `var_06` | regulated error (feedback - chi_cmd) [deg] |
 | `var_07` | 1 while the entry descent limiter is active |
 | `var_08` | course/heading blend weight (0 = heading, 1 = course) |
+| `var_09` | span-mean geometric AoA [deg]             |
 
 `bearing` carries `chi_cmd`, the course the loop actually tracks, so
 `course - bearing` is the path-following error; the unmodified guidance course
 is kept in `var_05`. The feedback angle the PID regulates is heading at low
 kite speed and course at high (`V_KITE_HEADING`/`V_KITE_COURSE`, scheduled on
 `|vel_kite|`), so `var_06` equals `heading - bearing` at low speed and
-`course - bearing` at high.
+`course - bearing` at high. In FIG8 mode that schedule is bypassed and the
+course is fed back at any speed (`FIG8_PURE_COURSE`), so `var_08` is 1
+throughout phase 3 and the schedule governs the entry only.
 """
 
 using Pkg
@@ -98,17 +101,23 @@ using Printf
 # ==================== USER PARAMETERS ==================== #
 
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
-SIM_TIME         = 30.0     # Total simulation time [s]; ~43 s per lap at
+SIM_TIME         = 150.0    # Total simulation time [s]; ~43 s per lap at
                             # v_app 13 m/s, plus the descent from the park.
-                            # Capped at 30 s for the tuning campaign, one run
-                            # per parameter change. CAUTION: the metrics window
-                            # opens at PARK_TIME + ENTRY_TIME = 25 s, so the
-                            # tracking statistics are computed over the last 5 s
-                            # only and `laps` cannot reach its 3.0 criterion at
-                            # any tuning. At this length the run answers "does
-                            # it survive the entry, and where does it arrive",
-                            # not "how well does it track" — for the latter
-                            # lengthen the run or shorten ENTRY_TIME.
+                            # 30 -> 150 (2026-08-02): a DELIBERATE one-off
+                            # exception to SmallPlan.md's 30 s cap, taken after
+                            # HEADING_P 4.5 -> 0.6 made the loop stable (RMS d
+                            # 1.02°, tape 0% rate-limited). The question the cap
+                            # cannot answer: at 30 s the kite is on the left lobe
+                            # only (azimuth -56.7..-6.5°) with laps = 0, and that
+                            # is equally consistent with "it has not got there
+                            # yet" and "it has settled into a stable one-lobe
+                            # orbit" — which need opposite fixes. `laps >= 3.0`
+                            # needs ~130 s of flight, so 150 s gives it a fair
+                            # chance; the first 120 s also line up with
+                            # data/fig8_reference.arrow for a like-for-like read.
+                            # PUT THIS BACK TO 30 for routine tuning runs: the
+                            # metrics window opens at PARK_TIME + ENTRY_TIME =
+                            # 25 s, so a 30 s run measures only its last 5 s.
 DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 WINCH_FORCE_MODE = true     # Winch mode. `false` = POSITION mode: `set_length`
@@ -127,7 +136,33 @@ TETHER_LENGTH    = 200.0    # Tether length [m], held constant (position mode).
                             # lets the kite turn tighter in angular terms — the
                             # single most effective lever on pattern
                             # feasibility after c1 itself.
-DEPOWER_SETPOINT = 0.36     # Depower setting held during the run [-].
+DEPOWER_SETPOINT = 0.40     # Depower setting held during the run [-].
+                            #
+                            # 0.36 -> 0.40 (2026-08-02): targeting ENERGY, which
+                            # is now the binding constraint. With HEADING_P 0.6
+                            # the loop is stable (RMS d 1.65°, tape 1% rate-
+                            # limited) and the kite CROSSED THE CENTRE for the
+                            # first time under a non-saturated loop — azimuth
+                            # -56.7..+45.0°, laps 0.5 — then diverged at t =
+                            # 37.6 s at the right-lobe tip, v_app 27 -> 42.7 m/s
+                            # in one second. v_app had crept from ~20 m/s in the
+                            # first lobe to ~28 by the crossing: the kite gains
+                            # energy lap over lap and the right-lobe turn is
+                            # where it cashes out.
+                            #
+                            # This RE-TESTS the 2026-08-01 verdict below, which
+                            # was taken under the relay loop that no longer
+                            # exists — there the run never reached a second lobe
+                            # at all, so "0.36 diverges" was measured on a
+                            # trajectory that had nothing to do with this one.
+                            #
+                            # Side effect to watch: depower moves the turn-rate
+                            # law. c1 0.1830 -> 0.1513 (-17%) and the dead time
+                            # 0.383 -> 0.420 s, so LOOP GAIN DROPS ~17% and the
+                            # delay grows slightly. Both push towards more
+                            # stability, so HEADING_P 0.6 stays valid; if the
+                            # tracking goes sluggish, that is the reason.
+                            #
                             # 0.36 -> 0.40 (2026-08-01): REVERTED, see below.
                             #
                             # 0.40 -> 0.36 (2026-08-01, -10%): the entry is
@@ -386,7 +421,56 @@ EL_CENTER        = 40.5     # Pattern-centre elevation; spans 30.5-50.5° at B=2
                             # energy side wins until reel-out exists.
                             # Pattern at this centre: 224 m wide x 70 m tall,
                             # 564 m of path per lap, tightest radius 26 m.
-ATTRACTOR_DIST   = 15.0     # Arc distance Q -> attractor [deg].
+@isdefined(ATTRACTOR_DIST) || (
+ATTRACTOR_DIST   = 12.1)    # Arc distance Q -> attractor [deg]. Guarded with
+                            # `@isdefined` so a sweep driver can set it in the
+                            # REPL before `include`ing this file and have its
+                            # value survive (same pattern as F8_* in
+                            # simple_fig8_plots.jl); the number here is the
+                            # default for a plain run. NOTE the footgun: a stale
+                            # ATTRACTOR_DIST left in the REPL by a sweep silently
+                            # wins over this value. The startup @info line prints
+                            # the lead actually used — read it.
+                            #
+                            # 15.0 -> 12.1 (2026-08-02). SWEPT 10 .. 20 in 10%
+                            # steps, 150 s per run, depower 0.40, HEADING_P 0.6,
+                            # metrics from t = 25 s:
+                            #
+                            #   attr   t_end  laps  RMS d  max d  az span      x  CV
+                            #   10.0    150    3.5   2.85   7.25  -48.7..48.5  7  17.0%
+                            #   11.0    150    3.5   2.87   7.18  -48.1..47.9  8  16.4%
+                            #   12.1    150    4.0   2.90   7.07  -47.5..47.2  8  15.7%  <- kept
+                            #   13.31   150    4.0   2.97   6.92  -46.8..46.5  8  15.5%
+                            #   14.64   150    4.0   3.13   6.94  -46.0..45.6  8  14.9%
+                            #   16.11   150    4.0   3.36   6.89  -45.2..44.8  8  14.1%
+                            #   17.72    41.1  0.0   3.38   5.88  -21.9..43.9  1  11.0%
+                            #   19.49    40.4  0.0   3.58   6.42  -19.9..43.0  1  10.7%
+                            #
+                            # Three results. (1) RMS d rises MONOTONICALLY with
+                            # the lead, 2.85 -> 3.58°, so the minimum is at the
+                            # bottom edge of the swept range and may lie below
+                            # 10. (2) There is a survival CLIFF between 16.11 and
+                            # 17.72: both long leads die at ~41 s with one
+                            # crossing and a one-sided span. (3) Force ripple
+                            # trades the other way, CV 17.0 -> 10.7%, i.e. the
+                            # gentlest force is at leads that no longer fly the
+                            # pattern. The flown azimuth span also SHRINKS with
+                            # lead (±48.6 -> ±45°), so a short lead flies a
+                            # fuller eight, not merely a better-tracked one.
+                            #
+                            # 12.1 is kept over the 2.85° minimum at 10: it is
+                            # the shortest lead giving the full 4 laps and 8
+                            # crossings, passes RMS d < 3.0° with margin, has
+                            # 1.3 points less force ripple than 10, and sits
+                            # clear of the cliff. Buying 0.05° of RMS with half a
+                            # lap and more force ripple is not a good trade.
+                            #
+                            # This INVERTS the 2026-08-01 sweep below, which
+                            # found 35.1 optimal. That sweep ran under the relay
+                            # loop (HEADING_P 4.5, steering clamped ~90% of the
+                            # time), where the plan itself recorded that guidance
+                            # changes made no difference — it was measuring a
+                            # saturated controller, not the guidance.
                             #
                             # 35.1 -> 15.0 (2026-08-01): a 35° lead is ~22% of a
                             # lap, and the sweep below noted that part of its
@@ -503,7 +587,46 @@ WALK_START       = 60.0     # [s] time after which the walk begins
 # Heading PID. Output is rel_steering (dimensionless, -1..1), fed UNNEGATED:
 # positive rel_steering produces a positive heading rate on this plant
 # (measured, r = +0.998 — see src/fig8_controller.jl).
-HEADING_P        = 4.5      # Gain at v_app == V_APP_REF (simple_sinus.jl value)
+HEADING_P        = 0.6      # Gain at v_app == V_APP_REF (simple_sinus.jl value
+                            # was 5.0)
+                            #
+                            # 4.5 -> 0.6 (2026-08-02, factor 7.5, deliberately
+                            # OUTSIDE the 10%-per-iteration rule — see below for
+                            # why 10% steps provably cannot reach it). Derived,
+                            # not guessed:
+                            #
+                            #   plant:  psi_dot = c1*v_a*u_s, an INTEGRATOR with
+                            #           gain c1*v_a = 0.183*20 = 3.66 rad/s per
+                            #           unit u_s at flight speed
+                            #   loop:   omega_c = K * 3.66, and at the current
+                            #           K = 4.5*13.1/20 = 2.55 that is 9.3 rad/s
+                            #           = 1.5 Hz
+                            #   delay:  0.72 s MEASURED (the steering tape's
+                            #           rate-limit lag, ~2x the 0.383 s
+                            #           small-signal dead time from
+                            #           turn_rate_coeffs)
+                            #   margin: a delay needs omega_c*T_d <~ 0.8 rad, so
+                            #           omega_c <= 1.1 rad/s, K <= 0.30, i.e.
+                            #           HEADING_P ~ 0.46 at v_app 20. Against the
+                            #           optimistic 0.383 s figure it is 0.86.
+                            #           0.6 sits between the two.
+                            #
+                            # The loop was running ~8x over gain, hence a relay:
+                            # K = 2.55 clamps at only 6.7° of course error, and
+                            # 88.2% of phase-3 samples exceeded that. Measured
+                            # consequence: the kite turned at a median 43.5 deg/s
+                            # while the guidance asked for a median 8.3 deg/s —
+                            # a 5x overshoot, i.e. a self-sustained oscillation,
+                            # NOT a tracking deficit. The 40° median course error
+                            # is the RESULT of that oscillation.
+                            #
+                            # This also explains both entries below. 4.5 -> 2.0
+                            # is still ~4x over gain, so the loop stayed a relay
+                            # and the run "changed only how it saturates" — that
+                            # was the correct observation with the wrong cause
+                            # attached to it ("authority-limited"; it is RATE-
+                            # limited, see SmallPlan.md).
+                            #
                             # 2.0 -> 4.5 (2026-08-01): REVERTED. The large cut
                             # below bought 0.4° of RMS and cost a tripling of the
                             # force ripple and 3.3° of elevation floor.
@@ -577,8 +700,8 @@ V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 # exists to avoid a hard switch: heading and course differ by the drift angle
 # (~13-15° on the V3), so a step change of feedback signal at one speed would
 # step the steering command by HEADING_P * drift. Widen it if that shows.
-V_KITE_HEADING   = 0.0      # [m/s] at/below: pure heading feedback
-V_KITE_COURSE    = 0.001    # [m/s] at/above: pure course feedback ("high" per
+V_KITE_HEADING   = 5.0      # [m/s] at/below: pure heading feedback
+V_KITE_COURSE    = 10.0    # [m/s] at/above: pure course feedback ("high" per
                             # the flight note in SmallPlan.md; the lower edge is
                             # a choice — 5 m/s is just above the 4.2 m/s the
                             # kite drifts at during the park)
@@ -591,7 +714,19 @@ V_KITE_COURSE    = 0.001    # [m/s] at/above: pure course feedback ("high" per
                             # survival at attr 35.1 no longer reproduces (three
                             # runs today, incl. two winch variants, all diverged
                             # at 17.6-18.0 s with min_el ~28° instead of 40.2°).
-                            # Restore 5.0/10.0 to re-enable the blend.
+                            # Restored to 5.0/10.0 (2026-08-02): with the phased
+                            # entry the transition looks good again, and the band
+                            # now applies to the ENTRY ONLY — see below.
+FIG8_PURE_COURSE = true     # In FIG8 mode (phase 3), feed back COURSE alone and
+                            # ignore the V_KITE_* schedule; the entry phases keep
+                            # it. This is SmallPlan.md's "gate on phase instead
+                            # of speed" option. Rationale: path following is a
+                            # course problem, and on the pattern the kite is fast
+                            # enough that the schedule asks for course anyway —
+                            # it only dips into the band during the slow part of
+                            # a turn, swapping the feedback signal mid-turn for
+                            # no benefit. `false` restores the pure speed
+                            # schedule in every phase.
 MAX_STEERING     = 0.30     # Steering command limit [-]. OPTION 3 (raise the
                             # authority to relieve the 97% clamp saturation) is
                             # CLOSED — it does not work on this plant:
@@ -803,9 +938,25 @@ try
         # parameter block). Blended on the WRAPPED difference so the transition
         # stays continuous across the ±180° cut, and so the two endpoints are
         # exactly `heading` and `course`.
+        #
+        # In FIG8 mode the speed schedule is bypassed and the course is fed back
+        # unconditionally (FIG8_PURE_COURSE). Path following is a course problem:
+        # what must lie on the path is where the kite GOES, and the ~13-15° drift
+        # angle means heading feedback tracks the path with a standing offset. On
+        # the pattern the kite is also fast enough that the schedule asks for
+        # course anyway — it just dips into the band during the slow part of a
+        # turn and swaps the feedback signal mid-manoeuvre, which is the failure
+        # mode recorded in SmallPlan.md (|v_kite| crossed the 10 m/s edge twice
+        # in the 15-27 s window of the 2026-08-02 run, 9.8% of it inside the
+        # band). The entry phases keep the schedule: during park and dive the
+        # kite really can be too slow for a meaningful course.
         v_kite = norm(s.sys_state.vel_kite)
-        w_course = clamp((v_kite - V_KITE_HEADING) /
-                         (V_KITE_COURSE - V_KITE_HEADING), 0.0, 1.0)
+        w_course = if FIG8_PURE_COURSE && phase == 3
+            1.0
+        else
+            clamp((v_kite - V_KITE_HEADING) /
+                  (V_KITE_COURSE - V_KITE_HEADING), 0.0, 1.0)
+        end
         # +π: `SysState.course` is SymbolicAWEModels' raw tangent-frame course,
         # whose zero points AWAY from zenith, while `SysState.heading` and the
         # guidance both use 0 = towards zenith. The flip is not symmetric
@@ -872,6 +1023,12 @@ try
         s.sys_state.var_06 = rad2deg(err)      # REGULATED error [deg]
         s.sys_state.var_07 = chi_cmd == chi_set ? 0.0 : 1.0  # entry limiter active
         s.sys_state.var_08 = w_course          # course/heading blend weight [-]
+        # Whole-wing AoA. `sys_state.AoA` is the CENTRE PANEL only, which is
+        # representative while the wing is loaded symmetrically but not in a
+        # turn, where steering twists the two halves in opposite directions —
+        # and this pattern is flown with the steering on its clamp nearly all
+        # the time. The plots show both so the gap between them is visible.
+        s.sys_state.var_09 = rad2deg(span_mean_aoa(s.sys))
     end
 catch exc
     # `exc`, not `e`: a stray global `e` in the REPL turns the catch binding
@@ -891,6 +1048,9 @@ print_fig8_metrics(sl; t_start = PARK_TIME, settle_time = ENTRY_TIME,
 
 # Plots come up with the run — the plotting script reuses the F8_* constants
 # defined above, so the reference overlay always matches the pattern flown.
-include(joinpath(@__DIR__, "simple_fig8_plots.jl"))
+# `SHOW_PLOTS = false` in the REPL suppresses them, which is what makes a sweep
+# bearable: three GLMakie windows per run adds up fast.
+@isdefined(SHOW_PLOTS) || (SHOW_PLOTS = true)
+SHOW_PLOTS && include(joinpath(@__DIR__, "simple_fig8_plots.jl"))
 
 nothing
