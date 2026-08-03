@@ -563,7 +563,7 @@ function init(v_wind_gnd, l_tether;
     # Winch-controller settings fall back to the file named in the `wc_settings`
     # field of system.yaml.
     isnothing(wc) &&
-        (wc = WC_Settings(joinpath(data_path, wc_settings(system_path))))
+        (wc = WC_Settings(joinpath(dirname(system_path), wc_settings(system_path))))
     if isnothing(elevation)
         elevation = Settings(system_path).elevation
     end
