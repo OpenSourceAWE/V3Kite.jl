@@ -100,26 +100,21 @@ using KitePodModels: KCU
     end
 
     @testset "Cache-Key Number Tag" begin
-        # num_tag feeds the settled-geometry file name (damping, elevation), so
-        # it has to stay filename-safe and stable: no trailing ".0", no dots
-        # from vector separators.
+        # num_tag feeds a file name: no trailing ".0", no dots from vector separators.
         @test V3Kite.num_tag(40.0) == "40"
         @test V3Kite.num_tag(0.0) == "0"
         @test V3Kite.num_tag([0.0, 0.0, 40.0]) == "0-0-40"
         @test V3Kite.num_tag(69.5) == "69.5"
-        # Distinct elevations must produce distinct tags — the whole point of
-        # putting the elevation in the key.
+        # Distinct elevations must produce distinct tags.
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
     @testset "Default Cache Path" begin
-        # A development checkout caches in place, so `] dev`-ing V3Kite keeps
-        # using the settled_*.bin files already in data/.
+        # A development checkout caches in place, keeping the existing data/*.bin.
         dev = v3_data_path()
         @test V3Kite.default_cache_path(dev) == dev
 
-        # A Pkg-installed copy must NOT be written to: Pkg.gc deletes that tree
-        # once nothing references the version, taking the compiled model with it.
+        # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
         installed = joinpath(DEPOT_PATH[1], "packages", "V3Kite", "abc123", "data")
         redirected = V3Kite.default_cache_path(installed)
         @test redirected != installed

@@ -435,10 +435,7 @@ function winch_position_torque!(s::V3KITE, set_length, speed_limit,
     ctrl.v_sp_prev = v_sp
     # Inner PI loop: speed error → torque correction.
     dtau = ctrl.speed_pid(v_sp, reel_out_speed(s), 0.0)
-    # Force feed-forward, scaled: at ff_scale = 1 it cancels the measured tether
-    # force exactly and the drum cannot pay out at any PI gain; below 1 the
-    # holding torque falls short of the load and the winch yields (WC_Settings).
-    # Only the load term is scaled — friction compensation stays at full size.
+    # Only the load term is scaled; friction compensation stays at full size.
     tau_ff = force_to_torque(winch_force(s), s.sys; ff_scale=ctrl.ff_scale)
     return tau_ff + dtau
 end
@@ -480,9 +477,6 @@ function winch_force_torque!(wfc::WinchForceController, s::V3KITE, set_length)
     isnan(wfc.f_lpf) && (wfc.f_lpf = f_now)
     alpha = s.dt / (wfc.force_tau + s.dt)
     wfc.f_lpf += alpha * (f_now - wfc.f_lpf)
-    # Length trim (a spring) plus viscous damping. The damping term is what keeps
-    # the drum from free-wheeling: force control gives it no velocity feedback of
-    # its own, so spring alone is an undamped oscillator.
     f_set = wfc.f_lpf + wfc.len_kp * (unstretched_length(s) - set_length) +
             wfc.damp * reel_out_speed(s)
     return force_to_torque(max(f_set, wfc.force_min), s.sys)
@@ -623,14 +617,7 @@ function init(v_wind_gnd, l_tether;
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
 
-    # Un-brake the winch (the settled binary is serialized with brake=true) and
-    # hand the drum a holding torque for the load it is already carrying. The
-    # settled state was found with the length KINEMATICALLY FIXED, so the
-    # serialized `set_value` is whatever settling left there — release the brake
-    # without replacing it and the drum's first consistent-initial-condition
-    # solve sees a free drum holding nothing, which is a torque step at t = 0.
-    # `winch.force` is populated in the settled state (it is the same field
-    # `winch_force` reads every step).
+    # The serialized `set_value` is stale: releasing the brake alone steps at t = 0.
     sys.winches[1].brake = false
     init_winch_torque!(sys)
 
@@ -765,11 +752,7 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     s.sys_state.var_14 = rel_depower
     lift, wing_drag = lift_drag(s)
     _, _, total_d = total_drag(s)
-    # Both ratios are gated on a PHYSICAL drag floor, not on `> 1e-6` N: the
-    # drag is a signed projection onto v_a and passes through zero whenever the
-    # wing unloads, which turned a vanishing force into a large L/D (see
-    # `drag_floor`). Below the floor the ratio is NaN — a gap in the plot — so
-    # an unloaded instant reads as "not measurable" instead of as a peak.
+    # Below the floor the wing is unloaded and the ratio is a spike; see `drag_floor`.
     d_min = drag_floor(s.sam)
     s.sys_state.var_15 = wing_drag > d_min ? lift / wing_drag : NaN
     s.sys_state.var_16 = total_d > d_min ? lift / total_d : NaN
@@ -832,15 +815,13 @@ function warmup!(s::V3KITE, warmup_time; depower = 0.0, wfc = nothing)
     n = round(Int, warmup_time / s.dt)
     n < 1 && return nothing
     if n > s.steps
-        # The warm-up logs through the run's logger before that log is thrown
-        # away, and the logger holds `steps + 1` rows.
+        # The warm-up logs through the run's logger, which holds `steps + 1` rows.
         @warn "warmup_time is longer than the whole run; clamping to sim_time."
         n = s.steps
     end
     @info @sprintf("warmup: %.2f s (%d steps) with the winch in %s mode...",
                    warmup_time, n, isnothing(wfc) ? "position" : "force")
-    # Hold the length the model arrived at; the run re-references to wherever
-    # the warm-up leaves it (`l0` is read from `sys_state` after `init` returns).
+    # The run re-references to wherever the warm-up leaves the length.
     l_hold = unstretched_length(s)
     for _ in 1:n
         if isnothing(wfc)
@@ -851,8 +832,7 @@ function warmup!(s::V3KITE, warmup_time; depower = 0.0, wfc = nothing)
                   set_torque = winch_force_torque!(wfc, s, l_hold))
         end
     end
-    # Discard the warm-up: a fresh logger and a `sys_state` rebuilt from the
-    # model, which also re-logs the (now relaxed) t = 0 row.
+    # Discard the warm-up log and re-log the now-relaxed t = 0 row.
     logger, sys_state = create_logger(s.sam, s.steps)
     s.logger = logger
     s.sys_state = sys_state

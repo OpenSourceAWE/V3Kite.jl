@@ -194,16 +194,14 @@ end
     @test loaded.winch_speed_k == default.winch_speed_k
     @test loaded.winch_speed_ti == default.winch_speed_ti
     @test loaded.winch_torque_limit == default.winch_torque_limit
-    # The shipped file spells the force-mode knobs out at their defaults, so it
-    # doubles as the list of what is tunable.
+    # The shipped file spells every knob out, so it doubles as the tunable list.
     @test loaded.winch_ff_scale == default.winch_ff_scale
     @test loaded.winch_force_tau == default.winch_force_tau
     @test loaded.winch_len_kp == default.winch_len_kp
     @test loaded.winch_damp == default.winch_damp
     @test loaded.winch_force_min == default.winch_force_min
 
-    # A WinchForceController takes its gains from the settings, and starts with
-    # no reference force so the first step produces no torque jump.
+    # Starts with no reference force, so the first step produces no torque jump.
     wfc = WinchForceController(loaded)
     @test wfc.force_tau == loaded.winch_force_tau
     @test wfc.len_kp == loaded.winch_len_kp
@@ -268,9 +266,7 @@ end
     end
 
     @testset "step! logged L/D" begin
-        # The parked wing is loaded, so both ratios must be real numbers: the
-        # drag_floor gate only NaNs an UNLOADED wing, and a NaN here would mean
-        # the floor is set above the working drag.
+        # The parked wing is loaded, so a NaN would mean the floor sits too high.
         @test isfinite(s.sys_state.var_15)
         @test isfinite(s.sys_state.var_16)
         @test s.sys_state.var_15 > 0.0

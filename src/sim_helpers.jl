@@ -485,9 +485,7 @@ function span_mean_aoa(sys)
     wing = sys.wings[1]
     hasproperty(wing, :vsm_solver) || return NaN
     alphas = wing.vsm_solver.sol.alpha_geometric_dist
-    # Same wrap as update_sys_state! applies to the centre panel: the VSM
-    # returns some panels as `pi + atan(...)`, which would otherwise average
-    # against the others as if it were a large positive angle.
+    # The VSM returns some panels as `pi + atan(...)`; wrap as update_sys_state! does.
     n = 0
     acc = 0.0
     for a in alphas
@@ -669,8 +667,7 @@ function save_and_load_log(logger, name; path=nothing)
         save_log(logger, name)
         return load_log(name)
     end
-    # `load_log` defaults to KiteUtils' data path, which is not where we just
-    # wrote — read the log back from the directory it was saved to.
+    # `load_log` defaults to KiteUtils' data path, not the one we just wrote to.
     save_log(logger, name; path)
     return load_log(name; path)
 end

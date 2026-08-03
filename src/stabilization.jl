@@ -144,8 +144,7 @@ exactly as before and existing `data/settled_*.bin` files stay in use.
 function default_cache_path(data_path)
     abs_data = abspath(data_path)
     in_depot = any(DEPOT_PATH) do depot
-        # Trailing separator (`joinpath(dir, "")`) so the prefix test lands on a
-        # path boundary: a bare prefix also matches a sibling `packages_old`.
+        # Trailing separator: a bare prefix also matches a sibling `packages_old`.
         startswith(abs_data, joinpath(abspath(joinpath(depot, "packages")), ""))
     end
     in_depot || return data_path
@@ -213,10 +212,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     te_f = gc.reduce_te ? gc.te_frac : 1.0
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
-    # The settling elevation comes in through `init_row`'s position, not through
-    # `config`, but it selects a different equilibrium — without it in the key,
-    # two elevations share one cache entry and the second one silently gets the
-    # first one's geometry.
+    # Elevation arrives through `init_row`, not `config`, but selects its own equilibrium.
     el_deg = rad2deg(KiteUtils.calc_elevation(
         [init_row.x, init_row.y, init_row.z]))
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
@@ -246,8 +242,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         suffix *= "_wd$(num_tag(config.world_damping))" *
                   "_md$(num_tag(config.min_damping))"
     end
-    # The only thing settling WRITES, hence the only thing that has to live in a
-    # writable directory (a url-installed V3Kite is read-only, see `init`).
+    # The only thing settling writes, hence the only thing needing a writable dir.
     cache_path != data_path && mkpath(cache_path)
     dest_struc = joinpath(
         cache_path, "settled_$(suffix).bin")
