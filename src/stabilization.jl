@@ -95,11 +95,11 @@ differ in elevation get their own file instead of sharing one.
 `data_path` is where the source geometry/settings YAMLs are read
 from (default [`v3_data_path`](@ref)); `cache_path` is where
 everything generated is written — the `settled_*.bin` cache, the
-settling log, and the serialized model binary (default
-`data_path`, created if missing). Split them to keep the bundled
-geometry while writing somewhere else, which is what a read-only
-V3Kite install needs — see [`init`](@ref) and
-[`with_model_cache`](@ref).
+settling log, and the serialized model binary. It defaults to
+[`default_cache_path`](@ref)`(data_path)`, which is `data_path`
+for a development checkout and a depot scratch directory for an
+installed V3Kite, and is created if missing. See [`init`](@ref)
+and [`with_model_cache`](@ref).
 """
 function settle_wing(config::V3SettleConfig;
                      position, velocity, heading,
@@ -123,6 +123,33 @@ the settling elevation into the settled-geometry cache key.
 """
 num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
 num_tag(d::AbstractVector) = join(num_tag.(d), "-")
+
+"""
+    default_cache_path(data_path) -> String
+
+Where generated artifacts go when the caller names no `cache_path`: `data_path`
+itself for a development checkout, and a scratch directory next to the depot for
+a Pkg-INSTALLED V3Kite.
+
+A package directory under `DEPOT_PATH/packages` is not ours to write to. Pkg
+usually makes it read-only outright, and where it does not, `Pkg.gc` deletes the
+whole tree once no environment references that version — silently taking a
+settled geometry and a 20 MB compiled model with it. Writing into a
+`scratchspaces` directory keyed by our UUID is the depot-blessed way to keep
+generated files, and it survives reinstalling the package.
+
+A development checkout keeps caching in place, so `] dev`-ing V3Kite behaves
+exactly as before and existing `data/settled_*.bin` files stay in use.
+"""
+function default_cache_path(data_path)
+    abs_data = abspath(data_path)
+    in_depot = any(DEPOT_PATH) do depot
+        startswith(abs_data, abspath(joinpath(depot, "packages")))
+    end
+    in_depot || return data_path
+    uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"  # V3Kite, see Project.toml
+    return joinpath(DEPOT_PATH[1], "scratchspaces", uuid, "v3kite_cache")
+end
 
 """
     with_model_cache(f, cache_path, data_path)
@@ -161,7 +188,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     if isnothing(data_path)
         data_path = v3_data_path()
     end
-    isnothing(cache_path) && (cache_path = data_path)
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     set_data_path(data_path)
 
     gc = config.geom

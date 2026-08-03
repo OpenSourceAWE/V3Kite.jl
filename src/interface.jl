@@ -513,13 +513,16 @@ alternate config.
 defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
 everything generated is WRITTEN — the settled-geometry cache
 (`settled_*.bin`), the settling log, and the serialized model binary
-(`model_*.bin`) — defaulting to `data_path` and created if missing.
+(`model_*.bin`).
 
-Set `cache_path` when V3Kite is installed read-only: Pkg makes url-installed
-packages read-only, and a fresh install ships no model binary, so with
-everything under the bundled path the first run fails on writing one.
-Redirecting `cache_path` alone is sufficient and keeps the bundled geometry in
-use. Redirecting `data_path` as well means that directory must hold the source
+`cache_path` defaults to [`default_cache_path`](@ref)`(data_path)`: `data_path`
+itself for a development checkout, and a depot scratch directory when V3Kite is
+Pkg-INSTALLED, since a package directory is neither reliably writable nor safe
+to write to (`Pkg.gc` eventually deletes it). Pass it explicitly to put the
+cache somewhere of your own — a per-project directory keeps one project's
+re-settles from invalidating another's.
+
+Redirecting `data_path` as well means that directory must hold the source
 geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
 the system YAML and the settings file it names), since the settling stage reads
 all of them from it.
