@@ -112,6 +112,21 @@ using KitePodModels: KCU
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
+    @testset "Default Cache Path" begin
+        # A development checkout caches in place, so `] dev`-ing V3Kite keeps
+        # using the settled_*.bin files already in data/.
+        dev = v3_data_path()
+        @test V3Kite.default_cache_path(dev) == dev
+
+        # A Pkg-installed copy must NOT be written to: Pkg.gc deletes that tree
+        # once nothing references the version, taking the compiled model with it.
+        installed = joinpath(DEPOT_PATH[1], "packages", "V3Kite", "abc123", "data")
+        redirected = V3Kite.default_cache_path(installed)
+        @test redirected != installed
+        @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
+        @test occursin("scratchspaces", redirected)
+    end
+
     @testset "V3GeomAdjustConfig Defaults" begin
         gc = V3GeomAdjustConfig()
         @test gc.reduce_steering == false
