@@ -1,7 +1,7 @@
 name = "V3Kite"
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
-version = "0.1.0"
-authors = ["Jelle Poland", "Bart van de Lint"]
+version = "1.0.1"
+authors = ["Jelle Poland", "Bart van de Lint", "Uwe Fechner"]
 
 [deps]
 AtmosphericModels = "c59cac55-771d-4f45-b14d-1c681463a295"
