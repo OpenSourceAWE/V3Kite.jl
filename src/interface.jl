@@ -509,16 +509,20 @@ file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
 alternate config.
 
-`data_path` is the directory the geometry/settings YAMLs are read from,
-defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where the
-settled-geometry cache (`settled_*.bin`) is written, defaulting to `data_path`
-and created if missing. Split them when V3Kite is installed read-only: Pkg
-makes url-installed packages read-only, so with everything under the bundled
-path the first run fails on writing the cache. Redirecting only `cache_path`
-keeps the bundled geometry in use; redirecting `data_path` as well means that
-directory must hold the source geometry too (`struc_geometry.yaml`,
-`aero_geometry.yaml`, `vsm_settings.yaml`, the system YAML and the settings
-file it names), since the whole settling stage reads from it.
+`data_path` is the directory the geometry/settings YAMLs are READ from,
+defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
+everything generated is WRITTEN — the settled-geometry cache
+(`settled_*.bin`), the settling log, and the serialized model binary
+(`model_*.bin`) — defaulting to `data_path` and created if missing.
+
+Set `cache_path` when V3Kite is installed read-only: Pkg makes url-installed
+packages read-only, and a fresh install ships no model binary, so with
+everything under the bundled path the first run fails on writing one.
+Redirecting `cache_path` alone is sufficient and keeps the bundled geometry in
+use. Redirecting `data_path` as well means that directory must hold the source
+geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
+the system YAML and the settings file it names), since the settling stage reads
+all of them from it.
 
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to

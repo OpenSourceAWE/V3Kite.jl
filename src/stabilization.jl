@@ -93,10 +93,13 @@ the elevation implied by the initial position, so runs that only
 differ in elevation get their own file instead of sharing one.
 
 `data_path` is where the source geometry/settings YAMLs are read
-from (default [`v3_data_path`](@ref)); `cache_path` is where the
-`settled_*.bin` cache is written (default `data_path`, created if
-missing). Split them to keep the bundled geometry while caching
-somewhere writable — see [`init`](@ref).
+from (default [`v3_data_path`](@ref)); `cache_path` is where
+everything generated is written — the `settled_*.bin` cache, the
+settling log, and the serialized model binary (default
+`data_path`, created if missing). Split them to keep the bundled
+geometry while writing somewhere else, which is what a read-only
+V3Kite install needs — see [`init`](@ref) and
+[`with_model_cache`](@ref).
 """
 function settle_wing(config::V3SettleConfig;
                      position, velocity, heading,
@@ -120,6 +123,35 @@ the settling elevation into the settled-geometry cache key.
 """
 num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
 num_tag(d::AbstractVector) = join(num_tag.(d), "-")
+
+"""
+    with_model_cache(f, cache_path, data_path)
+
+Run `f()` with KiteUtils' data path pointed at `cache_path`, restoring
+`data_path` afterwards; a no-op when the two are equal.
+
+Exists for exactly one write: `SymbolicAWEModels.init!` serializes the compiled
+model to `joinpath(KiteUtils.get_data_path(), model_name)` and takes no path
+argument, so the global data path is the only lever on where that file lands.
+Without this, a `cache_path` would redirect the settled geometry while the model
+binary still went to `data_path` — which fails outright when `data_path` is a
+read-only (url-installed) copy of V3Kite, since a fresh install ships no model
+binary and therefore always has to write one.
+
+Narrow on purpose: `init!` reads nothing else through the data path (settings
+and geometry are already in memory by then), so redirecting it for the duration
+of the call cannot pull any other file from the wrong directory.
+"""
+function with_model_cache(f, cache_path, data_path)
+    cache_path == data_path && return f()
+    mkpath(cache_path)
+    set_data_path(cache_path)
+    try
+        return f()
+    finally
+        set_data_path(data_path)
+    end
+end
 
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
@@ -204,7 +236,7 @@ function settle_wing(config::V3SettleConfig, init_row;
                 config; data_path, show_progress,
                 source_struc, source_aero, dest_struc,
                 log_path = cache_path == data_path ? nothing : cache_path,
-                init_row)
+                cache_path, init_row)
         catch err
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
@@ -242,9 +274,11 @@ function settle_wing(config::V3SettleConfig, init_row;
         sys = deserialize(dest_struc)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, remake_vsm=true,
-            reinit_sys=false)
+        with_model_cache(cache_path, data_path) do
+            SymbolicAWEModels.init!(sam;
+                remake=false, remake_vsm=true,
+                reinit_sys=false)
+        end
     else
         @info "Loading source geometry" source_struc
         vsm_path = joinpath(
@@ -256,9 +290,11 @@ function settle_wing(config::V3SettleConfig, init_row;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false,
-            remake_vsm=true)
+        with_model_cache(cache_path, data_path) do
+            SymbolicAWEModels.init!(sam;
+                remake=false, ignore_l0=false,
+                remake_vsm=true)
+        end
     end
 
     return sam, syslog, settle_failed
@@ -270,7 +306,7 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero, cache_path=data_path)
     gc = config.geom
     set_data_path(data_path)
     set = Settings(config.system_yaml)
@@ -309,8 +345,10 @@ function setup_settling_model(config::V3SettleConfig;
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
-    SymbolicAWEModels.init!(
-        sam; remake=false, ignore_l0=false, remake_vsm=true)
+    with_model_cache(cache_path, data_path) do
+        SymbolicAWEModels.init!(
+            sam; remake=false, ignore_l0=false, remake_vsm=true)
+    end
 
     @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
@@ -326,9 +364,10 @@ function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
         dest_struc, log_path=nothing,
+        cache_path=data_path,
         init_row)
     sam, sys, gc = setup_settling_model(config;
-        data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero, cache_path)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
