@@ -149,10 +149,10 @@ function default_cache_path(data_path)
 end
 
 """
-    with_model_cache(f, cache_path, data_path)
+    with_model_cache(f, cache_path)
 
-Run `f()` with KiteUtils' data path pointed at `cache_path`, restoring
-`data_path` afterwards; a no-op when the two are equal.
+Run `f()` with KiteUtils' data path pointed at `cache_path`, restoring whatever
+the caller had afterwards.
 
 Exists for exactly one write: `SymbolicAWEModels.init!` serializes the compiled
 model under `KiteUtils.get_data_path()` and takes no path argument, so the global
@@ -161,14 +161,14 @@ would still go to a read-only `data_path` while the geometry went to the cache.
 Narrow on purpose: `init!` reads nothing else through the data path, so the
 redirect cannot pull another file from the wrong directory.
 """
-function with_model_cache(f, cache_path, data_path)
-    cache_path == data_path && return f()
+function with_model_cache(f, cache_path)
     mkpath(cache_path)
+    previous = get_data_path()
     set_data_path(cache_path)
     try
         return f()
     finally
-        set_data_path(data_path)
+        set_data_path(previous)
     end
 end
 
@@ -181,7 +181,6 @@ function settle_wing(config::V3SettleConfig, init_row;
         data_path = v3_data_path()
     end
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
-    set_data_path(data_path)
 
     gc = config.geom
     gc.tether_length = config.tether_length
@@ -213,7 +212,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         "_sys$(splitext(basename(config.system_yaml))[1])"
     # Mirrors the config/settings-YAML fallback in `setup_settling_model`,
     # so the cache key changes whenever the resolved KCU mass changes.
-    yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
+    yaml_kcu_mass = Settings(joinpath(data_path, config.system_yaml)).kcu_mass
     resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
         (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
     if !isnothing(resolved_kcu_mass)
@@ -250,8 +249,7 @@ function settle_wing(config::V3SettleConfig, init_row;
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero, dest_struc,
-                log_path = cache_path == data_path ? nothing : cache_path,
-                cache_path, init_row)
+                log_path = cache_path, cache_path, init_row)
         catch err
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
@@ -266,9 +264,7 @@ function settle_wing(config::V3SettleConfig, init_row;
                 rethrow(err)
             end
             try
-                syslog = cache_path == data_path ?
-                    load_log("settle_particle_dynamics_wing") :
-                    load_log("settle_particle_dynamics_wing"; path=cache_path)
+                syslog = load_log("settle_particle_dynamics_wing"; path=cache_path)
             catch
             end
         end
@@ -276,8 +272,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     # Load model from serialized sys_struct, or source
     # YAML if settling failed
-    set_data_path(data_path)
-    set = Settings(config.system_yaml)
+    set = Settings(joinpath(data_path, config.system_yaml))
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
@@ -289,7 +284,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         sys = deserialize(dest_struc)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
-        with_model_cache(cache_path, data_path) do
+        with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=false, remake_vsm=true,
                 reinit_sys=false)
@@ -305,7 +300,7 @@ function settle_wing(config::V3SettleConfig, init_row;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
         sam = SymbolicAWEModel(set, sys)
-        with_model_cache(cache_path, data_path) do
+        with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=false, ignore_l0=false,
                 remake_vsm=true)
@@ -323,8 +318,7 @@ Returns `(sam, sys, gc)`.
 function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero, cache_path=data_path)
     gc = config.geom
-    set_data_path(data_path)
-    set = Settings(config.system_yaml)
+    set = Settings(joinpath(data_path, config.system_yaml))
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
@@ -360,7 +354,7 @@ function setup_settling_model(config::V3SettleConfig;
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
-    with_model_cache(cache_path, data_path) do
+    with_model_cache(cache_path) do
         SymbolicAWEModels.init!(
             sam; remake=false, ignore_l0=false, remake_vsm=true)
     end
@@ -378,8 +372,7 @@ end
 function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc, log_path=nothing,
-        cache_path=data_path,
+        dest_struc, cache_path=data_path, log_path=cache_path,
         init_row)
     sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero, cache_path)
@@ -508,11 +501,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     catch err
         if logger.index > 1
             @warn "Settling crashed, saving partial log" msg=sprint(showerror, err)
-            if isnothing(log_path)
-                save_log(logger, "settle_particle_dynamics_wing")
-            else
-                save_log(logger, "settle_particle_dynamics_wing"; path=log_path)
-            end
+            save_log(logger, "settle_particle_dynamics_wing"; path=log_path)
         end
         rethrow(err)
     end

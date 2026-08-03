@@ -61,8 +61,9 @@ end
 Load winch-controller settings from the YAML file `filename` (looked up under the
 active data path, i.e. `joinpath(get_data_path(), filename)`). The file must have a
 top-level `wc_settings:` mapping whose keys are the field names of `WC_Settings`;
-any missing key falls back to the struct default. Call `set_data_path(v3_data_path())`
-(as `init` does) before this so the lookup resolves to `data/`.
+any missing key falls back to the struct default. An absolute `filename` is used
+as given; otherwise call `set_data_path(v3_data_path())` first so the lookup
+resolves to `data/` — `init` does not set it for you.
 """
 function WC_Settings(filename::String)
     dict = YAML.load_file(joinpath(get_data_path(), filename))["wc_settings"]

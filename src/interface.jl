@@ -511,6 +511,11 @@ geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
 the system YAML and the settings file it names), since the settling stage reads
 all of them from it.
 
+`init` does NOT change KiteUtils' global data path: every file it needs is
+resolved against `data_path`, and the caller's `set_data_path` still holds when
+it returns, so a `save_log`/`load_log` after `init` lands where the caller put
+it. An ABSOLUTE `system_yaml` is honoured as given and ignores `data_path`.
+
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
 the wing*, so it damps bridle vibration without slowing the kite's global motion
@@ -552,13 +557,15 @@ function init(v_wind_gnd, l_tether;
               warmup_time = 0.0,
               warmup_wfc = nothing,
               remake = false)
-    # Elevation fallback comes from the on-disk settings.
-    set_data_path(data_path)
+    # Every read below is resolved against `data_path` explicitly: `init` must not
+    # move the caller's KiteUtils data path, which outlives the call.
+    system_path = joinpath(data_path, system_yaml)
     # Winch-controller settings fall back to the file named in the `wc_settings`
-    # field of system.yaml (needs the data path set above).
-    isnothing(wc) && (wc = WC_Settings(wc_settings(system_yaml)))
+    # field of system.yaml.
+    isnothing(wc) &&
+        (wc = WC_Settings(joinpath(dirname(system_path), wc_settings(system_path))))
     if isnothing(elevation)
-        elevation = Settings(system_yaml).elevation
+        elevation = Settings(system_path).elevation
     end
     el_rad = deg2rad(elevation)
     wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)

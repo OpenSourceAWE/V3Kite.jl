@@ -34,6 +34,8 @@ T_MIN =  0.0          # only plot results from T_MIN onwards
 # end of user parameter section #
 
 @info "Initializing model..."
+# `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
+set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
                                 depower_setpoint = DEPOWER_SETPOINT, dt, sim_time = STEPS*dt)
 toc("Initialized V3KITE instance")
