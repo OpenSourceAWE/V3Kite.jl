@@ -20,7 +20,10 @@ parameters with no historical counterpart; tune on `examples/simple_parking.jl`
     "Saturation of the inner speed loop's torque correction [N·m]"
     winch_torque_limit = 500.0
     """
-    Scale on the force feed-forward, `τ = ff_scale·force_to_torque(F) + Δτ`.
+    Scale on the load term of the force feed-forward,
+    `τ = -ff_scale·r/G·F + friction + Δτ`. Only the load is scaled; the friction
+    compensation is always applied in full, since it cancels the drum's own
+    friction rather than the load, and it flips sign with the reel-out direction.
 
     `1.0` (the default) cancels the measured tether force exactly, which makes the
     drum perfectly stiff — no reel-out however hard the kite pulls, whatever the PI

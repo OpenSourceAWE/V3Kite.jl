@@ -11,7 +11,8 @@ wc_settings:
   winch_speed_k:      30.0   # Inner speed-loop proportional gain: speed error [m/s] -> winch torque [N*m*s/m]
   winch_speed_ti:     2.0    # Inner speed-loop integral time [s] (larger = weaker integral action)
   winch_torque_limit: 500.0  # Saturation of the inner speed loop's torque correction [N*m]
-  # Scale on the force feed-forward. 1.0 cancels the measured tether force exactly,
+  # Scale on the load term of the force feed-forward (the friction compensation is
+  # never scaled). 1.0 cancels the measured tether force exactly,
   # which makes the drum perfectly stiff at any PI gain; below 1.0 the holding
   # torque falls short of the load and the drum pays out. Compliance from this knob
   # is transient unless winch_speed_ti is raised well above the timescale you want

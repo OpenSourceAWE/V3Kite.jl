@@ -415,10 +415,11 @@ length error (`set_length - unstretched_length(s)`) yields a reel-out speed
 setpoint, clamped to `±speed_limit` [m/s] and rate-limited by
 `acceleration_limit` [m/s²]. The inner PI loop (`s.winch_ctrl.speed_pid`) on
 the speed error yields a winch-torque correction, added to a force
-feed-forward `ff_scale * force_to_torque(winch_force(s), s.sys)` (the
-steady/gravity holding torque from the measured winch force, scaled by
-`winch_ff_scale` — 1.0 holds the load exactly and makes the drum stiff, below
-1.0 it deliberately falls short so the winch pays out). Returns the winch set
+feed-forward `force_to_torque(winch_force(s), s.sys; ff_scale)` (the
+steady/gravity holding torque from the measured winch force, whose load term is
+scaled by `winch_ff_scale` — 1.0 holds the load exactly and makes the drum
+stiff, below 1.0 it deliberately falls short so the winch pays out; the friction
+compensation inside `force_to_torque` is never scaled). Returns the winch set
 torque [N·m], applied directly as in `examples/reel_out_v3.jl`: at parking
 equilibrium (speed setpoint 0, measured speed 0, `ff_scale = 1`) the correction
 vanishes and the output is exactly the holding torque.
@@ -437,7 +438,8 @@ function winch_position_torque!(s::V3KITE, set_length, speed_limit,
     # Force feed-forward, scaled: at ff_scale = 1 it cancels the measured tether
     # force exactly and the drum cannot pay out at any PI gain; below 1 the
     # holding torque falls short of the load and the winch yields (WC_Settings).
-    tau_ff = ctrl.ff_scale * force_to_torque(winch_force(s), s.sys)
+    # Only the load term is scaled — friction compensation stays at full size.
+    tau_ff = force_to_torque(winch_force(s), s.sys; ff_scale=ctrl.ff_scale)
     return tau_ff + dtau
 end
 

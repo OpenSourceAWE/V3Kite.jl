@@ -91,14 +91,20 @@ function init_winch_torque!(sys)
 end
 
 """
-    force_to_torque(force, sys) -> torque
+    force_to_torque(force, sys; ff_scale=1.0) -> torque
 
 Convert tether force [N] to winch torque [N·m].
-Uses `τ = -r/G * F + friction` from the first winch.
+Uses `τ = -ff_scale * r/G * F + friction` from the first winch.
+
+`ff_scale` scales the load-canceling term only; the friction term is always
+applied in full. Friction compensation cancels the drum's own coulomb/viscous
+torque and is not part of the load being held, and `winch.friction` flips sign
+with the reel-out direction — scaling it would make the intended compliance
+direction- and speed-dependent instead of a plain fraction of the tether force.
 """
-function force_to_torque(force, sys)
+function force_to_torque(force, sys; ff_scale=1.0)
     winch = sys.winches[1]
-    return -winch.drum_radius / winch.gear_ratio * force +
+    return -ff_scale * winch.drum_radius / winch.gear_ratio * force +
         winch.friction
 end
 
