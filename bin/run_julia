@@ -8,18 +8,16 @@ fi
 
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 
-# --kaimon forces kaimon on and skips autodetection; remaining args go to Julia.
-force_kaimon=false
 julia_extra_args=()
 for arg in "$@"; do
     if [[ "$arg" == "--kaimon" ]]; then
         force_kaimon=true
+    elif [[ "$arg" == "--nosysimage" ]]; then
+        no_sysimage=true
     else
         julia_extra_args+=("$arg")
     fi
 done
-
-USE_KAIMON=false
 
 julia_version=$(julia --version | awk '{print($3)}')
 julia_major=${julia_version:0:3}
@@ -27,37 +25,7 @@ if [[ $julia_major == "1.1" ]]; then
     julia_major=${julia_version:0:4}
 fi
 
-# Kaimon integration requires Julia >= 1.12.
-kaimon_supported=false
-if [[ "$(printf '%s\n' 1.12 "$julia_version" | sort -V | head -n1)" == "1.12" ]]; then
-    kaimon_supported=true
-fi
-
-# KAIMON_AUTODETECT=true detects kaimon from a listener on port 2828.
-if [[ "$force_kaimon" == "true" ]]; then
-    USE_KAIMON=true
-elif [[ "${KAIMON_AUTODETECT:-false}" == "true" ]]; then
-    if command -v ss &> /dev/null; then
-        if ss -ltn '( sport = :2828 )' | grep -q ':2828'; then
-            USE_KAIMON=true
-        fi
-    elif command -v lsof &> /dev/null; then
-        if lsof -nP -iTCP:2828 -sTCP:LISTEN &> /dev/null; then
-            USE_KAIMON=true
-        fi
-    fi
-fi
-
-if [[ "$USE_KAIMON" == "true" && "$kaimon_supported" != "true" ]]; then
-    echo "Warning: kaimon requires Julia >= 1.12, found $julia_version. Disabling kaimon." >&2
-    USE_KAIMON=false
-fi
-
-julia_init='using Revise; '
-if [[ "$USE_KAIMON" == "true" ]]; then
-    julia_init+='using Kaimon; Gate.serve(); '
-fi
-julia_init+='function menu(); include("examples/menu.jl"); end'
+julia_init='using Revise; function menu(); include("examples/menu.jl"); end; function menu2(); include("examples/menu2.jl"); end'
 
 if [[ ${#julia_extra_args[@]} -gt 0 ]]; then
     JULIA_ARGS=("${julia_extra_args[@]}")
@@ -65,7 +33,7 @@ else
     JULIA_ARGS=(-i -e "$julia_init")
 fi
 
-if test -f "bin/kps-image-${julia_major}.so"; then
+if [[ -z "${no_sysimage:-}" ]] && test -f "bin/kps-image-${julia_major}.so"; then
     echo "Found system image!"
     julia --project -J "bin/kps-image-${julia_major}.so" "${JULIA_ARGS[@]}"
 else

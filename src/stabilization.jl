@@ -17,6 +17,8 @@ Base.@kwdef mutable struct V3SettleConfig
     source_struc_path::String = "struc_geometry.yaml"
     source_aero_path::String = "aero_geometry.yaml"
     vsm_settings_path::String = "vsm_settings.yaml"
+    # System YAML pointing at the active settings file (loaded via `Settings`)
+    system_yaml::String = "system.yaml"
 
     # Simulation parameters
     num_steps::Int = 8000
@@ -56,7 +58,7 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Model options
     aero_mode::SymbolicAWEModels.AbstractAeroModel =
-        SymbolicAWEModels.ContinuousAero()
+        SymbolicAWEModels.AeroDirect()
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
@@ -93,9 +95,21 @@ function settled_struct_path(config::V3SettleConfig, init_row;
         L_left, L_right, tip_red, te_f)
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))" *
-        "_g$(Int(round(config.g_earth * 10)))"
-    if !isnothing(config.kcu_mass)
-        suffix *= "_kcu$(Int(round(config.kcu_mass * 10)))"
+        "_g$(Int(round(config.g_earth * 10)))" *
+        "_sys$(splitext(basename(config.system_yaml))[1])"
+    yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
+    resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
+    if !isnothing(resolved_kcu_mass)
+        suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
+    end
+    suffix *= "_bd$(damping_tag(config.body_damping))"
+    for (rng, damp) in config.body_damping_overrides
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(damping_tag(damp))"
+    end
+    if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
+        suffix *= "_wd$(damping_tag(config.world_damping))" *
+                  "_md$(damping_tag(config.min_damping))"
     end
     return joinpath(data_path, "settled_$(suffix).bin")
 end
@@ -139,8 +153,13 @@ Second form builds it from explicit ENU vectors (`position`,
 `velocity` in m / m·s⁻¹, `attitude` is `[roll, pitch, yaw]` rad).
 
 Always returns a fresh model loaded from the settled binary, so
-the caller gets clean settings (no settling damping). When
-`remake=false` and the destination file already exists, the
+the caller gets clean settings — clean meaning the *world*-frame
+damping, which is only a settling aid and decays away. The
+body-frame damping is a per-point field of the serialized
+`SystemStructure` and therefore carries over into the returned
+model on purpose; it is part of the cache key for that reason.
+
+When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
 file.
 """
@@ -157,6 +176,16 @@ function settle_wing(config::V3SettleConfig;
     return settle_wing(config, init_row; kwargs...)
 end
 
+"""
+    damping_tag(d) -> String
+
+Filename-safe tag for a damping coefficient, scalar or per-axis vector:
+`damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
+settled-geometry cache key.
+"""
+damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+damping_tag(d::AbstractVector) = join(damping_tag.(d), "-")
+
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      show_progress=true,
@@ -164,6 +193,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     if isnothing(data_path)
         data_path = v3_data_path()
     end
+    set_data_path(data_path)
 
     gc = config.geom
     gc.tether_length = config.tether_length
@@ -180,7 +210,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     settle_failed = false
     if remake || !isfile(dest_struc)
         try
-            syslog = _run_power_zone_settling!(
+            syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero,
                 dest_struc, init_row)
@@ -207,11 +237,11 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Load model from serialized sys_struct, or source
     # YAML if settling failed
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(config.system_yaml)
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
-    set.profile_law = 0
+    # profile_law is taken from settings.yaml (loaded via Settings above).
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
     if !settle_failed && isfile(dest_struc)
@@ -247,15 +277,15 @@ Set up a settling model: settings, VSM, sys struct, damping,
 SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
-function _setup_settling_model(config::V3SettleConfig;
+function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     gc = config.geom
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(config.system_yaml)
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
-    set.profile_law = 0
+    # profile_law is taken from settings.yaml (loaded via Settings above).
 
     vsm_path = joinpath(data_path, config.vsm_settings_path)
     vsm_set = VortexStepMethod.VSMSettings(
@@ -267,8 +297,13 @@ function _setup_settling_model(config::V3SettleConfig;
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
         aero_mode=config.aero_mode)
 
-    if !isnothing(config.kcu_mass)
-        sys.points[1].extra_mass = config.kcu_mass
+    # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
+    # otherwise fall back to the `kcu_mass` field of the active settings YAML
+    # (0 means "not set", i.e. keep the geometry-file default).
+    kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (set.kcu_mass != 0 ? set.kcu_mass : nothing)
+    if !isnothing(kcu_mass)
+        sys.points[1].extra_mass = kcu_mass
     end
 
     SymbolicAWEModels.set_world_frame_damping(
@@ -295,12 +330,12 @@ function _setup_settling_model(config::V3SettleConfig;
 end
 
 """Run power-zone settling initialized from flight data."""
-function _run_power_zone_settling!(config::V3SettleConfig;
+function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
         dest_struc,
         init_row)
-    sam, sys, gc = _setup_settling_model(config;
+    sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
@@ -431,6 +466,13 @@ function _run_power_zone_settling!(config::V3SettleConfig;
         end
         rethrow(err)
     end
+
+    # A diverged run must not be cached: the resulting geometry fails the VSM
+    # solve on reload, and because the cache is keyed on the *inputs* it would be
+    # reused on every later run until someone deletes the file by hand.
+    # `settle_wing` turns this into `settle_failed = true`.
+    failed && error("Settling diverged before completing " *
+                    "$(config.num_steps) steps; geometry not serialized")
 
     # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
     SymbolicAWEModels.reposition!(sys.transforms, sys)

@@ -43,7 +43,7 @@ VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
-AERO_MODE = ContinuousAero()
+AERO_MODE = AeroDirect()
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
@@ -404,7 +404,7 @@ function run_physics_replay(h5_path;
         data_state.AoA = row.kite_aoa
         data_state.var_04 = row.kite_aoa
         data_state.var_12 = row.wing_aoa
-        data_state.set_steering = row.steering
+        data_state.steering = row.steering
         data_state.depower = row.depower
         data_state.var_14 = row.video_frame
         log!(data_logger, data_state)
@@ -600,14 +600,14 @@ end
     syslog_to_tape(syslog) -> NamedTuple
 
 Build a `(time, steering, depower)` tape from a syslog,
-reading the inputs from `sl.set_steering` and `sl.depower`.
+reading the applied inputs from `sl.steering` and `sl.depower`.
 Used for plot functions that still take a `tapes` argument.
 """
 function syslog_to_tape(syslog)
     sl = hasproperty(syslog, :syslog) ? syslog.syslog :
         syslog
     return (time=collect(sl.time),
-        steering=collect(sl.set_steering),
+        steering=collect(sl.steering),
         depower=collect(sl.depower))
 end
 
@@ -818,7 +818,7 @@ function create_replay_plots(;
         sl = lg.syslog
         for source in (:heading, :course)
             rate = calc_turn_rate(lg; source, dt)
-            us = sl.set_steering[2:end]
+            us = sl.steering[2:end]
             va = sl.v_app[2:end]
             mask = abs.(us) .> 0.05
             x = abs.(us[mask] .* va[mask])[1:N_SUBSTEPS:end]

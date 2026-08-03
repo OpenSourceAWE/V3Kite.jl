@@ -47,7 +47,7 @@ STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 MAX_TIME = 1000.0
 FPS = 30
 DISPLAY_FPS = 10
-AERO_MODE = ContinuousAero()
+AERO_MODE = AeroDirect()
 vector_scale = 1.0
 
 # Keyboard control

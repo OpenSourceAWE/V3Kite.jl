@@ -25,7 +25,7 @@ using LinearAlgebra
 
 SIM_TIME = 60.0
 FPS = 20
-AERO_MODE = ContinuousAero()
+AERO_MODE = AeroDirect()
 MAX_HEADING = 40.0    # degrees
 PERIOD = 30.0         # seconds
 V_WIND = 15.4
@@ -90,8 +90,6 @@ heading_pid = create_heading_pid(;
     dt, umin=-abs(max_steering),
     umax=abs(max_steering))
 
-heading_setpoint = [0.0]
-
 # =============================================================================
 # Simulation loop
 # =============================================================================
@@ -105,7 +103,7 @@ for step in 1:n_steps
     target_rad = max_heading_rad * sin(angular_freq * t)
     current = sam.sys_struct.wings[1].heading
     steer_ctrl = heading_pid(target_rad, current, 0.0)
-    push!(heading_setpoint, target_rad)
+    sys_state.bearing = target_rad
 
     set_steering!(sys, nominal_steering + steer_ctrl, gc)
 
@@ -133,7 +131,7 @@ syslog = load_log("v3kite_example")
 @info "Creating visualization..."
 fig = Makie.plot(sam.sys_struct, syslog;
     plot_tether=true,
-    setpoints=Dict(:heading => heading_setpoint))
+    setpoints=Dict(:heading => syslog.syslog.bearing))
 display(GLMakie.Screen(), fig)
 
 scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)

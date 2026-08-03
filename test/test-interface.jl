@@ -172,4 +172,83 @@ using KitePodModels: KCU
         @test all(isfinite, sf)
     end
 end
+
+@testset "WC_Settings" begin
+    default = WC_Settings()
+    @test default.winch_pos_kp == 0.5
+    @test default.winch_speed_k == 30.0
+    @test default.winch_speed_ti == 2.0
+    @test default.winch_torque_limit == 500.0
+
+    # Loaded from data/wc_settings.yaml (see wc_settings: field of system.yaml).
+    set_data_path(v3_data_path())
+    loaded = WC_Settings("wc_settings.yaml")
+    @test loaded.winch_pos_kp == default.winch_pos_kp
+    @test loaded.winch_speed_k == default.winch_speed_k
+    @test loaded.winch_speed_ti == default.winch_speed_ti
+    @test loaded.winch_torque_limit == default.winch_torque_limit
+end
+
+@testset "init / step! Interface" begin
+    # Mirrors examples/simple_parking.jl's init() call so it hits the
+    # data/settled_*.bin cache (see stabilization.jl) instead of resettling.
+    PROJECT          = "system_cabauw.yaml"
+    V_WIND           = 10.0
+    TETHER_LENGTH    = 150.0
+    DEPOWER_SETPOINT = 0.25
+    SIM_TIME         = 1.0
+
+    s = init(V_WIND, TETHER_LENGTH;
+        depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT)
+
+    @testset "init" begin
+        @test s isa V3KITE
+        @test s.dt > 0.0
+        @test s.steps == round(Int, SIM_TIME / s.dt)
+        @test s.sys.winches[1].brake == false  # un-braked, ready for step!
+        @test s.kcu.depower ≈ DEPOWER_SETPOINT
+        @test s.kcu.steering ≈ 0.0
+        @test s.sys_state.time == 0.0
+        @test s.winch_ctrl !== nothing
+        @test s.winch_ctrl.kp_pos ≈ 0.5  # from data/wc_settings.yaml
+    end
+
+    l0 = unstretched_length(s)
+
+    @testset "step! holding torque (no set_length/set_torque)" begin
+        t0 = s.sys_state.time
+        step!(s; rel_depower = DEPOWER_SETPOINT)
+        @test s.sys_state.time ≈ t0 + s.dt
+        @test isfinite(winch_force(s))
+    end
+
+    @testset "step! torque mode (set_torque)" begin
+        t0 = s.sys_state.time
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = 50.0)
+        @test s.sys_state.time ≈ t0 + s.dt
+        @test isfinite(reel_out_speed(s))
+    end
+
+    @testset "step! position mode (set_length)" begin
+        t0 = s.sys_state.time
+        # Three steps: the previous torque-mode step left residual winch speed,
+        # and the position PI loop (Ti = 2s) needs more than one 0.05s step to
+        # bring it back down. The decay from that transient is smooth and
+        # monotone (1.31, 1.06, 0.89, 0.73, ... m/s), so two steps sit right on
+        # the 1.0 bound below — the third gives it margin.
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        @test s.sys_state.time ≈ t0 + 3 * s.dt
+        @test isfinite(unstretched_length(s))
+        @test abs(reel_out_speed(s)) < 1.0  # holding l0: speed setpoint ≈ 0
+    end
+
+    @testset "step! live wind update" begin
+        t0 = s.sys_state.time
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, v_wind_gnd = 12.0)
+        @test s.sys_state.time ≈ t0 + s.dt
+        @test norm(s.set.wind_vec) ≈ 12.0
+    end
+end
 nothing

@@ -23,6 +23,49 @@ function create_logger(sam, n_steps)
 end
 
 """
+    timestamp_colmeta(extra=Dict{Symbol, Any}()) -> Dict
+
+Column metadata for `save_log`, tagging the `time` column with a
+`created_at` ISO-8601 timestamp string (`Dates.now()`), on top of the
+default `var_01`..`var_16` `name` entries that `save_log`/`load_log`
+require. Merge in additional `colmeta` entries via `extra`.
+
+# Example
+```julia
+save_log(logger, "my_run"; colmeta=timestamp_colmeta())
+```
+"""
+function timestamp_colmeta(extra=Dict{Symbol, Any}())
+    colmeta = Dict{Symbol, Any}(
+        Symbol("var_", lpad(i, 2, '0')) => ["name" => "var_" * lpad(i, 2, '0')]
+        for i in 1:16
+    )
+    colmeta[:time] = ["name" => "time", "created_at" => string(now())]
+    merge(colmeta, extra)
+end
+
+"""
+    log_created_at(filename; path="") -> Union{String, Nothing}
+
+Read back the `created_at` timestamp string tagged on the `time` column by
+`timestamp_colmeta` (via `save_log(...; colmeta=timestamp_colmeta())`).
+Returns `nothing` if the log has no such tag. Mirrors `load_log`'s file
+path resolution, since `load_log` itself discards non-`var_XX` column
+metadata.
+"""
+function log_created_at(filename; path="")
+    path == "" && (path = get_data_path())
+    fullname = filename
+    if !isfile(filename)
+        candidate = joinpath(path, basename(filename)) * ".arrow"
+        fullname = isfile(candidate) ? candidate : joinpath(path, basename(filename))
+    end
+    table = KiteUtils.Arrow.Table(fullname)
+    meta = KiteUtils.Arrow.getmetadata(table.time)
+    isnothing(meta) ? nothing : get(meta, "created_at", nothing)
+end
+
+"""
     ramp_factor(t, t_start, t_end) -> Float64
 
 Linear ramp from 0 to 1 between `t_start` and `t_end`.
@@ -116,7 +159,7 @@ KCU drag coefficients, the four sum to the total CD.
 function compute_drag_coeff(sam)
     wing = sam.sys_struct.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = _drag_coeff_ref(wing)
+    _, q_ref = drag_coeff_ref(wing)
     return compute_drag(sam) / q_ref
 end
 
@@ -137,6 +180,34 @@ function compute_lift(sam)
 end
 
 """
+    compute_tether_drag(sam) -> Float64
+
+Total parasitic drag force [N] from all non-WING points
+(tether, bridle, and KCU), projected onto the kite
+apparent-wind direction. The force-form counterpart of
+`compute_tether_drag_coeff` and friends; combined with the
+wing drag from `compute_drag`, this gives the total system
+drag (see `total_drag`).
+"""
+function compute_tether_drag(sam)
+    sys = sam.sys_struct
+    wing = sys.wings[1]
+    va_b = wing.va_b
+    v_app = norm(va_b)
+    v_app < 1e-6 && return 0.0
+    va_hat_b = va_b / v_app
+    R_b_w = calc_R_b_w(sys)
+    va_hat_w = R_b_w * va_hat_b
+
+    drag_w = zeros(3)
+    for p in sys.points
+        p.type == WING && continue
+        drag_w .+= p.drag_force
+    end
+    return dot(drag_w, va_hat_w)
+end
+
+"""
     compute_lift_coeff(sam) -> Float64
 
 Compute the lift coefficient from the first wing's aero force
@@ -146,7 +217,7 @@ normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
 function compute_lift_coeff(sam)
     wing = sam.sys_struct.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = _drag_coeff_ref(wing)
+    _, q_ref = drag_coeff_ref(wing)
     return compute_lift(sam) / q_ref
 end
 
@@ -160,49 +231,32 @@ function compute_lift_drag(sam)
     return compute_lift(sam), compute_drag(sam)
 end
 
-const _RHO_SL = 1.225
+const RHO_SL = 1.225
 
 """
-    _tether_point_idxs(sys) -> Set{Int}
-
-Collect all point indices that belong to tether segments.
-"""
-function _tether_point_idxs(sys)
-    pts = Set{Int}()
-    for tether in sys.tethers
-        for seg_idx in tether.segment_idxs
-            seg = sys.segments[seg_idx]
-            push!(pts, seg.point_idxs[1])
-            push!(pts, seg.point_idxs[2])
-        end
-    end
-    return pts
-end
-
-"""
-    _drag_coeff_ref(wing) -> (va_hat_b, q_ref)
+    drag_coeff_ref(wing) -> (va_hat_b, q_ref)
 
 Common reference quantities for drag coefficient functions:
 apparent-wind unit vector (body frame) and dynamic pressure
 times projected area.
 """
-function _drag_coeff_ref(wing)
+function drag_coeff_ref(wing)
     va_b = wing.va_b
     v_app = norm(va_b)
     va_hat_b = va_b / v_app
     A_proj = calculate_projected_area(wing.vsm_wing)
-    q_ref = 0.5 * _RHO_SL * v_app^2 * A_proj
+    q_ref = 0.5 * RHO_SL * v_app^2 * A_proj
     return va_hat_b, q_ref
 end
 
 """
-    _point_drag_cd(sys, wing, idxs) -> Float64
+    point_drag_cd(sys, wing, idxs) -> Float64
 
 Sum `point.drag_force` for points whose index is in `idxs`,
 project onto kite apparent wind, normalize by `q * A_proj`.
 """
-function _point_drag_cd(sys, wing, idxs)
-    va_hat_b, q_ref = _drag_coeff_ref(wing)
+function point_drag_cd(sys, wing, idxs)
+    va_hat_b, q_ref = drag_coeff_ref(wing)
     drag_w = zeros(3)
     for p in sys.points
         p.idx in idxs || continue
@@ -224,8 +278,8 @@ function compute_tether_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    return _point_drag_cd(sys, wing,
-        _tether_point_idxs(sys))
+    return point_drag_cd(sys, wing,
+        Set(tether_point_idxs(sys)))
 end
 
 """
@@ -239,7 +293,7 @@ function compute_bridle_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    tether_pts = _tether_point_idxs(sys)
+    tether_pts = Set(tether_point_idxs(sys))
     bridle_idxs = Set{Int}()
     for p in sys.points
         p.idx in tether_pts && continue
@@ -247,7 +301,7 @@ function compute_bridle_drag_coeff(sam)
         p.idx == 1 && continue  # KCU
         push!(bridle_idxs, p.idx)
     end
-    return _point_drag_cd(sys, wing, bridle_idxs)
+    return point_drag_cd(sys, wing, bridle_idxs)
 end
 
 """
@@ -260,7 +314,7 @@ function compute_kcu_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    return _point_drag_cd(sys, wing, Set([1]))
+    return point_drag_cd(sys, wing, Set([1]))
 end
 
 """
@@ -436,6 +490,10 @@ end
 
 Update sys_state from the model, set time, and log.
 
+The optional `steering`/`set_steering` keywords follow the `SysState`
+convention that `step!` also uses: `steering` is the applied (actual) value,
+`set_steering` the command. Pass the applied value to `steering`.
+
 Computed variables:
 - `var_01`: total non-tether CD (VSM + parasitic)
 - `var_02`: wing lift coefficient
@@ -447,9 +505,14 @@ Computed variables:
   (from point drag forces)
 - `var_12`: geometric wing incidence (photogrammetry-style)
 - `var_13`: center-of-pressure x-coordinate (body frame)
+- `var_14`: `video_frame`, when given
+
+Note that `step!` (the high-level `V3KITE` loop) does not call this function
+and fills `var_14` with the commanded depower instead; a log is written by one
+path or the other, never both.
 """
 function log_state!(logger, sys_state, sam, t;
-        set_steering=nothing, depower=nothing,
+        steering=nothing, set_steering=nothing, depower=nothing,
         video_frame=nothing,
         wind_vec_ekf=nothing,
         wind_vec_lidar=nothing)
@@ -470,6 +533,9 @@ function log_state!(logger, sys_state, sam, t;
     sys_state.var_12 = compute_wing_incidence(
         sam.sys_struct)
     sys_state.var_13 = compute_cop_x(sam)
+    if steering !== nothing
+        sys_state.steering = steering
+    end
     if set_steering !== nothing
         sys_state.set_steering = set_steering
     end
@@ -545,7 +611,7 @@ function report_performance(sim_time, wall_time; label="")
     times_rt = sim_time / wall_time
     msg = isempty(label) ? "Simulation completed" :
         "Simulation completed: $label"
-    @info msg wall_time=round(wall_time, digits=2) times_realtime=round(times_rt, digits=2)
+    @info "$msg (wall_time=$(round(wall_time, digits=2)) s, times_realtime=$(round(times_rt, digits=2)))"
     return nothing
 end
 
@@ -583,7 +649,7 @@ deserializing a syslog.
 """
 function build_replay_sys_struct(set,
         geom::V3GeomAdjustConfig, source_struc, vsm_set;
-        aero_mode=SymbolicAWEModels.ContinuousAero())
+        aero_mode=SymbolicAWEModels.AeroDirect())
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,

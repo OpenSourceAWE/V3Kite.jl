@@ -9,6 +9,7 @@ ideas.txt
 *.mp4
 .helix
 *.arrow
+!data/reel_out_4p_torque_control.arrow
 *.bin
 *.bin.xz
 *.tar.gz
@@ -69,3 +70,4 @@ docs/src/.$kite_power_tools.drawio.bkp
 settings.json
 .JETLSConfig.toml
 examples_2d/LocalPreferences.toml
+.markdownlint.json

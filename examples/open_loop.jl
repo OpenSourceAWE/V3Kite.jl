@@ -40,7 +40,7 @@ RAMP_END_US = 5.0
 
 SIM_TIME = 60.0
 FPS = 120
-AERO_MODE = ContinuousAero()
+AERO_MODE = AeroDirect()
 
 # =============================================================================
 # Settling setup (matches flight_replay)

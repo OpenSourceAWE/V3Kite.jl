@@ -25,6 +25,7 @@ using HDF5
 using Serialization
 using Parameters
 using StaticArrays
+using YAML
 
 import KiteUtils: calc_elevation, calc_heading
 
@@ -32,7 +33,7 @@ import KiteUtils: calc_elevation, calc_heading
 export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
 export init!, next_step!, update_sys_state!, log!, save_log, load_log, replay
-export PARTICLE_DYNAMICS, RIGID_DYNAMICS, WING, ContinuousAero
+export PARTICLE_DYNAMICS, RIGID_DYNAMICS, WING, AeroDirect
 export Settings
 export SymbolicAWEModels
 export record, replay
@@ -42,11 +43,14 @@ export V3KITE
 include("model_setup.jl")
 include("calibration.jl")
 include("coordinate_utils.jl")
+include("turn_rate_id.jl")
+include("ripple_metrics.jl")
 include("flight_data.jl")
 include("photogrammetry.jl")
 include("sim_helpers.jl")
 include("simulation.jl")
 include("stabilization.jl")
+include("wc_settings.jl")
 include("interface.jl")
 
 # Calibration exports
@@ -79,6 +83,13 @@ export calc_heading, calc_csv_heading
 export calc_R_b_w, calc_turn_rate
 export COURSE_RATE_WINDOW_SEC
 
+# Turn-rate-law identification exports
+export identify_turn_rate_law, format_turn_rate_report
+export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
+
+# AoA-ripple analysis exports
+export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report
+
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
 export utc_to_video_frame
@@ -90,10 +101,10 @@ export update_sys_struct_from_data!
 export compute_wind_vec, interpolate_lidar_wind
 
 # Simulation helper exports
-export create_logger, ramp_factor
+export create_logger, ramp_factor, timestamp_colmeta, log_created_at
 export init_winch_torque!, force_to_torque
 export sim_step!, log_state!, should_report
-export compute_drag, compute_lift, compute_lift_drag
+export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
 export compute_drag_coeff, compute_lift_coeff
 export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
@@ -112,8 +123,12 @@ export find_frame_syslog_idxs, build_replay_sys_struct
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 
+# Winch-controller settings export
+export WC_Settings
+
 # Interface exports
-export lift_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height, cl_cd, winch_force, reel_out_speed, states, spring_forces
+export init, step!
+export lift_drag, total_drag, unstretched_length, v_wind_kite, pos_kite, tether_length, calc_height, cl_cd, winch_force, reel_out_speed, states, spring_forces
 export calc_elevation, calc_azimuth, calc_azimuth_north, calc_azimuth_east, upwind_dir, calc_heading, calc_course
 export kite_ref_frame, calc_orient_quat, orient_euler
 
@@ -264,6 +279,6 @@ Load GLMakie before using: `using GLMakie`
 """
 function record_2d_panels end
 
-# include("precompile.jl") # disabled: precompilation workload
+include("precompile.jl")
 
 end # module

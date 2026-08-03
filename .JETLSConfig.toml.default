@@ -11,3 +11,6 @@ pattern = "not concretized"
 match_by = "message"
 match_type = "regex"
 severity = "off"
+
+[inlay_hint.types]
+enabled = false  # Hide type hints; keep `end`-tag hints
