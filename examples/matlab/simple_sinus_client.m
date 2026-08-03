@@ -148,8 +148,14 @@ while idx < steps
     heading(idx)   = resp.heading;
     AoA(idx)       = resp.AoA;
     rel_steer(idx) = resp.rel_steering;
-    ld_wing(idx)   = resp.var_15;
-    ld_eff(idx)    = resp.var_16;
+    % L/D is NaN whenever the wing is unloaded (step!'s drag_floor gate), and
+    % the server sends non-finite floats as JSON null, which jsondecode turns
+    % into []. Assigning [] to one element would DELETE it and shift every
+    % later sample, so map the gap back to NaN here.
+    ld = resp.var_15; if isempty(ld), ld = NaN; end
+    ld_wing(idx)   = ld;
+    ld = resp.var_16; if isempty(ld), ld = NaN; end
+    ld_eff(idx)    = ld;
 
     % Feed the just-measured heading back for the next iteration's PID call.
     y_meas = resp.heading;

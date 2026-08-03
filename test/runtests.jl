@@ -99,6 +99,29 @@ using KitePodModels: KCU
         @test suffix == "dp0.2_sl1.4_sr1.8_tip0.5_te1.0"
     end
 
+    @testset "Cache-Key Number Tag" begin
+        # num_tag feeds a file name: no trailing ".0", no dots from vector separators.
+        @test V3Kite.num_tag(40.0) == "40"
+        @test V3Kite.num_tag(0.0) == "0"
+        @test V3Kite.num_tag([0.0, 0.0, 40.0]) == "0-0-40"
+        @test V3Kite.num_tag(69.5) == "69.5"
+        # Distinct elevations must produce distinct tags.
+        @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
+    end
+
+    @testset "Default Cache Path" begin
+        # A development checkout caches in place, keeping the existing data/*.bin.
+        dev = v3_data_path()
+        @test V3Kite.default_cache_path(dev) == dev
+
+        # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
+        installed = joinpath(DEPOT_PATH[1], "packages", "V3Kite", "abc123", "data")
+        redirected = V3Kite.default_cache_path(installed)
+        @test redirected != installed
+        @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
+        @test occursin("scratchspaces", redirected)
+    end
+
     @testset "V3GeomAdjustConfig Defaults" begin
         gc = V3GeomAdjustConfig()
         @test gc.reduce_steering == false

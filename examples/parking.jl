@@ -114,8 +114,10 @@ for step in 1:n_steps
 
     lift, _ = lift_drag(v3kite)
     wing_drag, _, total_d = total_drag(v3kite)
-    sys_state.var_15 = lift / wing_drag   # L/D  (wing lift / wing drag)
-    sys_state.var_16 = lift / total_d     # L/D_eff (wing lift / total drag)
+    # Same gate as `step!`: below the floor the wing is unloaded, so log a NaN gap.
+    d_min = drag_floor(sam)
+    sys_state.var_15 = wing_drag > d_min ? lift / wing_drag : NaN  # L/D (wing lift / wing drag)
+    sys_state.var_16 = total_d > d_min ? lift / total_d : NaN      # L/D_eff (wing lift / total drag)
 
     log_state!(logger, sys_state, sam, t)
 

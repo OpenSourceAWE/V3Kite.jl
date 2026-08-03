@@ -23,9 +23,41 @@ Base.@kwdef mutable struct WinchPosController
     speed_pid::DiscretePID
     "Outer proportional gain, length error [m] → speed setpoint [m/s]"
     kp_pos::Float64 = WC_Settings().winch_pos_kp
+    "Scale on the force feed-forward; < 1 makes the drum pay out under load"
+    ff_scale::Float64 = WC_Settings().winch_ff_scale
     "Rate-limited speed setpoint carried between steps [m/s]"
     v_sp_prev::Float64 = 0.0
 end
+
+"""
+    WinchForceController(; force_tau, len_kp, damp, force_min)
+    WinchForceController(wc::WC_Settings)
+
+Runtime state and gains of the force-mode winch (see
+[`winch_force_torque!`](@ref)). Deliberately a separate object from
+[`WinchPosController`](@ref): a run holds either a length or a force, and the
+two modes share no gain — `winch_force_torque!` never reads `kp_pos`,
+`speed_pid` or `ff_scale`.
+
+`f_lpf` is the low-passed reference force, `NaN` until the first step, which is
+what makes engaging force mode from a settled state produce no torque step.
+"""
+Base.@kwdef mutable struct WinchForceController
+    "Time constant of the reference-force low-pass [s]"
+    force_tau::Float64 = WC_Settings().winch_force_tau
+    "Length-trim gain, length error [m] → reference force [N/m]"
+    len_kp::Float64 = WC_Settings().winch_len_kp
+    "Viscous damping on the drum, reel-out speed [m/s] → reference force [N·s/m]"
+    damp::Float64 = WC_Settings().winch_damp
+    "Floor on the reference force, keeps the tether taut [N]"
+    force_min::Float64 = WC_Settings().winch_force_min
+    "Low-passed reference force, `NaN` before the first force-mode step [N]"
+    f_lpf::Float64 = NaN
+end
+
+WinchForceController(wc::WC_Settings) = WinchForceController(
+    force_tau = wc.winch_force_tau, len_kp = wc.winch_len_kp,
+    damp = wc.winch_damp, force_min = wc.winch_force_min)
 
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
@@ -382,12 +414,12 @@ Cascaded winch length controller. Outer proportional loop on the tether
 length error (`set_length - unstretched_length(s)`) yields a reel-out speed
 setpoint, clamped to `±speed_limit` [m/s] and rate-limited by
 `acceleration_limit` [m/s²]. The inner PI loop (`s.winch_ctrl.speed_pid`) on
-the speed error yields a winch-torque correction, added to a force
-feed-forward `force_to_torque(winch_force(s), s.sys)` (the steady/gravity
-holding torque from the measured winch force). Returns the winch set torque
-[N·m], applied directly as in `examples/reel_out_v3.jl`: at parking
-equilibrium (speed setpoint 0, measured speed 0) the correction vanishes and
-the output is exactly the holding torque.
+the speed error yields a winch-torque correction, added to the force
+feed-forward `force_to_torque(winch_force(s), s.sys; ff_scale)` — the holding
+torque for the measured winch force, whose load term `winch_ff_scale` scales
+(see [`WC_Settings`](@ref)). Returns the winch set torque [N·m], applied
+directly as in `examples/reel_out_v3.jl`: at parking equilibrium with
+`ff_scale = 1` the correction vanishes and the output is the holding torque.
 """
 function winch_position_torque!(s::V3KITE, set_length, speed_limit,
                                  acceleration_limit)
@@ -400,15 +432,50 @@ function winch_position_torque!(s::V3KITE, set_length, speed_limit,
     ctrl.v_sp_prev = v_sp
     # Inner PI loop: speed error → torque correction.
     dtau = ctrl.speed_pid(v_sp, reel_out_speed(s), 0.0)
-    tau_ff = force_to_torque(winch_force(s), s.sys)
+    # Only the load term is scaled; friction compensation stays at full size.
+    tau_ff = force_to_torque(winch_force(s), s.sys; ff_scale=ctrl.ff_scale)
     return tau_ff + dtau
+end
+
+"""
+    winch_force_torque!(wfc::WinchForceController, s::V3KITE, set_length) -> torque
+
+Force-mode winch controller: the drum holds a *force*, not a length, so it pays
+out whenever the tether pulls harder than the reference. Returns a torque for
+`step!`'s `set_torque`, e.g.
+
+    wfc = WinchForceController(wc)
+    step!(s; rel_steering, set_torque = winch_force_torque!(wfc, s, l0))
+
+The reference force is a first-order low-pass of the measured winch force
+(`winch_force_tau`), plus a length trim `winch_len_kp * (l - set_length)`, plus
+viscous damping `winch_damp * reel_out_speed(s)`. Damping is not optional: force
+control gives the drum no velocity feedback, so trim alone leaves it a free mass
+on a spring. Tracking only the *mean* force is what makes the drum yield to
+everything faster than `winch_force_tau` while still holding the mean length.
+Raise `winch_force_tau` for a softer winch, `winch_len_kp` for tighter length
+keeping; they trade against each other. It is initialised to the measured force
+on the first call, so engaging force mode from a settled state steps no torque.
+
+Contrast [`winch_position_torque!`](@ref), which holds a length; the two modes
+share only the drum and no gains.
+"""
+function winch_force_torque!(wfc::WinchForceController, s::V3KITE, set_length)
+    f_now = winch_force(s)
+    isnan(wfc.f_lpf) && (wfc.f_lpf = f_now)
+    alpha = s.dt / (wfc.force_tau + s.dt)
+    wfc.f_lpf += alpha * (f_now - wfc.f_lpf)
+    f_set = wfc.f_lpf + wfc.len_kp * (unstretched_length(s) - set_length) +
+            wfc.damp * reel_out_speed(s)
+    return force_to_torque(max(f_set, wfc.force_min), s.sys)
 end
 
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
-         remake=false) -> V3KITE
+         data_path=v3_data_path(), cache_path=nothing,
+         warmup_time=0.0, warmup_wfc=nothing, remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -426,6 +493,24 @@ file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
 alternate config.
 
+`data_path` is the directory the geometry/settings YAMLs are READ from,
+defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
+everything generated is WRITTEN — the settled-geometry cache
+(`settled_*.bin`), the settling log, and the serialized model binary
+(`model_*.bin`).
+
+`cache_path` defaults to [`default_cache_path`](@ref)`(data_path)`: `data_path`
+itself for a development checkout, and a depot scratch directory when V3Kite is
+Pkg-INSTALLED, since a package directory is neither reliably writable nor safe
+to write to (`Pkg.gc` eventually deletes it). Pass it explicitly to put the
+cache somewhere of your own — a per-project directory keeps one project's
+re-settles from invalidating another's.
+
+Redirecting `data_path` as well means that directory must hold the source
+geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
+the system YAML and the settings file it names), since the settling stage reads
+all of them from it.
+
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
 the wing*, so it damps bridle vibration without slowing the kite's global motion
@@ -434,25 +519,19 @@ over into the returned model, so it also forms part of the settling cache key �
 changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
 
-The in-plane (x, y) terms trade accuracy for solver cost, which is why the
-default damps only normal to the wing surface. The normal-only default cannot
-touch the lightly-damped ~5.5 Hz *in-plane* bridle mode that dominates the parked
-solver cost: adding `[10, 10, ...]` cuts the parked AoA ripple from 0.144° to
-0.020° peak-to-peak and the solver step count by 3.4×, with the settled trim
-(AoA, elevation, tether force) unchanged to within 0.5 %. But in-plane damping
-also resists the wing deformation that produces steering, so it **reduces the
-turn rate** and with it the model's accuracy against flight data: the turn-rate
-law fitted by `examples/steering_test_v3.jl` drops from `c1 = 0.316` 1/m at
-`[0, 0, 40]` to `0.098` at `[10, 10, 40]` and `0.057` at `[20, 20, 40]`. Use
-in-plane damping for parked/quasi-static runs where throughput matters, not for
-validating turning maneuvers.
+The default damps only normal to the wing surface. The in-plane (x, y) terms
+trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solver
+steps several-fold at unchanged settled trim, but it also resists the deformation
+that produces steering and so **reduces the turn rate**. Use in-plane damping for
+parked/quasi-static runs, not for validating turning maneuvers, and note that
+settling goes unstable at `dt = 0.001` somewhere above 15. See
+PlanSuppressOscillations.md for the sweep.
 
-Raising the in-plane terms further keeps cutting solver cost (`[20, 20, 40]` is
-5.4×) at a correspondingly larger turn-rate penalty, and the settling itself goes
-unstable at fixed `dt = 0.001` somewhere between 15 and 20 on the
-`system_cabauw.yaml` configuration. Pass a larger value explicitly if your
-configuration tolerates it — a diverged settling now fails loudly rather than
-caching broken geometry. See PlanSuppressOscillations.md for the sweep.
+`warmup_time` [s] runs the returned model forward that long with the controls
+held at the settled values and then discards those steps, so the run does not
+start on the settling-to-dynamics transient; `0.0`, the default, skips it.
+`warmup_wfc` selects the winch mode it relaxes against and must match what the
+run will command. Both are documented under [`warmup!`](@ref).
 
 The settling stage mirrors `examples/parking.jl`. The KCU actuator model, the
 winch position controller, the logger, `sys_state`, and `steps` are stored on
@@ -468,9 +547,13 @@ function init(v_wind_gnd, l_tether;
               wc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
+              data_path = v3_data_path(),
+              cache_path = nothing,
+              warmup_time = 0.0,
+              warmup_wfc = nothing,
               remake = false)
     # Elevation fallback comes from the on-disk settings.
-    set_data_path(v3_data_path())
+    set_data_path(data_path)
     # Winch-controller settings fall back to the file named in the `wc_settings`
     # field of system.yaml (needs the data path set above).
     isnothing(wc) && (wc = WC_Settings(wc_settings(system_yaml)))
@@ -498,12 +581,14 @@ function init(v_wind_gnd, l_tether;
     @info "init: settling V3 model at rel_depower = $depower_setpoint..."
     sam, _, settle_failed = settle_wing(settle_config;
         position, velocity = [0.0, 0.0, 0.0], heading = 0.0,
-        steering = 0.0, depower = depower_setpoint, wind_vec, remake)
+        steering = 0.0, depower = depower_setpoint, wind_vec,
+        data_path, cache_path, remake)
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
 
-    # Un-brake the winch (the settled binary is serialized with brake=true).
+    # The serialized `set_value` is stale: releasing the brake alone steps at t = 0.
     sys.winches[1].brake = false
+    init_winch_torque!(sys)
 
     set = sam.set
     set.wind_vec = wind_vec
@@ -527,21 +612,26 @@ function init(v_wind_gnd, l_tether;
         Td = false, Ts = dt,
         umin = -wc.winch_torque_limit, umax = wc.winch_torque_limit)
     winch_ctrl = WinchPosController(speed_pid = speed_pid,
-        kp_pos = wc.winch_pos_kp, v_sp_prev = sys.winches[1].vel)
+        kp_pos = wc.winch_pos_kp, ff_scale = wc.winch_ff_scale,
+        v_sp_prev = sys.winches[1].vel)
 
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
 
-    return V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
+    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
         winch_ctrl = winch_ctrl)
+
+    warmup_time > 0 && warmup!(s, warmup_time;
+                               depower = depower_setpoint, wfc = warmup_wfc)
+    return s
 end
 
 """
     step!(s::V3KITE; rel_depower=0.0, rel_steering=0.0,
           v_wind_gnd=nothing, upwind_dir=nothing,
           set_torque=nothing, set_length=nothing,
-          speed_limit=Inf, acceleration_limit=Inf, prn=false)
+          speed_limit=Inf, acceleration_limit=Inf, vsm_interval=1, prn=false)
 
 Advance the simulation by `s.dt`, update `s.sys_state` (including
 `heading_rate`), and log it.
@@ -558,6 +648,12 @@ given, the cascaded position controller (`speed_limit` [m/s],
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
 is reported every 100 steps.
 
+`vsm_interval` is forwarded to `sim_step!`: the VSM aero load is recomputed
+every `vsm_interval` steps and held frozen inside the DAE in between (`0`
+disables the VSM update entirely). The default `1` is the tightest coupling
+available, so raising it only increases the aero lag — it is exposed for
+sweeps/speed trade-offs, not as a way to stabilize the explicit coupling.
+
 Each logged row carries both the command and the KCU's actual (tape-lagged)
 value for both channels, so plot scripts never need to re-declare a setpoint:
 
@@ -567,13 +663,15 @@ value for both channels, so plot scripts never need to re-declare a setpoint:
 | depower  | `var_14`           | `depower`  |
 
 Depower uses a spare slot because `SysState` has no `set_depower` field; the
-actual values are filled by `update_sys_state!`. The remaining spare slots
-this method fills are `var_15` (L/D_wing) and `var_16` (L/D_eff).
+actual values are filled by `update_sys_state!`. The other spare slots filled
+here are `var_15` (L/D_wing) and `var_16` (L/D_eff), both `NaN` while the wing
+is unloaded, i.e. below [`drag_floor`](@ref).
 """
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
                set_torque = nothing, set_length = nothing,
-               speed_limit = Inf, acceleration_limit = Inf, prn = false)
+               speed_limit = Inf, acceleration_limit = Inf, vsm_interval = 1,
+               prn = false)
     dt = s.dt
     t = s.sys_state.time + dt
 
@@ -606,7 +704,7 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
         force_to_torque(winch_force(s), s.sys)
     end
 
-    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval = 1)
+    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval)
         error("next_step! failed at t=$(round(t, digits=3)) s")
     end
 
@@ -620,8 +718,10 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     s.sys_state.var_14 = rel_depower
     lift, wing_drag = lift_drag(s)
     _, _, total_d = total_drag(s)
-    s.sys_state.var_15 = wing_drag > 1e-6 ? lift / wing_drag : 0.0
-    s.sys_state.var_16 = total_d > 1e-6 ? lift / total_d : 0.0
+    # Below the floor the wing is unloaded and the ratio is a spike; see `drag_floor`.
+    d_min = drag_floor(s.sam)
+    s.sys_state.var_15 = wing_drag > d_min ? lift / wing_drag : NaN
+    s.sys_state.var_16 = total_d > d_min ? lift / total_d : NaN
     log!(s.logger, s.sys_state)
 
     if prn
@@ -637,5 +737,59 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                        i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
     end
+    return nothing
+end
+
+"""
+    warmup!(s::V3KITE, warmup_time; depower=0.0, wfc=nothing) -> nothing
+
+Relax `s` into an equilibrium of ITS OWN model, then throw the relaxation away:
+step the model forward `warmup_time` seconds with zero steering, the depower
+held at `depower` and the winch in the mode the run will use, and afterwards
+replace the logger and `sys_state` so the run's first logged row is again
+`t = 0`. Called by [`init`](@ref) when `warmup_time > 0`.
+
+`settle_wing` returns an equilibrium of the SETTLING model (`dt = 0.001`, heavily
+damped, winch braked), which is not a fixed point of the model the run
+integrates. Without a warm-up that difference is a decaying transient over the
+first second of every log, sharpest in the logged L/D. This is real integration,
+not a re-settle: it costs `warmup_time / dt` full steps, and a diverging model
+diverges here too.
+
+`wfc` must match what the caller will command afterwards — a
+[`WinchForceController`](@ref) engages `winch_force_torque!` at the current
+length and leaves its low-pass initialised, `nothing` holds the length via
+`set_length`. The wrong one reintroduces the discontinuity this removes.
+
+The integrator clock keeps running; only the logged time restarts. Progress lines
+printed during the warm-up count against `s.steps` and can be ignored.
+"""
+function warmup!(s::V3KITE, warmup_time; depower = 0.0, wfc = nothing)
+    n = round(Int, warmup_time / s.dt)
+    n < 1 && return nothing
+    if n > s.steps
+        # The warm-up logs through the run's logger, which holds `steps + 1` rows.
+        @warn "warmup_time is longer than the whole run; clamping to sim_time."
+        n = s.steps
+    end
+    @info @sprintf("warmup: %.2f s (%d steps) with the winch in %s mode...",
+                   warmup_time, n, isnothing(wfc) ? "position" : "force")
+    # The run re-references to wherever the warm-up leaves the length.
+    l_hold = unstretched_length(s)
+    for _ in 1:n
+        if isnothing(wfc)
+            step!(s; rel_depower = depower, rel_steering = 0.0,
+                  set_length = l_hold)
+        else
+            step!(s; rel_depower = depower, rel_steering = 0.0,
+                  set_torque = winch_force_torque!(wfc, s, l_hold))
+        end
+    end
+    # Discard the warm-up log and re-log the now-relaxed t = 0 row.
+    logger, sys_state = create_logger(s.sam, s.steps)
+    s.logger = logger
+    s.sys_state = sys_state
+    s.sys_state.time = 0.0
+    s.last_step_time = NaN
     return nothing
 end
