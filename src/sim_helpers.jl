@@ -234,6 +234,40 @@ end
 const RHO_SL = 1.225
 
 """
+Smallest drag coefficient at which a lift-to-drag ratio is still
+meaningful. Below it the wing is essentially unloaded and the ratio
+is reported as `NaN` rather than a number (see `drag_floor`).
+Chosen an order of magnitude below any loaded state: the parked V3
+flies at L/D_wing ~ 5.8, so its wing CD is of order 0.1.
+"""
+const LD_CD_MIN = 0.01
+
+"""
+    drag_floor(sam; cd_min=LD_CD_MIN) -> Float64
+
+Smallest drag force [N] at which a lift-to-drag ratio is still
+meaningful, `cd_min * q * A_proj` at the current apparent wind speed.
+
+WHY this exists: `compute_lift` is a norm and therefore non-negative,
+while `compute_drag`/`compute_tether_drag` are SIGNED projections onto
+the apparent-wind direction. When the wing unloads — the settling-to-
+dynamics transient at the start of a run, or any moment the aero force
+turns nearly normal to `v_a` — that denominator passes through zero and
+`lift / drag` produces an arbitrarily large spike from an arbitrarily
+small force. A floor in Newton cannot express "small" here, because the
+force scale itself moves with `v_app^2`; a floor on the COEFFICIENT can.
+
+Returns `Inf` when there is no apparent wind at all, so every ratio
+formed against it is `NaN`.
+"""
+function drag_floor(sam; cd_min = LD_CD_MIN)
+    wing = sam.sys_struct.wings[1]
+    norm(wing.va_b) < 1e-6 && return Inf
+    _, q_ref = drag_coeff_ref(wing)
+    return cd_min * q_ref
+end
+
+"""
     tether_point_idxs(sys) -> Set{Int}
 
 Collect all point indices that belong to tether segments.
@@ -423,6 +457,42 @@ function compute_wing_incidence(sys)
 end
 
 """
+    span_mean_aoa(sys) -> Float64
+
+Span-averaged geometric angle of attack of the wing [rad], the mean of the
+VSM's per-panel `alpha_geometric_dist`.
+
+Use this rather than `SysState.AoA` whenever the number is meant to describe
+the *whole wing*. `update_sys_state!` fills `AoA` from the single centre panel
+of `alpha_geometric_dist`, which is representative only while the wing is
+loaded symmetrically: steering twists the two halves in opposite directions, so
+in a turn the centre panel misses the spanwise spread entirely.
+
+Panels whose local velocity is too small for an angle to be defined are logged
+as `NaN` by the VSM; they are skipped here, and the result is `NaN` only if
+every panel is. Returns `NaN` for a wing without a VSM solver (e.g. a
+`PlateWing`), where no spanwise distribution exists — see
+[`compute_wing_incidence`](@ref) for a purely geometric whole-wing angle that
+does not need one.
+"""
+function span_mean_aoa(sys)
+    wing = sys.wings[1]
+    hasproperty(wing, :vsm_solver) || return NaN
+    alphas = wing.vsm_solver.sol.alpha_geometric_dist
+    # Same wrap as update_sys_state! applies to the centre panel: the VSM
+    # returns some panels as `pi + atan(...)`, which would otherwise average
+    # against the others as if it were a large positive angle.
+    n = 0
+    acc = 0.0
+    for a in alphas
+        isnan(a) && continue
+        n += 1
+        acc += mod(a + pi, 2pi) - pi
+    end
+    return n == 0 ? NaN : acc / n
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle
@@ -591,21 +661,30 @@ Save a Logger and immediately load the resulting SysLog.
 function save_and_load_log(logger, name; path=nothing)
     if isnothing(path)
         save_log(logger, name)
-    else
-        save_log(logger, name; path)
+        return load_log(name)
     end
-    return load_log(name)
+    # `load_log` defaults to KiteUtils' data path, which is not where we just
+    # wrote — read the log back from the directory it was saved to.
+    save_log(logger, name; path)
+    return load_log(name; path)
 end
 
 """
-    create_heading_pid(; K, Ti, Td, dt, umin, umax) -> DiscretePID
+    create_heading_pid(; K, Ti, Td, N, dt, umin, umax) -> DiscretePID
 
 Create a heading PID controller with standard V3 kite conventions.
 Gains `Ti` and `Td` accept `false` to disable integral/derivative.
+
+`N` is the derivative filter's maximum gain: the D path is
+`K*Td*s / (1 + s*Td/N)`, so it amplifies measurement noise by up to `N*K`
+above the corner `N/(2*pi*Td)` [Hz]. `DiscretePIDs` defaults to 10, which on a
+course loop closed at ~0.1 Hz is 10x noise gain bought for a few degrees of
+phase lead; pass a smaller `N` to filter the derivative harder without touching
+the loop's behaviour at its working frequency.
 """
-function create_heading_pid(; K=1.0, Ti=false, Td=false,
+function create_heading_pid(; K=1.0, Ti=false, Td=false, N=10.0,
                              dt, umin=-1.0, umax=1.0)
-    return DiscretePID(; K, Ti, Td, Ts=dt, umin, umax)
+    return DiscretePID(; K, Ti, Td, N, Ts=dt, umin, umax)
 end
 
 """

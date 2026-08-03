@@ -1,9 +1,24 @@
-# Settings of the cascaded winch length controller. Loaded into a `WC_Settings`
-# struct via `WC_Settings("wc_settings.yaml")`. These are new parameters with no
-# historical counterpart; tune on examples/simple_parking.jl (constant-length
-# parking) and change them by at most 10 % per iteration.
+# Settings of the two winch controllers: the cascaded length controller
+# (`winch_position_torque!`) and force mode (`winch_force_torque!`). A run uses one
+# or the other; they share only the drum. Loaded into a `WC_Settings` struct via
+# `WC_Settings("wc_settings.yaml")`. These are new parameters with no historical
+# counterpart; tune on examples/simple_parking.jl (constant-length parking) and
+# change them by at most 10 % per iteration. Any key omitted here falls back to the
+# struct default, so this file is also the list of what is tunable.
 wc_settings:
+  # --- Position mode (winch_position_torque!) --------------------------------
   winch_pos_kp:       0.5    # Outer proportional gain: length error [m] -> reel-out speed setpoint [1/s]
   winch_speed_k:      30.0   # Inner speed-loop proportional gain: speed error [m/s] -> winch torque [N*m*s/m]
   winch_speed_ti:     2.0    # Inner speed-loop integral time [s] (larger = weaker integral action)
   winch_torque_limit: 500.0  # Saturation of the inner speed loop's torque correction [N*m]
+  # Scale on the force feed-forward. 1.0 cancels the measured tether force exactly,
+  # which makes the drum perfectly stiff at any PI gain; below 1.0 the holding
+  # torque falls short of the load and the drum pays out. Compliance from this knob
+  # is transient unless winch_speed_ti is raised well above the timescale you want
+  # the winch to yield on, because the inner PI integrates the speed error away.
+  winch_ff_scale:     1.0
+  # --- Force mode (winch_force_torque!) --------------------------------------
+  winch_force_tau:   10.0    # Reference-force low-pass time constant [s]; the drum yields to everything faster
+  winch_len_kp:     100.0    # Length-trim gain: length error [m] -> reference force [N/m]
+  winch_damp:       500.0    # Viscous damping: reel-out speed [m/s] -> reference force [N*s/m]; not optional, see WC_Settings
+  winch_force_min:  100.0    # Floor on the reference force [N], keeps the tether taut
