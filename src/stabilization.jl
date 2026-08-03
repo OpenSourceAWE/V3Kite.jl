@@ -131,15 +131,11 @@ Where generated artifacts go when the caller names no `cache_path`: `data_path`
 itself for a development checkout, and a scratch directory next to the depot for
 a Pkg-INSTALLED V3Kite.
 
-A package directory under `DEPOT_PATH/packages` is not ours to write to. Pkg
-usually makes it read-only outright, and where it does not, `Pkg.gc` deletes the
-whole tree once no environment references that version — silently taking a
-settled geometry and a 20 MB compiled model with it. Writing into a
-`scratchspaces` directory keyed by our UUID is the depot-blessed way to keep
-generated files, and it survives reinstalling the package.
-
-A development checkout keeps caching in place, so `] dev`-ing V3Kite behaves
-exactly as before and existing `data/settled_*.bin` files stay in use.
+A package directory under `DEPOT_PATH/packages` is not ours to write to: it is
+usually read-only, and `Pkg.gc` deletes the whole tree once no environment
+references that version. A `scratchspaces` directory keyed by our UUID survives
+reinstalling. A development checkout keeps caching in place, so `] dev` behaves
+as before and existing `data/settled_*.bin` files stay in use.
 """
 function default_cache_path(data_path)
     abs_data = abspath(data_path)
@@ -159,16 +155,11 @@ Run `f()` with KiteUtils' data path pointed at `cache_path`, restoring
 `data_path` afterwards; a no-op when the two are equal.
 
 Exists for exactly one write: `SymbolicAWEModels.init!` serializes the compiled
-model to `joinpath(KiteUtils.get_data_path(), model_name)` and takes no path
-argument, so the global data path is the only lever on where that file lands.
-Without this, a `cache_path` would redirect the settled geometry while the model
-binary still went to `data_path` — which fails outright when `data_path` is a
-read-only (url-installed) copy of V3Kite, since a fresh install ships no model
-binary and therefore always has to write one.
-
-Narrow on purpose: `init!` reads nothing else through the data path (settings
-and geometry are already in memory by then), so redirecting it for the duration
-of the call cannot pull any other file from the wrong directory.
+model under `KiteUtils.get_data_path()` and takes no path argument, so the global
+data path is the only lever on where it lands. Without this the model binary
+would still go to a read-only `data_path` while the geometry went to the cache.
+Narrow on purpose: `init!` reads nothing else through the data path, so the
+redirect cannot pull another file from the wrong directory.
 """
 function with_model_cache(f, cache_path, data_path)
     cache_path == data_path && return f()

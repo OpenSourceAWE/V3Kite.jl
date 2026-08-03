@@ -254,14 +254,10 @@ const LD_CD_MIN = 0.01
 Smallest drag force [N] at which a lift-to-drag ratio is still
 meaningful, `cd_min * q * A_proj` at the current apparent wind speed.
 
-WHY this exists: `compute_lift` is a norm and therefore non-negative,
-while `compute_drag`/`compute_tether_drag` are SIGNED projections onto
-the apparent-wind direction. When the wing unloads — the settling-to-
-dynamics transient at the start of a run, or any moment the aero force
-turns nearly normal to `v_a` — that denominator passes through zero and
-`lift / drag` produces an arbitrarily large spike from an arbitrarily
-small force. A floor in Newton cannot express "small" here, because the
-force scale itself moves with `v_app^2`; a floor on the COEFFICIENT can.
+Drag is a SIGNED projection onto `v_a` while lift is a norm, so the
+denominator passes through zero whenever the wing unloads and spikes the
+ratio. The floor is on the COEFFICIENT because the force scale itself
+moves with `v_app^2`.
 
 Returns `Inf` when there is no apparent wind at all, so every ratio
 formed against it is `NaN`.
@@ -468,18 +464,13 @@ end
 Span-averaged geometric angle of attack of the wing [rad], the mean of the
 VSM's per-panel `alpha_geometric_dist`.
 
-Use this rather than `SysState.AoA` whenever the number is meant to describe
-the *whole wing*. `update_sys_state!` fills `AoA` from the single centre panel
-of `alpha_geometric_dist`, which is representative only while the wing is
-loaded symmetrically: steering twists the two halves in opposite directions, so
-in a turn the centre panel misses the spanwise spread entirely.
+Use this rather than `SysState.AoA` for whole-wing numbers: `AoA` comes from the
+single centre panel, which misses the spanwise spread once steering twists the
+two halves in opposite directions.
 
-Panels whose local velocity is too small for an angle to be defined are logged
-as `NaN` by the VSM; they are skipped here, and the result is `NaN` only if
-every panel is. Returns `NaN` for a wing without a VSM solver (e.g. a
-`PlateWing`), where no spanwise distribution exists — see
-[`compute_wing_incidence`](@ref) for a purely geometric whole-wing angle that
-does not need one.
+Panels the VSM logs as `NaN` (local velocity too small) are skipped, so the
+result is `NaN` only if every panel is. Returns `NaN` for a wing without a VSM
+solver; see [`compute_wing_incidence`](@ref) for a geometric alternative.
 """
 function span_mean_aoa(sys)
     wing = sys.wings[1]

@@ -21,17 +21,15 @@ parameters with no historical counterpart; tune on `examples/simple_parking.jl`
     winch_torque_limit = 500.0
     """
     Scale on the load term of the force feed-forward,
-    `τ = -ff_scale·r/G·F + friction + Δτ`. Only the load is scaled; the friction
-    compensation is always applied in full, since it cancels the drum's own
-    friction rather than the load, and it flips sign with the reel-out direction.
+    `τ = -ff_scale·r/G·F + friction + Δτ`. The friction compensation is never
+    scaled: it cancels the drum's own friction, not the load, and flips sign with
+    the reel-out direction.
 
-    `1.0` (the default) cancels the measured tether force exactly, which makes the
-    drum perfectly stiff — no reel-out however hard the kite pulls, whatever the PI
-    gains are. Below 1.0 the holding torque falls short of the load and the drum
-    pays out; this is the compliance knob. Note the inner PI still integrates the
-    resulting speed error away over `winch_speed_ti`, so the compliance is
-    transient unless `winch_speed_ti` is raised to well above the timescale you
-    want the winch to yield on.
+    `1.0` (the default) cancels the measured tether force exactly, making the drum
+    perfectly stiff at any PI gain; below 1.0 the holding torque falls short and
+    the drum pays out. The compliance is transient unless `winch_speed_ti` is well
+    above the timescale you want the winch to yield on, since the inner PI
+    integrates the resulting speed error away.
     """
     winch_ff_scale = 1.0
     """
