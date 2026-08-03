@@ -109,6 +109,8 @@ MIN_STEERING_FIT = START_STEERING / 2
 # with [0.0, 0.0, 40.0]
 #  c1                 :   0.3159 1/m ± 0.0003  (0.09 %)
 #  c2                 :  -0.3837 [-] ± 0.0573  (14.93 %)
+# `init` leaves the data path alone, so `save_log` below needs it set here.
+set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = [10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT)

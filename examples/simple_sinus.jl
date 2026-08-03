@@ -63,6 +63,8 @@ MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not bindi
 
 # ======================== INIT =========================== #
 
+# `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
+set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH;
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
 
