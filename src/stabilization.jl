@@ -144,7 +144,9 @@ exactly as before and existing `data/settled_*.bin` files stay in use.
 function default_cache_path(data_path)
     abs_data = abspath(data_path)
     in_depot = any(DEPOT_PATH) do depot
-        startswith(abs_data, abspath(joinpath(depot, "packages")))
+        # Trailing separator (`joinpath(dir, "")`) so the prefix test lands on a
+        # path boundary: a bare prefix also matches a sibling `packages_old`.
+        startswith(abs_data, joinpath(abspath(joinpath(depot, "packages")), ""))
     end
     in_depot || return data_path
     uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"  # V3Kite, see Project.toml
