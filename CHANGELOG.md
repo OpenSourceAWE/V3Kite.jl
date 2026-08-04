@@ -1,5 +1,14 @@
 # Changelog
 
+## V3Kite v1.0.2 04-08-2026
+
+### Changed
+- Require `KiteUtils` 0.11.11 (previously unbounded, resolving to 0.11.9):
+  0.11.10 adds a `flap_angle` field to `SysState`/`Logger`, and 0.11.11 fixes
+  the parsing of a bare `log_file` name in the settings, which threw a
+  `BoundsError` — the form an external controller package uses when it keeps
+  its logs in its own directory.
+
 ## V3Kite v1.0.1 03-08-2026
 
 ### Added
