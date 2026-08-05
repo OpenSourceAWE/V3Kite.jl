@@ -235,24 +235,90 @@ Verified:
 - `test/test-interface.jl` still passes with `use_turbulence` back at 0.0 (60 + 23 + 26 tests).
 - The flag was reverted to `0.0`; switching it on is step 5's job.
 
-## Step 5 — `set_default_turbulence` menu entry
+## Step 5 — `set_default_turbulence`
 
-`examples/menu2.jl` builds its options as `"name = include(\"file.jl\")"` strings and runs them with
-`eval(Meta.parse(...))` ([examples/menu2.jl:20-35](examples/menu2.jl#L20-L35)), so any expression
-works. Add `examples/set_default_turbulence.jl` plus a `push!` next to the other explicit entries.
+Follow the pattern `KiteModels.jl` already uses (`src/KiteModels.jl:716-890`,
+`examples/menu2.jl`, `test/test-default_turbulence.jl`): the value lives in **`data/gui.yaml`**, not
+in the settings YAML. Any value in `[0.0, 1.0]` is accepted, and regenerating a wind field for a new
+value is acceptable.
 
-What it must do, and why:
+### Persistence
 
-- **Set `use_turbulence` to `1.0`** (the Cabauw-calibrated reference intensity — the setting is a
-  *relative* intensity, not an absolute one). Only values with matching `.npz` files avoid a 1.24 GB
-  regeneration, so the script should check for the file and refuse/warn rather than silently
-  generating.
-- **Persist it to `data/settings.yaml`.** An in-memory change is useless: every `simple_*.jl` calls
-  `set_data_path(v3_data_path())` and reloads the settings before `init`. Edit the file textually
-  (a YAML round-trip through `YAML.jl` drops the extensive comments in that file).
-- **State that it only takes effect for the next run.** `AtmosphericModel(set)` and the wind-field
-  load happen at construction, so flipping the flag after `init` does nothing.
-- A matching way back to `0.0` — either a second entry or a toggle that reports the new state.
+`data/gui.yaml` is the working copy, created on demand by copying the tracked
+`data/gui.yaml.default` — the same `.default` convention V3Kite already uses for
+`Manifest-v1.12.toml`. KiteModels' file is:
+
+```yaml
+gui:
+    default_turbulence: 0.0              # default turbulence level for simulations, between 0.0 and 1.0
+```
+
+`.gitignore` needs `data/gui.yaml` (the `.default` stays tracked). While there: the two explicit
+`data/windfield_*.npz` lines at the end should become `data/*.npz`, since new `use_turbulence`
+values produce new filenames.
+
+### API
+
+Mirror KiteModels' pair, exported from `V3Kite`:
+
+- `get_default_turbulence() -> Union{Float64, Nothing}` — reads `gui.yaml`, creating it from
+  `gui.yaml.default` when missing.
+- `set_default_turbulence(value::Union{Nothing,Real}=nothing) -> Union{Float64, Nothing}` — prompts
+  on the terminal when called with no argument (`"Enter new default_turbulence [0.0..1.0] (blank to
+  cancel): "`), rejects values outside `[0.0, 1.0]`, writes the file and returns the new value.
+
+The write must preserve comments, so it is a line-based edit, not a `YAML.jl` round-trip. KiteModels
+does this with two helpers, `update_yaml_scalar` and `insert_yaml_scalar_in_section`
+(`src/KiteModels.jl:716-785`) — the second handles a `gui.yaml` that lacks the key entirely. They
+are unexported internals of a package V3Kite does not depend on, so port them (~50 lines);
+upstreaming them to `KiteUtils` later would remove the duplication for both packages.
+
+### Applying the value
+
+KiteModels' examples each do this themselves because they build `set` before constructing the model:
+
+```julia
+default_turbulence = get_default_turbulence()
+if default_turbulence !== nothing
+    set.use_turbulence = default_turbulence
+end
+```
+
+V3Kite's examples never see a `Settings` — `init` builds it internally through `settle_wing` — so the
+override belongs in `init`, immediately **before** the atmospheric-model sync added in step 4 (the
+wind field is loaded there, and that decision reads `set.use_turbulence`):
+
+```julia
+turb = get_default_turbulence()
+turb !== nothing && (set.use_turbulence = turb)
+```
+
+That makes `gui.yaml` the single source of truth for every example at once, and leaves
+`use_turbulence: 0.0` in the settings YAMLs as the fallback for code paths that bypass `init`.
+
+### Menu entry
+
+`examples/menu2.jl` currently evaluates `"name = include(\"file.jl\")"` strings with
+`eval(Meta.parse(...))`. That form **cannot** be reused here: `set_default_turbulence =
+set_default_turbulence()` would bind the returned `Float64` over the function, so the second
+invocation fails with "objects of type Float64 are not callable". KiteModels solved exactly this by
+listing `(name, script_path)` tuples and treating `script_path === nothing` as "call the function"
+(`KiteModels/examples/menu2.jl:36-56`). Restructure V3Kite's menu the same way, keeping the existing
+`simple_*.jl` auto-discovery.
+
+### The one-decimal trap
+
+`calc_full_name` formats `rel_sigma = use_turbulence` with `%.1f` (`windfield.jl:85-90`), so 0.30 and
+0.34 name the *same* file. Whichever field was generated first is then silently reused for the other
+value, with a sigma error of up to ~15 %. `set_default_turbulence` should warn when
+`round(value, digits=1) != value`. Fixing the encoding itself belongs in `AtmosphericModels`.
+
+### Tests
+
+`KiteModels/test/test-default_turbulence.jl` is directly portable: it works in a `mktempdir`, checks
+that `gui.yaml` is created from `.default`, that `set_default_turbulence` round-trips, and that the
+insert path works when the key is missing. It needs no wind field, so unlike the rest of this
+feature it belongs in the regular suite.
 
 ## Step 6 — verification
 
