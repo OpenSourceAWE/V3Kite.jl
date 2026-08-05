@@ -70,3 +70,5 @@ settings.json
 .JETLSConfig.toml
 examples_2d/LocalPreferences.toml
 .markdownlint.json
+data/windfield_100_4050_500_70_1.0_9.5.npz
+data/windfield_100_4050_500_70_1.0_8.2.npz
