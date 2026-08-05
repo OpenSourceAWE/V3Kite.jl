@@ -65,8 +65,15 @@ WinchForceController(wc::WC_Settings) = WinchForceController(
     "Reference to the KCU model (Kite Control Unit) as implemented in the package KitePodModels"
     kcu::KCU
     sam::SymbolicAWEModel
-    "Reference to the atmospheric model as implemented in the package AtmosphericModels"
-    am::AtmosphericModel = AtmosphericModel(set)
+    """
+    Reference to the atmospheric model as implemented in the package AtmosphericModels.
+
+    Shared with the DAE: this is `sam.sys_struct.am`, the same instance the generated
+    equations evaluate via `calc_wind_factor`/`calc_rho`. Constructing a second one here
+    would load a second copy of the turbulent wind field (~1.2 GB) when
+    `set.use_turbulence > 0`.
+    """
+    am::AtmosphericModel = sam.am
     "Geometry config used by the depower/steering tape conversions"
     gc::V3GeomAdjustConfig = V3GeomAdjustConfig()
     "Time step of the high-level `step!` loop [s]"

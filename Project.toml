@@ -37,7 +37,7 @@ GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 V3KiteMakieExt = "GLMakie"
 
 [compat]
-AtmosphericModels = "0.3.4"
+AtmosphericModels = "0.3.6"
 HDF5 = "0.17.2"
 KitePodModels = "0.4.0"
 KiteUtils = "0.11.11"
