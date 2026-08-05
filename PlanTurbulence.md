@@ -131,36 +131,62 @@ turbulence is visible in the plots.
 ## Step 4 — wind fields for the V3 wind speeds
 
 `load_windfield` snaps to the **closest** entry of `set.v_wind_gnds` (`windfield.jl:117-121`), while
-`get_wind` computes the mean wind from `set.v_wind` (`windfield.jl:333`). The current
-`v_wind_gnds: [3.483, 5.324, 8.163]` are the Cabauw scenarios; the V3 examples run at 7.6, 9.51,
-10.0 and 15.4 m/s, so today every one of them would silently borrow the 8.163 m/s field — turbulence
-intensity too low by ~15-25 % at 9.5 m/s and roughly half at 15.4 m/s.
+`get_wind` computes the mean wind from `set.v_wind` (`windfield.jl:333`), so a speed that is not in
+the list borrows a neighbour's turbulence over its own mean wind.
 
-Therefore, in `data/settings.yaml` (and `settings_reelout.yaml` / `settings_cabauw.yaml` if they are
-to support turbulence too):
+Measured cost of that snap, for `settings_reelout.yaml` (turbulence intensity at 99 m, computed as
+`rel_turb * calc_sigma1(am, v) / (v * calc_wind_factor(am, 99))`):
 
-1. Extend `v_wind_gnds` with the speeds the examples actually use. Suggested first pass: `9.51`
-   (used by `simple_parking`, `reel_out_v3`, `steering_test_v3`), then `15.4` if the batch/fig-8
-   runs need it. Each additional speed costs **1.24 GB on disk and several minutes** to generate, so
-   add them deliberately rather than all at once.
-2. Extend `rel_turbs` with a matching entry per speed. **These are not free parameters**: per
-   `AtmosphericModels/docs/src/wind_field.md`, they are correction factors calibrated so the Mann
-   field reproduces the turbulence intensity measured at Cabauw (8.5 / 9.7 / 9.8 % at 99 m). The
-   measured table stops at 8.163 m/s, so values above that are an extrapolation. Procedure: pick a
-   starting value by extrapolating the existing trend, generate the field, measure the resulting
-   intensity with the tooling in `AtmosphericModels/examples/plot_windfield.jl` (or `test_all.jl`),
-   and iterate until it matches the intended target. Record the target used, in a comment next to
-   the new entries.
-3. Generate the fields into V3Kite's data path (`v3_data_path()` → `data/`), which currently holds
-   no `.npz` at all:
+| `v_wind_gnds` | `rel_turbs` | I₉₉ |
+|---:|---:|---:|
+| 3.483 | 0.342 | 9.7 % |
+| 5.324 | 0.465 | 10.4 % |
+| 8.163 | 0.583 | 10.7 % |
+| 9.51 | *0.583, snapped* | 10.1 % |
+| 15.4 | *0.583, snapped* | 8.6 % |
+
+Two things this corrects: V3Kite uses `alpha = 0.08163` rather than Cabauw's 0.234, yet the Cabauw
+`rel_turbs` still land close to the intended intensity (9.7 / 10.4 / 10.7 % against the measured
+8.5 / 9.7 / 9.8 %); and the snapping penalty at 9.51 m/s is only ~6 % relative — it is 15.4 m/s,
+where the intensity falls to 8.6 %, that is really mis-served.
+
+Done:
+
+1. `v_wind_gnds` extended to `[3.483, 5.324, 8.163, 9.51]` and `rel_turbs` to
+   `[0.342, 0.465, 0.583, 0.626]` in all three settings files (`settings.yaml`,
+   `settings_reelout.yaml`, `settings_cabauw.yaml`), which share `alpha`, `avg_height`, `i_ref` and
+   `h_ref` and therefore share one set of field files.
+2. The new `rel_turb` is **not** a free parameter — per `AtmosphericModels/docs/src/wind_field.md`
+   these are correction factors calibrated against measured Cabauw intensities, and the measured
+   table stops at 8.163 m/s. 0.626 continues the log fit `rel_turb = 0.342 + 0.283*(ln v - 1.248)`,
+   which reproduces the three calibrated points almost exactly (successive slopes 0.290 and 0.276).
+   It puts I₉₉ at 10.9 % for 9.51 m/s, continuing the 9.7 → 10.4 → 10.7 % trend. A comment in each
+   settings file records this.
+3. Fields generated into `v3_data_path()` for 8.163 (covers the settings default `v_wind: 8.0`) and
+   9.51 (the `simple_*`/`reel_out_v3`/`steering_test_v3` examples), 1.24 GB each:
 
    ```julia
    set_data_path(v3_data_path())
-   set = load_settings("system.yaml"; relax=true)
+   set = load_settings("system_reelout.yaml"; relax=true)
    set.use_turbulence = 1.0
    am = AtmosphericModel(set; nowindfield=true)
-   new_windfields(am)          # all speeds in set.v_wind_gnds
+   for v in (8.163, 9.51); new_windfield(am, v); end
    ```
+
+   3.483 and 5.324 stay listed but have no pre-generated file; a run at those speeds triggers an
+   on-the-fly `new_windfield` (`windfield.jl:109-112` only `@warn`s). 15.4 m/s is not covered at all
+   and still snaps to 9.51.
+
+**Grid**: V3Kite's settings files have no `grid:` key, so `set.grid` is KiteUtils' default
+`[100, 4050, 500, 70]` — the **short** dimension first. This is exactly the layout the 0.3.6
+`get_wind` fix handles (before it, dimension 1 was assumed to be the long, along-wind one), so the
+step 1 compat floor is required for correctness here, not only for `calc_turbulent_wind`. It also
+gives the basename `windfield_100_4050_500_70_*`, distinct from the `windfield_4050_100_500_70_*`
+files in `AtmosphericModels/data`.
+
+**Do not copy fields between packages.** The filename encodes only grid, `use_turbulence` and ground
+wind speed — not `alpha`, `avg_height` or `i_ref`, all of which enter `calc_sigma1`. A file generated
+under another package's settings would load without complaint and be silently wrong.
 
    Without this, the first turbulent run falls into `new_windfield` unnoticed (`windfield.jl:109-112`
    only warns) and blocks for minutes. `data/*.npz` is already in `.gitignore`.
