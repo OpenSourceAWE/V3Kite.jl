@@ -642,6 +642,42 @@ function init(v_wind_gnd, l_tether;
 end
 
 """
+    update_turbulence!(s::V3KITE)
+
+Refresh the turbulent wind disturbance of every wing, or clear it when
+`s.set.use_turbulence == 0`. Called by [`step!`](@ref) before the integration step.
+
+The DAE gets its wind as `set.wind_vec` scaled by the height-only profile factor at each
+position (`calc_wind_factor`), so only the *deviation* from that mean may be injected here.
+It goes into the wing's `wind_disturb` parameter, which `SymbolicAWEModels` adds to the
+wing's apparent wind. The mean is evaluated at `wing.pos_w`, the same position the DAE uses,
+so that the two cancel exactly.
+
+The disturbance is held constant over the step on purpose: `AtmosphericModels.get_wind` is a
+nearest-grid-point lookup into the Mann field, which would be a discontinuous, non-differentiable
+term if it were evaluated inside the implicit solve.
+
+The tether is not covered — `SymbolicAWEModels` has no per-segment disturbance term, so the
+`v_wind_tether` return value of `calc_turbulent_wind` is unused.
+"""
+function update_turbulence!(s::V3KITE)
+    # `upwind_dir` must be qualified here and in `step!`: the keyword argument of `step!`
+    # shadows the V3Kite function of the same name.
+    ud = V3Kite.upwind_dir(s)   # NaN if the wind vector has no horizontal component
+    for wing in s.sys.wings
+        if s.set.use_turbulence > 0 && isfinite(ud)
+            pos = wing.pos_w
+            v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
+            v_mean = calc_wind_factor(s.am, max(1.0, pos[3])) * s.set.wind_vec
+            wing.wind_disturb .= v_turb .- v_mean
+        else
+            wing.wind_disturb .= 0.0
+        end
+    end
+    nothing
+end
+
+"""
     step!(s::V3KITE; rel_depower=0.0, rel_steering=0.0,
           v_wind_gnd=nothing, upwind_dir=nothing,
           set_torque=nothing, set_length=nothing,
@@ -697,6 +733,8 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
         ud = upwind_dir === nothing ? deg2rad(s.set.upwind_dir) : upwind_dir
         s.set.wind_vec = wind_vec_from_angles(vw, ud, 0.0)
     end
+
+    update_turbulence!(s)
 
     # KCU actuator dynamics: command → finite-speed tape motion → geometry.
     # The KCU getters must be qualified: V3Kite's calibration.jl defines

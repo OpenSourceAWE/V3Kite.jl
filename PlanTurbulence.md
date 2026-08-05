@@ -63,24 +63,35 @@ the current `sys_struct` (`model_management.jl:423`).
 Verified in the REPL: `s.am === sam.sys_struct.am` and `s.set === s.am.set` are both `true`, and
 `test/test-interface.jl` passes (60 + 23 + 26 tests).
 
-## Step 3 — feed the turbulent deviation into the wing
+## Step 3 — feed the turbulent deviation into the wing (done)
 
-In `step!` ([src/interface.jl:676-716](src/interface.jl#L676-L716)), after the optional live wind
-update and **before** `sim_step!`:
+Implemented as `update_turbulence!(s::V3KITE)`
+([src/interface.jl:644-679](src/interface.jl#L644-L679)), called from `step!` right after the
+optional live wind update and before `sim_step!`
+([src/interface.jl:703](src/interface.jl#L703)):
 
 ```julia
-# Turbulence: the DAE scales set.wind_vec by the height-only profile factor, so only the
-# deviation from that mean may be injected — via the wing's wind_disturb parameter, which
-# SymbolicAWEModels adds to the wing's apparent wind. Held constant over the step: get_wind
-# is a nearest-grid-point lookup and must not be evaluated inside the implicit solve.
-if s.set.use_turbulence > 0
-    wing = s.sys.wings[1]
-    pos = wing.pos_w
-    v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = upwind_dir(s))
-    v_mean = calc_wind_factor(s.am, max(1.0, pos[3])) * s.set.wind_vec
-    wing.wind_disturb .= v_turb - v_mean
+function update_turbulence!(s::V3KITE)
+    # `upwind_dir` must be qualified here and in `step!`: the keyword argument of `step!`
+    # shadows the V3Kite function of the same name.
+    ud = V3Kite.upwind_dir(s)   # NaN if the wind vector has no horizontal component
+    for wing in s.sys.wings
+        if s.set.use_turbulence > 0 && isfinite(ud)
+            pos = wing.pos_w
+            v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
+            v_mean = calc_wind_factor(s.am, max(1.0, pos[3])) * s.set.wind_vec
+            wing.wind_disturb .= v_turb .- v_mean
+        else
+            wing.wind_disturb .= 0.0
+        end
+    end
+    nothing
 end
 ```
+
+Differences from the sketch this plan originally carried: it loops over all wings instead of
+hardcoding `wings[1]`, it guards against a `NaN` upwind direction (zero horizontal wind) rather than
+letting `NaN` propagate into the solve, and the zeroing branch is part of the same function.
 
 Details that must not drift:
 
@@ -99,6 +110,20 @@ Details that must not drift:
   `t >= 0` and `z >= 5`.
 - Reset `wing.wind_disturb` to zero when `use_turbulence == 0` is toggled at runtime (it is a
   persistent field on the struct).
+
+`wing.pos_w` is refreshed from the integrator at the end of every step by
+`update_sys_struct!` (`symbolic_awe_model.jl:474, 568`), and that function does *not* touch
+`wind_disturb` — so the position read here is current and the injected disturbance survives the step.
+
+Verified so far:
+
+- `test/test-interface.jl` passes with the new call in `step!` (60 + 23 + 26 tests) — this exercises
+  the `use_turbulence == 0` path, including the `V3Kite.upwind_dir(s)` qualification.
+- The injection path itself was checked directly against the DAE: with
+  `wing.wind_disturb = [1, 0, 0]` and one `sim_step!`, the residual of
+  `va_b - R_b_to_w' * (v_wind - vel_w + wind_disturb)` is 5.4e-10, while dropping the
+  `wind_disturb` term leaves exactly 1.0. The disturbance reaches the wing's apparent wind unchanged.
+- **Still unverified**: the `use_turbulence > 0` path, which needs a wind field — see step 4.
 
 Optionally log `norm(wing.wind_disturb)` to a spare `sys_state` slot in `update_sys_state!` so the
 turbulence is visible in the plots.
