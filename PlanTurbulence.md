@@ -33,14 +33,15 @@ Tether turbulence is **out of scope**: `generate_system/segment_eqs.jl:175` has 
 so the second return value of `calc_turbulent_wind` (`v_wind_tether`) has nowhere to go. See
 "Follow-up" below.
 
-## Step 1 — dependency
+## Step 1 — dependency (done)
 
-`AtmosphericModels` 0.3.6 exports `calc_turbulent_wind`. Once it is registered:
+`AtmosphericModels` 0.3.6 exports `calc_turbulent_wind`.
 
-- `Project.toml`: bump `AtmosphericModels = "0.3.4"` → `"0.3.6"`.
-- Refresh `Manifest-v1.12.toml.default`.
+- `Project.toml`: `AtmosphericModels` compat bumped `"0.3.4"` → `"0.3.6"`, so a resolve cannot
+  silently land on 0.3.5, where `calc_turbulent_wind` does not exist.
+- `Manifest-v1.12.toml` and `Manifest-v1.12.toml.default` both pin 0.3.6 and match each other.
 
-## Step 2 — one shared `AtmosphericModel`
+## Step 2 — one shared `AtmosphericModel` (done)
 
 Today two atmospheric models are built from the same settings:
 
@@ -51,9 +52,16 @@ With `use_turbulence > 0` **both eagerly load a wind field**, and a wind field f
 grid is 1.24 GB on disk (`windfield_4050_100_500_70_1.0_8.2.npz`) — i.e. ~2.5 GB of RAM for two
 copies of the same data.
 
-Fix: in `init` ([src/interface.jl:628](src/interface.jl#L628)) pass `am = sam.sys_struct.am` to the
-`V3KITE` constructor so there is exactly one instance. The `sys_struct` is fully built at that point
-(also when it is deserialized from the model `.bin` cache), so the reference is valid.
+Fix applied: the `V3KITE` field default is now `am::AtmosphericModel = sam.am`
+([src/interface.jl:76](src/interface.jl#L76)). `sam.am` forwards to `sam.sys_struct.am`
+(`symbolic_awe_model.jl:190-191`), so every construction site shares the DAE's instance — not just
+`init`, but also the bare `V3KITE(set=..., kcu=..., sam=...)` form used in `test/test-interface.jl`.
+Sharing is safe because the live `sys_struct` (and its `am`) is always built in-process: only
+`full_sys` comes from the `.bin` cache, and the deserialized problem's parameters are re-pointed at
+the current `sys_struct` (`model_management.jl:423`).
+
+Verified in the REPL: `s.am === sam.sys_struct.am` and `s.set === s.am.set` are both `true`, and
+`test/test-interface.jl` passes (60 + 23 + 26 tests).
 
 ## Step 3 — feed the turbulent deviation into the wing
 
