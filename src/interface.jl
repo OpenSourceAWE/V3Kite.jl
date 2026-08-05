@@ -610,6 +610,17 @@ function init(v_wind_gnd, l_tether;
     # data/settings.yaml (loaded via Settings in settle_wing).
     set.cs_4p = 1.0
 
+    # A cached settled geometry is deserialized together with the AtmosphericModel it was
+    # serialized with, and `SystemStructure.am` is const, so `sys.set = set` in `settle_wing`
+    # cannot re-point it: `am.set` still holds the settings captured back then. Everything that
+    # reads `am` — the DAE's `calc_wind_factor`/`calc_rho` and `update_turbulence!` — would
+    # silently use those, e.g. `use_turbulence` still 0 after it was switched on in the YAML.
+    # The wind field is (re)loaded here because it is chosen by `set.v_wind`, which `init` has
+    # just changed; loading one takes a few seconds and ~1.2 GB.
+    sam.am.set = set
+    clear(sam.am)
+    sam.am.wf = set.use_turbulence > 0 ? WindField(sam.am, set.v_wind) : nothing
+
     isnothing(dt) && (dt = 1 / set.sample_freq)
     isnothing(sim_time) && (sim_time = set.sim_time)
 
