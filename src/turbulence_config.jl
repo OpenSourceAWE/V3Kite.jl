@@ -96,13 +96,13 @@ function insert_yaml_scalar_in_section(lines::Vector{String}, section::AbstractS
 end
 
 """
-    gui_yaml_path() -> String
+    gui_yaml_path(data_path = get_data_path()) -> String
 
-Path of the `gui.yaml` working copy in the active data path, creating it from
-`gui.yaml.default` if it does not exist yet. Returns `nothing` if neither exists.
+Path of the `gui.yaml` working copy in `data_path`, creating it from `gui.yaml.default` if it does
+not exist yet. Returns `nothing` if neither exists.
 """
-function gui_yaml_path()
-    gui_yaml = joinpath(get_data_path(), "gui.yaml")
+function gui_yaml_path(data_path = get_data_path())
+    gui_yaml = joinpath(data_path, "gui.yaml")
     if !isfile(gui_yaml)
         gui_yaml_default = gui_yaml * ".default"
         if isfile(gui_yaml_default)
@@ -116,14 +116,14 @@ function gui_yaml_path()
 end
 
 """
-    get_default_turbulence() -> Union{Float64, Nothing}
+    get_default_turbulence(data_path = get_data_path()) -> Union{Float64, Nothing}
 
 Read `default_turbulence` from `data/gui.yaml`, the turbulence level `init` applies as
 `set.use_turbulence`. If the file does not exist it is created from `gui.yaml.default`.
 Returns `nothing` if the value cannot be read.
 """
-function get_default_turbulence()
-    gui_yaml = gui_yaml_path()
+function get_default_turbulence(data_path = get_data_path())
+    gui_yaml = gui_yaml_path(data_path)
     isnothing(gui_yaml) && return nothing
 
     dict = YAML.load_file(gui_yaml)
@@ -140,7 +140,7 @@ function get_default_turbulence()
 end
 
 """
-    set_default_turbulence([value]) -> Union{Float64, Nothing}
+    set_default_turbulence([value]; data_path = get_data_path()) -> Union{Float64, Nothing}
 
 Persist `default_turbulence` in `data/gui.yaml` and return the new value. Without an argument the
 current value is shown and a new one is read from the terminal; a blank line cancels. Values
@@ -153,11 +153,12 @@ A wind field is stored per `(grid, use_turbulence, ground wind speed)`, so a val
 `data/windfield_*.npz` makes the next run generate one (~1.2 GB, tens of seconds). Note the filename
 keeps only one decimal of `use_turbulence`, so e.g. 0.30 and 0.34 would share a file.
 """
-function set_default_turbulence(value::Union{Nothing, Real} = nothing)
-    gui_yaml = gui_yaml_path()
+function set_default_turbulence(value::Union{Nothing, Real} = nothing;
+                                data_path = get_data_path())
+    gui_yaml = gui_yaml_path(data_path)
     isnothing(gui_yaml) && return nothing
 
-    current = get_default_turbulence()
+    current = get_default_turbulence(data_path)
 
     if isnothing(value)
         if isnothing(current)

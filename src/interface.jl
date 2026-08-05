@@ -613,7 +613,7 @@ function init(v_wind_gnd, l_tether;
     # Turbulence level comes from data/gui.yaml, not from the settings YAML: it is a per-checkout
     # preference. Applied before the block below, which decides on `use_turbulence` whether to
     # load a wind field.
-    turb = get_default_turbulence()
+    turb = get_default_turbulence(data_path)
     turb !== nothing && (set.use_turbulence = turb)
 
     # A cached settled geometry is deserialized together with the AtmosphericModel it was
