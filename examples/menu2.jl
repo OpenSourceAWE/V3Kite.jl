@@ -23,12 +23,12 @@ using V3Kite: set_default_turbulence
 # `set_default_turbulence = set_default_turbulence()` would bind the returned number over the
 # function, so the second invocation would fail.
 files = sort(filter(f -> startswith(f, "simple_") && endswith(f, ".jl"), readdir(@__DIR__)))
-actions = Tuple{String, Union{String, Nothing}}[(f[1:end-3], f) for f in files]
+actions = Tuple{String, Union{String, Nothing}}[("set_default_turbulence", nothing)]
+append!(actions, [(f[1:end-3], f) for f in files])
 push!(actions, ("reel_out_v3", "reel_out_v3.jl"))
 push!(actions, ("reel_out_v3_plots", "reel_out_v3_plots.jl"))
 push!(actions, ("steering_test_v3", "steering_test_v3.jl"))
 push!(actions, ("steering_test_v3_plots", "steering_test_v3_plots.jl"))
-push!(actions, ("set_default_turbulence", nothing))
 
 options = [isnothing(script) ? label : "$(label) = include(\"$(script)\")"
            for (label, script) in actions]
