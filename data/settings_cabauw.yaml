@@ -83,5 +83,9 @@ environment:
   v_ref:
     42.9 # five times the average wind speed in m/s at hub height over the full year    [m/s]
     # Cabauw: 8.5863 m/s * 5.0 = 42.9 m/s
+  # Must be declared explicitly: `KiteUtils.Settings(yaml)` (used by settle_wing) does not fill
+  # defaults, and an empty grid makes the wind-field filename lookup fail. [100, 4050, 500, 70]
+  # is the KiteUtils default and matches the generated data/windfield_100_4050_500_70_*.npz.
+  grid: [100, 4050, 500, 70] # grid size nx, ny, nz and minimal height z_min                      [m]
   height_step: 2.0 # use a grid with 2m resolution in z direction                                 [m]
   grid_step: 2.0 # grid resolution in x and y direction                                         [m]
