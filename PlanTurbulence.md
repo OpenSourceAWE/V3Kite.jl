@@ -123,7 +123,8 @@ Verified so far:
   `wing.wind_disturb = [1, 0, 0]` and one `sim_step!`, the residual of
   `va_b - R_b_to_w' * (v_wind - vel_w + wind_disturb)` is 5.4e-10, while dropping the
   `wind_disturb` term leaves exactly 1.0. The disturbance reaches the wing's apparent wind unchanged.
-- **Still unverified**: the `use_turbulence > 0` path, which needs a wind field — see step 4.
+- The `use_turbulence > 0` path was verified once step 4 had generated a field — see there. It
+  needed one more fix to work at all: `init` must re-point `am.set` at the live settings.
 
 Optionally log `norm(wing.wind_disturb)` to a spare `sys_state` slot in `update_sys_state!` so the
 turbulence is visible in the plots.
