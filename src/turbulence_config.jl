@@ -96,7 +96,7 @@ function insert_yaml_scalar_in_section(lines::Vector{String}, section::AbstractS
 end
 
 """
-    gui_yaml_path(data_path = get_data_path()) -> String
+    gui_yaml_path(data_path = get_data_path()) -> Union{String, Nothing}
 
 Path of the `gui.yaml` working copy in `data_path`, creating it from `gui.yaml.default` if it does
 not exist yet. Returns `nothing` if neither exists.
@@ -126,7 +126,12 @@ function get_default_turbulence(data_path = get_data_path())
     gui_yaml = gui_yaml_path(data_path)
     isnothing(gui_yaml) && return nothing
 
-    dict = YAML.load_file(gui_yaml)
+    dict = try
+        YAML.load_file(gui_yaml)
+    catch
+        println("Could not parse $gui_yaml")
+        return nothing
+    end
     if !haskey(dict, "gui") || !haskey(dict["gui"], "default_turbulence")
         println("Could not read current default_turbulence in $gui_yaml")
         return nothing
