@@ -128,7 +128,7 @@ Verified so far:
 Optionally log `norm(wing.wind_disturb)` to a spare `sys_state` slot in `update_sys_state!` so the
 turbulence is visible in the plots.
 
-## Step 4 — wind fields for the V3 wind speeds
+## Step 4 — wind fields for the V3 wind speeds (done)
 
 `load_windfield` snaps to the **closest** entry of `set.v_wind_gnds` (`windfield.jl:117-121`), while
 `get_wind` computes the mean wind from `set.v_wind` (`windfield.jl:333`), so a speed that is not in
@@ -176,24 +176,63 @@ Done:
    3.483 and 5.324 stay listed but have no pre-generated file; a run at those speeds triggers an
    on-the-fly `new_windfield` (`windfield.jl:109-112` only `@warn`s). 15.4 m/s is not covered at all
    and still snaps to 9.51.
+4. **`grid:` added to all three settings files** as `[100, 4050, 500, 70]`. It was missing, and that
+   is not cosmetic: `settle_wing` builds its settings with `KiteUtils.Settings(yaml)`, which does
+   *not* fill defaults, so `set.grid` came out as `Int64[]` and `calc_basename`'s `set.grid[1]`
+   threw a `BoundsError` that `WindField` swallows into "Error reading wind field!" plus a later
+   `AssertionError: Wind field is not initialized`. `load_settings(...; relax=true)` hid the problem
+   because it *does* fill the default — which is the same `[100, 4050, 500, 70]`, so declaring it
+   explicitly keeps the generated filenames.
+5. **`init` now re-points the atmospheric model at the live settings**
+   ([src/interface.jl:613-621](src/interface.jl#L613-L621)):
 
-**Grid**: V3Kite's settings files have no `grid:` key, so `set.grid` is KiteUtils' default
-`[100, 4050, 500, 70]` — the **short** dimension first. This is exactly the layout the 0.3.6
-`get_wind` fix handles (before it, dimension 1 was assumed to be the long, along-wind one), so the
-step 1 compat floor is required for correctness here, not only for `calc_turbulent_wind`. It also
-gives the basename `windfield_100_4050_500_70_*`, distinct from the `windfield_4050_100_500_70_*`
-files in `AtmosphericModels/data`.
+   ```julia
+   sam.am.set = set
+   clear(sam.am)
+   sam.am.wf = set.use_turbulence > 0 ? WindField(sam.am, set.v_wind) : nothing
+   ```
+
+   Without this, turbulence is silently a no-op whenever a cached settled geometry is used. The
+   `.bin` is deserialized together with the `AtmosphericModel` it was serialized with, and
+   `SystemStructure.am` is `const`, so `sys.set = set` in `settle_wing` cannot re-point it —
+   confirmed in the REPL: `s.set === s.am.set` was `false`, and setting `s.set.use_turbulence = 1.0`
+   left `s.am.set.use_turbulence == 0.0`. `update_turbulence!` would then call
+   `calc_turbulent_wind`, which takes its *mean-wind* branch on the stale `use_turbulence == 0` and
+   returns a disturbance of ≈0, with no field ever loaded. Reloading the field here is also required
+   because it is selected by `set.v_wind`, which `init` has just changed.
+
+   This staleness reaches beyond turbulence: the DAE's own `calc_wind_factor`/`calc_rho` read
+   `am.set.alpha`/`z0`/`temp_ref` from the same object. Values normally agree because both copies
+   come from the same YAML — they diverge exactly when the YAML is edited after the `.bin` was
+   written. The fix here covers the `init` path; `settle_wing` used directly still has it.
+
+**Grid**: `[100, 4050, 500, 70]` puts the **short** dimension first. This is exactly the layout the
+0.3.6 `get_wind` fix handles (before it, dimension 1 was assumed to be the long, along-wind one), so
+the step 1 compat floor is required for correctness here, not only for `calc_turbulent_wind`. It
+also gives the basename `windfield_100_4050_500_70_*`, distinct from the
+`windfield_4050_100_500_70_*` files in `AtmosphericModels/data`.
 
 **Do not copy fields between packages.** The filename encodes only grid, `use_turbulence` and ground
 wind speed — not `alpha`, `avg_height` or `i_ref`, all of which enter `calc_sigma1`. A file generated
 under another package's settings would load without complaint and be silently wrong.
 
-   Without this, the first turbulent run falls into `new_windfield` unnoticed (`windfield.jl:109-112`
-   only warns) and blocks for minutes. `data/*.npz` is already in `.gitignore`.
-
 Note the filename also encodes `rel_sigma = set.use_turbulence` with one decimal
 (`calc_full_name`, `windfield.jl:85-90`), so a non-default `use_turbulence` needs its own generated
-set of files.
+set of files. `data/*.npz` is already in `.gitignore`.
+
+Verified:
+
+- Generation took 1m14s for both fields, 1,244,872,856 bytes each.
+- Calibration closed empirically: sampling the generated 9.51 m/s field at a fixed point over 600 s
+  gives I₉₉ = **10.8 %** against the 10.9 % predicted for `rel_turb = 0.626`; the same measurement on
+  the 8.163 m/s field gives 11.0 % against 10.7 % predicted. No iteration on the factor was needed.
+- **The `use_turbulence > 0` path now runs end to end**, closing the gap left open in step 3: with
+  `use_turbulence: 1.0` temporarily set in `settings_reelout.yaml`,
+  `init(9.51, 150.0; system_yaml="system_reelout.yaml")` loads the 9.51 m/s field, reports
+  `rel_turb = 0.626` and `s.set === s.am.set`, and 200 steps run stably with
+  `norm(wind_disturb)` between 0.27 and 3.27 m/s (mean 1.48), all finite.
+- `test/test-interface.jl` still passes with `use_turbulence` back at 0.0 (60 + 23 + 26 tests).
+- The flag was reverted to `0.0`; switching it on is step 5's job.
 
 ## Step 5 — `set_default_turbulence` menu entry
 
