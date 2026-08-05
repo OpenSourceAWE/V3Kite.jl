@@ -16,13 +16,22 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using REPL.TerminalMenus
+using V3Kite: set_default_turbulence
 
+# (label, script) pairs; `nothing` as script means "call the action directly" instead of
+# including a file. A `"name = include(...)"` string cannot express that: evaluating
+# `set_default_turbulence = set_default_turbulence()` would bind the returned number over the
+# function, so the second invocation would fail.
 files = sort(filter(f -> startswith(f, "simple_") && endswith(f, ".jl"), readdir(@__DIR__)))
-options = [string(f[1:end-3], " = include(\"", f, "\")") for f in files]
-push!(options, "reel_out_v3 = include(\"reel_out_v3.jl\")")
-push!(options, "reel_out_v3_plots = include(\"reel_out_v3_plots.jl\")")
-push!(options, "steering_test_v3 = include(\"steering_test_v3.jl\")")
-push!(options, "steering_test_v3_plots = include(\"steering_test_v3_plots.jl\")")
+actions = Tuple{String, Union{String, Nothing}}[(f[1:end-3], f) for f in files]
+push!(actions, ("reel_out_v3", "reel_out_v3.jl"))
+push!(actions, ("reel_out_v3_plots", "reel_out_v3_plots.jl"))
+push!(actions, ("steering_test_v3", "steering_test_v3.jl"))
+push!(actions, ("steering_test_v3_plots", "steering_test_v3_plots.jl"))
+push!(actions, ("set_default_turbulence", nothing))
+
+options = [isnothing(script) ? label : "$(label) = include(\"$(script)\")"
+           for (label, script) in actions]
 push!(options, "quit")
 
 function example_menu()
@@ -32,7 +41,12 @@ function example_menu()
         choice = request("\nChoose example to run or `q` to quit: ", menu)
 
         if choice != -1 && choice != length(options)
-            eval(Meta.parse(options[choice]))
+            _, script = actions[choice]
+            if isnothing(script)
+                set_default_turbulence()
+            else
+                eval(Meta.parse(options[choice]))
+            end
         else
             println("Left menu. Press <ctrl><d> to quit Julia!")
             active = false

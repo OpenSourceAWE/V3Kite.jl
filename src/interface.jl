@@ -610,6 +610,12 @@ function init(v_wind_gnd, l_tether;
     # data/settings.yaml (loaded via Settings in settle_wing).
     set.cs_4p = 1.0
 
+    # Turbulence level comes from data/gui.yaml, not from the settings YAML: it is a per-checkout
+    # preference. Applied before the block below, which decides on `use_turbulence` whether to
+    # load a wind field.
+    turb = get_default_turbulence()
+    turb !== nothing && (set.use_turbulence = turb)
+
     # A cached settled geometry is deserialized together with the AtmosphericModel it was
     # serialized with, and `SystemStructure.am` is const, so `sys.set = set` in `settle_wing`
     # cannot re-point it: `am.set` still holds the settings captured back then. Everything that

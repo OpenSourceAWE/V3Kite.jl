@@ -49,6 +49,7 @@ include("flight_data.jl")
 include("photogrammetry.jl")
 include("sim_helpers.jl")
 include("simulation.jl")
+include("turbulence_config.jl")
 include("stabilization.jl")
 include("wc_settings.jl")
 include("interface.jl")
@@ -125,6 +126,9 @@ export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 
 # Winch-controller settings export
 export WC_Settings
+
+# Persistent turbulence preference (data/gui.yaml)
+export get_default_turbulence, set_default_turbulence
 
 # Interface exports
 export init, step!, warmup!
