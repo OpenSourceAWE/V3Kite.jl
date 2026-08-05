@@ -653,7 +653,7 @@ given, the cascaded position controller (`speed_limit` [m/s],
 `acceleration_limit` [m/s²]) converts it to a set torque; otherwise
 `set_torque` [N·m] is passed through; if neither is given, the measured
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
-is reported every 100 steps.
+is reported every 200 steps.
 
 `vsm_interval` is forwarded to `sim_step!`: the VSM aero load is recomputed
 every `vsm_interval` steps and held frozen inside the DAE in between (`0`
@@ -736,10 +736,10 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     end
 
     i = Int(round(t / dt))
-    if i % 100 == 0
+    if i % 200 == 0
         now = time()
         rtf_str = isnan(s.last_step_time) ? "----" :
-            @sprintf("%.2f", (100 * dt) / (now - s.last_step_time))
+            @sprintf("%.2f", (200 * dt) / (now - s.last_step_time))
         @info @sprintf("step %04d / %04d, %s times realtime, lift/drag [N]: %7.2f/%7.2f",
                        i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
