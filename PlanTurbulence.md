@@ -235,7 +235,7 @@ Verified:
 - `test/test-interface.jl` still passes with `use_turbulence` back at 0.0 (60 + 23 + 26 tests).
 - The flag was reverted to `0.0`; switching it on is step 5's job.
 
-## Step 5 — `set_default_turbulence`
+## Step 5 — `set_default_turbulence` (done)
 
 Follow the pattern `KiteModels.jl` already uses (`src/KiteModels.jl:716-890`,
 `examples/menu2.jl`, `test/test-default_turbulence.jl`): the value lives in **`data/gui.yaml`**, not
@@ -319,6 +319,34 @@ value, with a sigma error of up to ~15 %. `set_default_turbulence` should warn w
 that `gui.yaml` is created from `.default`, that `set_default_turbulence` round-trips, and that the
 insert path works when the key is missing. It needs no wind field, so unlike the rest of this
 feature it belongs in the regular suite.
+
+### What was implemented
+
+- `src/turbulence_config.jl` (new, included from `V3Kite.jl`): the two ported YAML helpers plus
+  `gui_yaml_path`, `get_default_turbulence`, `set_default_turbulence`; the latter two exported.
+- `data/gui.yaml.default` (tracked); `.gitignore` gained `data/gui.yaml` and its two explicit
+  `windfield_*.npz` lines became `data/*.npz`.
+- `init` applies the value ([src/interface.jl:613-617](src/interface.jl#L613-L617)), before the
+  atmosphere sync.
+- `examples/menu2.jl` restructured to `(label, script)` tuples with `nothing` = call the function.
+- `test/test-default_turbulence.jl`, included from `runtests.jl`.
+
+One deviation from KiteModels: all three functions take a `data_path` argument defaulting to
+`get_data_path()`, and `init` passes its own `data_path`. `init` resolves every other read against
+that argument on purpose — "`init` must not move the caller's KiteUtils data path, which outlives
+the call" ([src/interface.jl:566-567](src/interface.jl#L566-L567)) — and a `gui.yaml` looked up in
+the global path would have broken that contract.
+
+Verified:
+
+- `test/test-default_turbulence.jl`: 16 tests — creation from `.default`, round trip, comment
+  preservation, rejection of out-of-range values, inclusive bounds, and the key-insert path.
+- End to end through `init` in the real data path: `get_default_turbulence()` created `data/gui.yaml`
+  from the `.default` (0.0); `set_default_turbulence(1.0)` then made `init` load the 9.51 m/s field
+  with `use_turbulence = 1.0` and a first-step `norm(wind_disturb)` of 2.309; `set_default_turbulence(0.0)`
+  brought it back to no field and a disturbance of 0.0. The trailing comment survived both edits.
+- `test/test-interface.jl` still passes (60 + 23 + 26), and `examples/menu2.jl` parses.
+- `data/gui.yaml` is left at `0.0`.
 
 ## Step 6 — verification
 
