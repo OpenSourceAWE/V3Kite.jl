@@ -35,6 +35,8 @@ AERO_MODE = AeroDirect()
 # end of user parameter section #
 
 @info "Initializing model..."
+# `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
+set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
                                 depower_setpoint = DEPOWER_SETPOINT, dt,
                                 sim_time = STEPS*dt, aero_mode = AERO_MODE)

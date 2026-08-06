@@ -95,8 +95,14 @@ while idx < steps
     AoA(rec)          = resp.AoA;
     v_reelout(rec)    = resp.v_reelout;
     winch_force(rec)  = resp.winch_force;
-    ld_wing(rec)      = resp.var_15;
-    ld_eff(rec)       = resp.var_16;
+    % L/D is NaN whenever the wing is unloaded (step!'s drag_floor gate), and
+    % the server sends non-finite floats as JSON null, which jsondecode turns
+    % into []. Assigning [] to one element would DELETE it and shift every
+    % later sample, so map the gap back to NaN here.
+    ld = resp.var_15; if isempty(ld), ld = NaN; end
+    ld_wing(rec)      = ld;
+    ld = resp.var_16; if isempty(ld), ld = NaN; end
+    ld_eff(rec)       = ld;
 
     % Progress, mirroring the server-side @info in step!: every ~100 steps,
     % report the realtime factor over the interval (here it includes the HTTP

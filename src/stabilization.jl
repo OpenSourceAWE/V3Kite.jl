@@ -63,18 +63,23 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
-    settled_struct_path(config, init_row; data_path=nothing) -> String
+    settled_struct_path(config, init_row; data_path=nothing,
+                        cache_path=nothing) -> String
 
 Path of the serialized settled `SystemStructure` for `config` and
 `init_row`. Deterministic from the geometry adjustments,
-depower/steering, wind speed, tether length and gravity, so the
-same flight state always maps to the same file.
+depower/steering, wind speed, tether length, damping, the elevation
+implied by `init_row` and gravity, so the same flight state always
+maps to the same file. Settings are read from `data_path`; the file
+lives under `cache_path` (default
+[`default_cache_path`](@ref)`(data_path)`).
 """
 function settled_struct_path(config::V3SettleConfig, init_row;
-                             data_path=nothing)
+                             data_path=nothing, cache_path=nothing)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     gc = config.geom
     dp_reduction = gc.reduce_depower ?
         gc.depower_reduction : 0.0
@@ -93,30 +98,34 @@ function settled_struct_path(config::V3SettleConfig, init_row;
     te_f = gc.reduce_te ? gc.te_frac : 1.0
     suffix = build_geom_suffix(depower_tape,
         L_left, L_right, tip_red, te_f)
+    el_deg = rad2deg(KiteUtils.calc_elevation(
+        [init_row.x, init_row.y, init_row.z]))
     suffix *= "_vapp$(round(config.v_wind, digits=2))" *
         "_lt$(Int(round(config.tether_length)))" *
+        "_el$(num_tag(round(el_deg, digits=1)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.system_yaml))[1])"
-    yaml_kcu_mass = Settings(config.system_yaml).kcu_mass
+    yaml_kcu_mass = Settings(joinpath(data_path, config.system_yaml)).kcu_mass
     resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
         (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
     if !isnothing(resolved_kcu_mass)
         suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
     end
-    suffix *= "_bd$(damping_tag(config.body_damping))"
+    suffix *= "_bd$(num_tag(config.body_damping))"
     for (rng, damp) in config.body_damping_overrides
-        suffix *= "_bd$(first(rng))t$(last(rng))-$(damping_tag(damp))"
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(num_tag(damp))"
     end
     if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
-        suffix *= "_wd$(damping_tag(config.world_damping))" *
-                  "_md$(damping_tag(config.min_damping))"
+        suffix *= "_wd$(num_tag(config.world_damping))" *
+                  "_md$(num_tag(config.min_damping))"
     end
-    return joinpath(data_path, "settled_$(suffix).bin")
+    return joinpath(cache_path, "settled_$(suffix).bin")
 end
 
 """
     load_settled_struct(config, init_row;
-                        data_path=nothing, set=nothing)
+                        data_path=nothing, cache_path=nothing,
+                        set=nothing)
 
 Deserialize the settled `SystemStructure` for `config`/`init_row`
 (see [`settled_struct_path`](@ref)), assigning `set` to it when
@@ -124,8 +133,9 @@ given. Errors when the file is missing; run [`settle_wing`](@ref)
 first to create it.
 """
 function load_settled_struct(config::V3SettleConfig, init_row;
-                             data_path=nothing, set=nothing)
-    path = settled_struct_path(config, init_row; data_path)
+                             data_path=nothing, cache_path=nothing,
+                             set=nothing)
+    path = settled_struct_path(config, init_row; data_path, cache_path)
     isfile(path) ||
         error("No settled struct at $path; run settle_wing first")
     sys = deserialize(path)
@@ -135,12 +145,12 @@ end
 
 """
     settle_wing(config::V3SettleConfig, init_row;
-                data_path=nothing,
+                data_path=nothing, cache_path=nothing,
                 show_progress=true, remake=false)
     settle_wing(config::V3SettleConfig;
                 position, velocity, attitude,
                 steering, depower, wind_vec,
-                data_path=nothing,
+                data_path=nothing, cache_path=nothing,
                 show_progress=true, remake=false)
     -> (sam, syslog, settle_failed)
 
@@ -161,7 +171,18 @@ model on purpose; it is part of the cache key for that reason.
 
 When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
-file.
+file. The cache file name encodes the settling inputs, including
+the elevation implied by the initial position, so runs that only
+differ in elevation get their own file instead of sharing one.
+
+`data_path` is where the source geometry/settings YAMLs are read
+from (default [`v3_data_path`](@ref)); `cache_path` is where
+everything generated is written — the `settled_*.bin` cache, the
+settling log, and the serialized model binary. It defaults to
+[`default_cache_path`](@ref)`(data_path)`, which is `data_path`
+for a development checkout and a depot scratch directory for an
+installed V3Kite, and is created if missing. See [`init`](@ref)
+and [`with_model_cache`](@ref).
 """
 function settle_wing(config::V3SettleConfig;
                      position, velocity, heading,
@@ -177,29 +198,79 @@ function settle_wing(config::V3SettleConfig;
 end
 
 """
-    damping_tag(d) -> String
+    num_tag(d) -> String
 
-Filename-safe tag for a damping coefficient, scalar or per-axis vector:
-`damping_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put the damping into the
-settled-geometry cache key.
+Filename-safe tag for a number, scalar or per-axis vector:
+`num_tag([0.0, 0.0, 40.0]) == "0-0-40"`. Used to put damping coefficients and
+the settling elevation into the settled-geometry cache key.
 """
-damping_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
-damping_tag(d::AbstractVector) = join(damping_tag.(d), "-")
+num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
+num_tag(d::AbstractVector) = join(num_tag.(d), "-")
+
+"""
+    default_cache_path(data_path) -> String
+
+Where generated artifacts go when the caller names no `cache_path`: `data_path`
+itself for a development checkout, and a scratch directory next to the depot for
+a Pkg-INSTALLED V3Kite.
+
+A package directory under `DEPOT_PATH/packages` is not ours to write to: it is
+usually read-only, and `Pkg.gc` deletes the whole tree once no environment
+references that version. A `scratchspaces` directory keyed by our UUID survives
+reinstalling. A development checkout keeps caching in place, so `] dev` behaves
+as before and existing `data/settled_*.bin` files stay in use.
+"""
+function default_cache_path(data_path)
+    abs_data = abspath(data_path)
+    in_depot = any(DEPOT_PATH) do depot
+        # Trailing separator: a bare prefix also matches a sibling `packages_old`.
+        startswith(abs_data, joinpath(abspath(joinpath(depot, "packages")), ""))
+    end
+    in_depot || return data_path
+    uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"  # V3Kite, see Project.toml
+    return joinpath(DEPOT_PATH[1], "scratchspaces", uuid, "v3kite_cache")
+end
+
+"""
+    with_model_cache(f, cache_path)
+
+Run `f()` with KiteUtils' data path pointed at `cache_path`, restoring whatever
+the caller had afterwards.
+
+Exists for exactly one write: `SymbolicAWEModels.init!` serializes the compiled
+model under `KiteUtils.get_data_path()` and takes no path argument, so the global
+data path is the only lever on where it lands. Without this the model binary
+would still go to a read-only `data_path` while the geometry went to the cache.
+Narrow on purpose: `init!` reads nothing else through the data path, so the
+redirect cannot pull another file from the wrong directory.
+"""
+function with_model_cache(f, cache_path)
+    mkpath(cache_path)
+    previous = get_data_path()
+    set_data_path(cache_path)
+    try
+        return f()
+    finally
+        set_data_path(previous)
+    end
+end
 
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
+                     cache_path=nothing,
                      show_progress=true,
                      remake=false)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
-    set_data_path(data_path)
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
 
     gc = config.geom
     gc.tether_length = config.tether_length
 
+    cache_path != data_path && mkpath(cache_path)
     dest_struc = settled_struct_path(
-        config, init_row; data_path)
+        config, init_row; data_path, cache_path)
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -212,8 +283,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         try
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
-                source_struc, source_aero,
-                dest_struc, init_row)
+                source_struc, source_aero, dest_struc,
+                log_path = cache_path, cache_path, init_row)
         catch err
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
@@ -228,7 +299,7 @@ function settle_wing(config::V3SettleConfig, init_row;
                 rethrow(err)
             end
             try
-                syslog = load_log("settle_particle_dynamics_wing")
+                syslog = load_log("settle_particle_dynamics_wing"; path=cache_path)
             catch
             end
         end
@@ -236,8 +307,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     # Load model from serialized sys_struct, or source
     # YAML if settling failed
-    set_data_path(data_path)
-    set = Settings(config.system_yaml)
+    set = Settings(joinpath(data_path, config.system_yaml))
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
@@ -249,9 +319,11 @@ function settle_wing(config::V3SettleConfig, init_row;
         sys = deserialize(dest_struc)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, remake_vsm=true,
-            reinit_sys=false)
+        with_model_cache(cache_path) do
+            SymbolicAWEModels.init!(sam;
+                remake=false, remake_vsm=true,
+                reinit_sys=false)
+        end
     else
         @info "Loading source geometry" source_struc
         vsm_path = joinpath(
@@ -264,9 +336,11 @@ function settle_wing(config::V3SettleConfig, init_row;
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
             aero_mode=config.aero_mode)
         sam = SymbolicAWEModel(set, sys)
-        SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false,
-            remake_vsm=true)
+        with_model_cache(cache_path) do
+            SymbolicAWEModels.init!(sam;
+                remake=false, ignore_l0=false,
+                remake_vsm=true)
+        end
     end
 
     return sam, syslog, settle_failed
@@ -278,10 +352,9 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero, cache_path=data_path)
     gc = config.geom
-    set_data_path(data_path)
-    set = Settings(config.system_yaml)
+    set = Settings(joinpath(data_path, config.system_yaml))
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
@@ -317,8 +390,10 @@ function setup_settling_model(config::V3SettleConfig;
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
-    SymbolicAWEModels.init!(
-        sam; remake=false, ignore_l0=false, remake_vsm=true)
+    with_model_cache(cache_path) do
+        SymbolicAWEModels.init!(
+            sam; remake=false, ignore_l0=false, remake_vsm=true)
+    end
 
     @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt
 
@@ -333,10 +408,10 @@ end
 function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc,
+        dest_struc, cache_path=data_path, log_path=cache_path,
         init_row)
     sam, sys, gc = setup_settling_model(config;
-        data_path, source_struc, source_aero)
+        data_path, source_struc, source_aero, cache_path)
 
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
@@ -462,7 +537,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     catch err
         if logger.index > 1
             @warn "Settling crashed, saving partial log" msg=sprint(showerror, err)
-            save_log(logger, "settle_particle_dynamics_wing")
+            save_log(logger, "settle_particle_dynamics_wing"; path=log_path)
         end
         rethrow(err)
     end
@@ -494,7 +569,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     serialize(dest_struc, sys)
 
     syslog = save_and_load_log(
-        logger, "settle_particle_dynamics_wing")
+        logger, "settle_particle_dynamics_wing"; path=log_path)
     @info "Settling complete" dest_struc
     return syslog
 end

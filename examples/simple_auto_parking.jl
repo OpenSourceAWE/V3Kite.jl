@@ -61,6 +61,8 @@ MAX_STEERING     = 0.175    # Steering command limit [-]
 
 # ======================== INIT =========================== #
 
+# `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
+set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping=[10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
 

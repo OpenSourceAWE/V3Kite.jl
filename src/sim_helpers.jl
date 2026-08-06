@@ -91,14 +91,20 @@ function init_winch_torque!(sys)
 end
 
 """
-    force_to_torque(force, sys) -> torque
+    force_to_torque(force, sys; ff_scale=1.0) -> torque
 
 Convert tether force [N] to winch torque [N·m].
-Uses `τ = -r/G * F + friction` from the first winch.
+Uses `τ = -ff_scale * r/G * F + friction` from the first winch.
+
+`ff_scale` scales the load-canceling term only; the friction term is always
+applied in full. Friction compensation cancels the drum's own coulomb/viscous
+torque and is not part of the load being held, and `winch.friction` flips sign
+with the reel-out direction — scaling it would make the intended compliance
+direction- and speed-dependent instead of a plain fraction of the tether force.
 """
-function force_to_torque(force, sys)
+function force_to_torque(force, sys; ff_scale=1.0)
     winch = sys.winches[1]
-    return -winch.drum_radius / winch.gear_ratio * force +
+    return -ff_scale * winch.drum_radius / winch.gear_ratio * force +
         winch.friction
 end
 
@@ -232,6 +238,36 @@ function compute_lift_drag(sam)
 end
 
 const RHO_SL = 1.225
+
+"""
+Smallest drag coefficient at which a lift-to-drag ratio is still
+meaningful. Below it the wing is essentially unloaded and the ratio
+is reported as `NaN` rather than a number (see `drag_floor`).
+Chosen an order of magnitude below any loaded state: the parked V3
+flies at L/D_wing ~ 5.8, so its wing CD is of order 0.1.
+"""
+const LD_CD_MIN = 0.01
+
+"""
+    drag_floor(sam; cd_min=LD_CD_MIN) -> Float64
+
+Smallest drag force [N] at which a lift-to-drag ratio is still
+meaningful, `cd_min * q * A_proj` at the current apparent wind speed.
+
+Drag is a SIGNED projection onto `v_a` while lift is a norm, so the
+denominator passes through zero whenever the wing unloads and spikes the
+ratio. The floor is on the COEFFICIENT because the force scale itself
+moves with `v_app^2`.
+
+Returns `Inf` when there is no apparent wind at all, so every ratio
+formed against it is `NaN`.
+"""
+function drag_floor(sam; cd_min = LD_CD_MIN)
+    wing = sam.sys_struct.wings[1]
+    norm(wing.va_b) < 1e-6 && return Inf
+    _, q_ref = drag_coeff_ref(wing)
+    return cd_min * q_ref
+end
 
 """
     drag_coeff_ref(wing) -> (va_hat_b, q_ref)
@@ -406,6 +442,35 @@ function compute_wing_incidence(sys)
 end
 
 """
+    span_mean_aoa(sys) -> Float64
+
+Span-averaged geometric angle of attack of the wing [rad], the mean of the
+VSM's per-panel `alpha_geometric_dist`.
+
+Use this rather than `SysState.AoA` for whole-wing numbers: `AoA` comes from the
+single centre panel, which misses the spanwise spread once steering twists the
+two halves in opposite directions.
+
+Panels the VSM logs as `NaN` (local velocity too small) are skipped, so the
+result is `NaN` only if every panel is. Returns `NaN` for a wing without a VSM
+solver; see [`compute_wing_incidence`](@ref) for a geometric alternative.
+"""
+function span_mean_aoa(sys)
+    wing = sys.wings[1]
+    hasproperty(wing, :vsm_solver) || return NaN
+    alphas = wing.vsm_solver.sol.alpha_geometric_dist
+    # The VSM returns some panels as `pi + atan(...)`; wrap as update_sys_state! does.
+    n = 0
+    acc = 0.0
+    for a in alphas
+        isnan(a) && continue
+        n += 1
+        acc += mod(a + pi, 2pi) - pi
+    end
+    return n == 0 ? NaN : acc / n
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle
@@ -574,21 +639,29 @@ Save a Logger and immediately load the resulting SysLog.
 function save_and_load_log(logger, name; path=nothing)
     if isnothing(path)
         save_log(logger, name)
-    else
-        save_log(logger, name; path)
+        return load_log(name)
     end
-    return load_log(name)
+    # `load_log` defaults to KiteUtils' data path, not the one we just wrote to.
+    save_log(logger, name; path)
+    return load_log(name; path)
 end
 
 """
-    create_heading_pid(; K, Ti, Td, dt, umin, umax) -> DiscretePID
+    create_heading_pid(; K, Ti, Td, N, dt, umin, umax) -> DiscretePID
 
 Create a heading PID controller with standard V3 kite conventions.
 Gains `Ti` and `Td` accept `false` to disable integral/derivative.
+
+`N` is the derivative filter's maximum gain: the D path is
+`K*Td*s / (1 + s*Td/N)`, so it amplifies measurement noise by up to `N*K`
+above the corner `N/(2*pi*Td)` [Hz]. `DiscretePIDs` defaults to 10, which on a
+course loop closed at ~0.1 Hz is 10x noise gain bought for a few degrees of
+phase lead; pass a smaller `N` to filter the derivative harder without touching
+the loop's behaviour at its working frequency.
 """
-function create_heading_pid(; K=1.0, Ti=false, Td=false,
+function create_heading_pid(; K=1.0, Ti=false, Td=false, N=10.0,
                              dt, umin=-1.0, umax=1.0)
-    return DiscretePID(; K, Ti, Td, Ts=dt, umin, umax)
+    return DiscretePID(; K, Ti, Td, N, Ts=dt, umin, umax)
 end
 
 """
