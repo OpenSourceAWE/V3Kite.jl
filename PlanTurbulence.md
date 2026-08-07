@@ -426,3 +426,9 @@ strings (25 tests pass). End to end, with `gui.yaml` set to `"default"` and the 
 `0.0`, `init` yields `set.use_turbulence == 0.0` and loads no wind field; with the settings YAML
 temporarily at `1.0`, the same `init` yields `1.0` and loads the field — i.e. the YAML now drives
 it, which is exactly what the comment asked for.
+
+## Address second reviewer comment
+The two YAML helpers are copied from KiteModels.jl; rather upstream them
+to KiteUtils now so you don't need the forked code.
+
+Yes, please do that. KiteUtils is checked out
