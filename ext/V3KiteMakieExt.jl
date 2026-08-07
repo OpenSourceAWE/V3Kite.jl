@@ -176,7 +176,7 @@ Extra points connected per-strut and LE.
 - `extra_groups`: Optional groups from load_extra_points
 - `dir::Symbol`: Viewing direction (:side, :front, or :top)
 - `labels`: Optional vector of labels for each sys_struct
-- `point_idxs`: Optional vector of point indices to plot (default: WING points only)
+- `point_idxs`: Optional vector of point indices to plot (default: wing nodes only)
 - `point_size`: Size of simulation points (default: 10)
 - `extra_point_size`: Size of extra points (default: 8)
 - `figsize`: Figure size tuple (default: (560, 420))
@@ -279,11 +279,9 @@ function V3Kite.plot_body_frame_local(sys_structs;
             end
         end
 
-        # Twist for WING point pairs
         if show_twist
             wing_pts = sort(
-                [p for p in points
-                 if p.type == SymbolicAWEModels.WING],
+                [p for p in points if p.is_wing_node],
                 by=p -> p.idx)
             span_ys = Float64[]
             aoas = Float64[]
@@ -314,9 +312,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
                  labels[s_idx]))
         end
 
-        # Select points to plot: use point_idxs if provided, otherwise WING points
         if isnothing(point_idxs)
-            plot_points = [p for p in points if p.type == SymbolicAWEModels.WING]
+            plot_points = [p for p in points if p.is_wing_node]
         else
             plot_points = [points[i] for i in point_idxs if i <= length(points)]
         end
@@ -731,8 +728,7 @@ function V3Kite.plot_twist_dist(sys_structs;
         end
 
         wing_pts = sort(
-            [p for p in points
-             if p.type == SymbolicAWEModels.WING],
+            [p for p in points if p.is_wing_node],
             by=p -> p.idx)
         le_pos = [wing_pts[i].pos_b
                   for i in 1:2:length(wing_pts)]
@@ -1585,7 +1581,7 @@ function build_2d_trajectory_anim(
         error("tapes required for gradient=:steering")
     end
 
-    log_ranges, tape_ranges = _compute_ranges(
+    log_ranges, tape_ranges = compute_ranges(
         logs, tapes, t_start, t_end)
 
     y_data = Vector{Vector{Float64}}(undef, length(logs))
@@ -2344,7 +2340,7 @@ function V3Kite.record_2d_panels(
             if c isa Axis && c.xaxisposition[] == :bottom]
     isempty(axes) && error("No panels to record")
 
-    log_ranges, _ = _compute_ranges(
+    log_ranges, _ = compute_ranges(
         [logs[1]], nothing, t_start, t_end)
     times = [collect(logs[1].syslog.time)[k]
              for k in log_ranges[1]]

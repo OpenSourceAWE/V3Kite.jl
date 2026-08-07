@@ -476,7 +476,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
             SymbolicAWEModels.reposition!(
                 sys.transforms, sys)
             SymbolicAWEModels.reinit!(
-                sam, sam.prob, SymbolicAWEModels.FBDF())
+                sam, sam.prob, SymbolicAWEModels.FBDF(); prn=false)
 
             for sub in 1:config.num_substeps
                 global_step =

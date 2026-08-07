@@ -55,6 +55,7 @@ end
 
 using Timers; tic()
 using V3Kite
+using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it
 using Printf
 
@@ -93,6 +94,7 @@ MAX_REL_STD      = 0.35     # [-]
 # where the ratio psi_dot/(v_a*u_s) is near-singular. Half the smallest swept
 # amplitude, so every amplitude level contributes.
 MIN_STEERING_FIT = START_STEERING / 2
+AERO_MODE        = ContinuousAero()
 
 # ======================== INIT =========================== #
 
@@ -113,7 +115,7 @@ MIN_STEERING_FIT = START_STEERING / 2
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = [10.0, 10.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT)
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]

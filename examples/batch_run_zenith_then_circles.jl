@@ -88,6 +88,7 @@ function run_zenith_circles(;
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
         world_damping = 0.0, min_damping = 0.0,
+        aero_mode = AERO_MODE,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -306,6 +307,7 @@ fps_zenith = 360
 fps_circles = 360
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
+AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]
 

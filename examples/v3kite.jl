@@ -26,7 +26,7 @@ using LinearAlgebra
 
 SIM_TIME = 60.0
 FPS = 20
-AERO_MODE = AeroDirect()
+AERO_MODE = ContinuousAero()
 MAX_HEADING = 40.0    # degrees
 PERIOD = 30.0         # seconds
 V_WIND = 15.4

@@ -26,6 +26,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
                    # plots scripts bind the bare name `syslog` to a SysLog value
 using LinearAlgebra: norm
@@ -40,13 +41,15 @@ DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
+AERO_MODE        = ContinuousAero()
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping=[10.0, 10.0, 40.0],
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]

@@ -34,6 +34,7 @@ end
 
 using Timers; tic()
 using V3Kite
+using V3Kite: init, step!
 using DiscretePIDs: set_K!
 using Statistics
 using Printf
@@ -58,13 +59,15 @@ HEADING_D        = 0.15     # Derivative time [s], damps the initial transient
 V_APP_REF        = 13.1     # Reference apparent wind speed for the gain schedule [m/s]
 V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 MAX_STEERING     = 0.175    # Steering command limit [-]
+AERO_MODE        = ContinuousAero()
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping=[10.0, 10.0, 40.0],
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]

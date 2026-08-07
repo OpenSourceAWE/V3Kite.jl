@@ -21,6 +21,7 @@ end
 using Timers
 tic()
 using V3Kite
+using V3Kite: replay
 using V3Kite.KitePodModels
 using GLMakie
 using MakieControlPlots
@@ -42,6 +43,7 @@ AZIMUTH       = 0.0      # Initial azimuth angle [deg]
 REL_DEPOWER   = 0.25     # Depower setting held during parking [-]
 TETHER_DIAM   = 5.0      # Tether diameter for this example [mm]
 FPS           = 50       # Simulation/log frames per second (dt = 20 ms)
+AERO_MODE     = ContinuousAero()
 const PLOT    = true
 REPLAY_LOG    = true     # Interactive 3D replay after simulation
 
@@ -70,6 +72,7 @@ settle_config = V3SettleConfig(
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 
 @info "Settling V3 model at rel_depower = $REL_DEPOWER..."

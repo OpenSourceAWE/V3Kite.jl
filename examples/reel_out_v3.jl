@@ -13,6 +13,7 @@ end
 using Timers
 tic()
 using V3Kite
+using V3Kite: init, step!
 using LinearAlgebra
 using MakieControlPlots
 using Printf
@@ -31,7 +32,7 @@ REL_STEERING  = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
 T_MIN =  0.0          # only plot results from T_MIN onwards
-AERO_MODE = AeroDirect()
+AERO_MODE = ContinuousAero()
 # end of user parameter section #
 
 @info "Initializing model..."

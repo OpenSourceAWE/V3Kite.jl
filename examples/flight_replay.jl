@@ -43,7 +43,7 @@ VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
-AERO_MODE = AeroDirect()
+AERO_MODE = ContinuousAero()
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
@@ -381,7 +381,7 @@ function run_physics_replay(h5_path;
         update_sys_struct_from_data!(
             data_sam.sys_struct, row)
         SymbolicAWEModels.reinit!(
-            data_sam, data_sam.prob, FBDF())
+            data_sam, data_sam.prob, FBDF(); prn=false)
         update_sys_state!(data_state, data_sam)
         data_state.winch_force[1] = row.tether_force
         data_state.v_app = row.v_app
@@ -483,7 +483,7 @@ function run_physics_replay(h5_path;
             wind_vec_lidar=row.wind_vec_lidar)
 
         SymbolicAWEModels.reinit!(
-            sam, sam.prob, FBDF())
+            sam, sam.prob, FBDF(); prn=false)
 
         next_step!(sam; dt, vsm_interval)
         if !isapprox(sam.set.wind_vec,

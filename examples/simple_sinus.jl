@@ -25,6 +25,7 @@ end
 
 using Timers; tic()
 using V3Kite
+using V3Kite: init, step!
 using DiscretePIDs: set_Td!
 using Statistics
 using Printf
@@ -60,13 +61,15 @@ HEADING_I = false
 # the settled RMS is unaffected.
 HEADING_D = 0.15
 MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
+AERO_MODE = ContinuousAero()
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH;
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]

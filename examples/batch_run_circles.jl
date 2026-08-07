@@ -117,6 +117,7 @@ function run_circles(;
         course_correction_gain=0.0,
         course_correction_mode=:heading,
         world_damping=0.0, min_damping=0.0,
+        aero_mode=AERO_MODE,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -320,6 +321,7 @@ ramp_time_us = 2
 fps_circles = 200
 body_damping = [0.0, 0.0, 20.0]
 point_37_38_damping = [0.0, 20.0, 20.0]
+AERO_MODE = ContinuousAero()
 
 combos = generate_run_combos(defaults, sweeps, combine_all)
 @info "Batch combos generated" n=length(combos)
