@@ -375,3 +375,54 @@ Tether turbulence needs an upstream change in `SymbolicAWEModels`: a `wind_distu
 segment struct, a `get_wind_disturb(psys, segment_idx)` accessor, and an additive term in
 `generate_system/segment_eqs.jl:175-179`, followed by a release. Only then can the `v_wind_tether`
 return value of `calc_turbulent_wind` be used, giving parity with `KiteModels`.
+
+## Address reviewer comments:
+- gui.yaml shadows set.use_turbulence. init now silently overrides
+the settings YAML, so editing use_turbulence: 1.0 there does nothing. A
+turbulence=nothing kwarg on init falling back to the YAML gives the same
+convenience without the second source of truth — and without
+turbulence_config.jl.
+
+a. I do not understand this comment. Can you explain it? I do think it would be good, in the set_default_turbulence function to be able to select "default" as alternative to a numerical value.
+
+**Response — accepted as a defect, resolved differently (implemented).**
+
+The defect is real. Two files held a turbulence level: `environment.use_turbulence` in the settings
+YAML, and `gui.default_turbulence` in `data/gui.yaml`. `init` read the first and then overwrote it
+with the second at `interface.jl:616-617`:
+
+```julia
+turb = get_default_turbulence(data_path)
+turb !== nothing && (set.use_turbulence = turb)
+```
+
+The `!== nothing` guard looked like a fallback but never was one: `gui_yaml_path` *creates*
+`gui.yaml` from `gui.yaml.default` when missing, so the getter practically always returned a
+number and the settings YAML was dead. It went unnoticed because both files shipped `0.0` — they
+agreed, so nothing looked wrong until someone changed one of them.
+
+We did not take the `turbulence=nothing` kwarg, because it drops a feature the kwarg cannot
+replace: `gui.yaml` is a gitignored, per-checkout preference that persists across REPL sessions and
+applies to every example script without editing any of them. A kwarg is per-call. The problem was
+never that `gui.yaml` exists — it was that `gui.yaml` had no way to say *"I have no opinion"*.
+
+So `default_turbulence` now accepts the keyword `"default"` alongside a number:
+
+- `get_default_turbulence` maps `"default"` to `nothing`, silently. `init` needs **no change** — it
+  already treats `nothing` as "leave `set.use_turbulence` alone"; that branch was simply
+  unreachable. `raw_default_turbulence` was added so callers can still tell the keyword apart from
+  an unreadable file, since both read back as `nothing`.
+- `set_default_turbulence("default")` persists it, and the interactive prompt accepts it too.
+- **`gui.yaml.default` now ships `"default"`.** This is the part that actually fixes the reported
+  defect: had the shipped value stayed numeric, a fresh checkout would still silently shadow the
+  settings YAML for everyone who never calls `set_default_turbulence`, and the comment would stand.
+
+Net effect: the settings YAML is authoritative by default, one source of truth as requested, and
+overriding it from `gui.yaml` becomes a deliberate, per-checkout opt-in rather than the silent
+default. `turbulence_config.jl` stays.
+
+Verified: `test/test-default_turbulence.jl` covers the round trip, casing, and rejection of other
+strings (25 tests pass). End to end, with `gui.yaml` set to `"default"` and the settings YAML at
+`0.0`, `init` yields `set.use_turbulence == 0.0` and loads no wind field; with the settings YAML
+temporarily at `1.0`, the same `init` yields `1.0` and loads the field — i.e. the YAML now drives
+it, which is exactly what the comment asked for.

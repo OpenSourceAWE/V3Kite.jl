@@ -1,3 +1,4 @@
 gui:
-    default_turbulence: 0.0              # turbulence level applied by init(), between 0.0 and 1.0
+    default_turbulence: "default"        # turbulence level applied by init(), between 0.0 and 1.0
                                          # 0.0 disables turbulence, 1.0 is the Cabauw reference level
+                                         # "default" keeps use_turbulence from the settings YAML
