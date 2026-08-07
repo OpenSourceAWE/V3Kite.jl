@@ -61,7 +61,7 @@ point's `drag_coeff`. This lets the solver account for
 parasitic drag distributed along the span.
 """
 function distribute_wing_drag!(sys, area, drag_coeff)
-    wing_pts = [p for p in sys.points if p.type == WING]
+    wing_pts = [p for p in sys.points if p.is_wing_node]
     n = length(wing_pts)
     n > 0 || error("No wing points found")
     area_per_point = area / n
@@ -80,7 +80,7 @@ length. `dist` controls the LE/TE split (0.75 = 75% on LE).
 """
 function distribute_wing_mass!(sys, mass; dist=0.75)
     wing_pts = sort(
-        [p for p in sys.points if p.type == WING],
+        [p for p in sys.points if p.is_wing_node],
         by=p -> p.idx)
     n = length(wing_pts)
     iseven(n) || error(

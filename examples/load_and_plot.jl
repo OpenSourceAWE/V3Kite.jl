@@ -112,7 +112,7 @@ function print_and_plot_wing(lg, sam; is_print=false)
         lg_last.orient)
     wing_point_idxs = [
         p.idx for p in sam.sys_struct.points
-        if p.type == WING]
+        if p.is_wing_node]
 
     # 2D scatter plots of wing nodes in body frame
     xs_b, ys_b, zs_b = Float64[], Float64[], Float64[]

@@ -129,7 +129,7 @@ end
     compute_drag(sam) -> Float64
 
 Wing drag force [N]: VSM aero drag plus parasitic drag
-from WING-type points.
+from the wing nodes.
 """
 function compute_drag(sam)
     sys = sam.sys_struct
@@ -145,7 +145,7 @@ function compute_drag(sam)
     # Parasitic drag from wing points (world frame)
     parasitic_w = zeros(3)
     for p in sys.points
-        p.type == WING || continue
+        p.is_wing_node || continue
         parasitic_w .+= p.drag_force
     end
     R_b_w = calc_R_b_w(sys)
@@ -159,7 +159,7 @@ end
     compute_drag_coeff(sam) -> Float64
 
 Wing drag coefficient: VSM aero drag plus parasitic drag
-from WING-type points. Together with tether, bridle, and
+from the wing nodes. Together with tether, bridle, and
 KCU drag coefficients, the four sum to the total CD.
 """
 function compute_drag_coeff(sam)
@@ -188,7 +188,7 @@ end
 """
     compute_tether_drag(sam) -> Float64
 
-Total parasitic drag force [N] from all non-WING points
+Total parasitic drag force [N] from all non-wing points
 (tether, bridle, and KCU), projected onto the kite
 apparent-wind direction. The force-form counterpart of
 `compute_tether_drag_coeff` and friends; combined with the
@@ -207,7 +207,7 @@ function compute_tether_drag(sam)
 
     drag_w = zeros(3)
     for p in sys.points
-        p.type == WING && continue
+        p.is_wing_node && continue
         drag_w .+= p.drag_force
     end
     return dot(drag_w, va_hat_w)
@@ -333,7 +333,7 @@ function compute_bridle_drag_coeff(sam)
     bridle_idxs = Set{Int}()
     for p in sys.points
         p.idx in tether_pts && continue
-        p.type == WING && continue
+        p.is_wing_node && continue
         p.idx == 1 && continue  # KCU
         push!(bridle_idxs, p.idx)
     end

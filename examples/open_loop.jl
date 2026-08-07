@@ -15,6 +15,7 @@ end
 
 using V3Kite
 using GLMakie
+using MakieControlPlots
 using CairoMakie
 GLMakie.activate!()
 using SymbolicAWEModels

@@ -177,7 +177,7 @@ else
     nothing
 end
 
-wing_points = [p for p in sys.points if p.type == WING]
+wing_points = [p for p in sys.points if p.is_wing_node]
 
 @info "Starting real-time simulation..." dt FPS
 start_time = time()

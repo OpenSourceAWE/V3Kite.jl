@@ -16,6 +16,7 @@ end
 
 using V3Kite
 using GLMakie
+using MakieControlPlots
 using SymbolicAWEModels
 using LinearAlgebra
 
@@ -107,7 +108,7 @@ for step in 1:n_steps
 
     set_steering!(sys, nominal_steering + steer_ctrl, gc)
 
-    if !sim_step!(sam; dt, vsm_interval=10)
+    if !sim_step!(sam; dt, vsm_interval=1)
         @error "Simulation failed" step
         break
     end
