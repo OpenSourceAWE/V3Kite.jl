@@ -9,8 +9,8 @@ plot as auto_parking.jl, entirely from logged data — no re-simulation needed.
 v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
 during simple_auto_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
-L/D_eff). The steering panel shows the actual value (`steering`, the KCU's tape-lagged
-fraction) against the command (`set_steering`), the standard SysState pair.
+L/D_eff). The depower panel shows the actual value (`depower`, the KCU's tape-lagged 
+fraction) against the command (`var_14`, written by `step!`), matching parking.jl. 
 
 Run from the REPL after (or instead of, if "tmp_auto_parking" already exists) running
 simple_auto_parking.jl:
@@ -50,7 +50,7 @@ p = plotx(
     rad2deg.(sl.elevation[rng]),
     rad2deg.(sl.heading[rng]),
     rad2deg.(sl.AoA[rng]),
-    (100 .* sl.steering[rng], 100 .* sl.set_steering[rng]),
+    (sl.depower[rng], sl.var_14[rng]),
     (sl.var_15[rng], sl.var_16[rng]);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 18,
@@ -61,7 +61,7 @@ p = plotx(
         L"\mathrm{elevation}~[°]",
         L"\mathrm{heading}~[°]",
         L"\mathrm{AoA}~[°]",
-        L"u_{\mathrm{s}}~[\%]",
+        L"u_{\mathrm{d}}~[-]",
         L"L/D~[-]",
     ],
     labels = [
@@ -70,7 +70,7 @@ p = plotx(
         nothing,
         nothing,
         nothing,
-        [L"u_{\mathrm{s}}", L"u_{\mathrm{s,set}}"],
+        [L"u_{\mathrm{d}}", L"u_{\mathrm{d,set}}"],
         [L"L/D_{\mathrm{wing}}", L"L/D_{\mathrm{eff}}"],
     ],
     fig = fig_name,
