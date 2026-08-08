@@ -172,6 +172,29 @@ function with_model_cache(f, cache_path)
     end
 end
 
+"""
+    settled_cache_tag()
+
+Version stamp for the settled-geometry cache file name.
+
+A settled `.bin` is a `Serialization` dump of a `SystemStructure`, which carries
+types from three packages: `SymbolicAWEModels` (the structure itself), plus the
+`AtmosphericModel` and the `Settings` hanging off it. `deserialize` reads each
+struct with the *current* `fieldcount` and no field list is stored in the stream,
+so adding a field to any of them makes the reader run off the end of the file
+(`EOFError`) — a cache written by other versions is not just stale, it is
+unreadable. Stamping the versions into the name turns that into a cache miss.
+
+The Julia minor version is included because the serialization format itself is
+only guaranteed compatible within one minor release.
+"""
+function settled_cache_tag()
+    "saw$(pkgversion(SymbolicAWEModels))" *
+    "_am$(pkgversion(AtmosphericModels))" *
+    "_ku$(pkgversion(KiteUtils))" *
+    "_jl$(VERSION.major).$(VERSION.minor)"
+end
+
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      cache_path=nothing,
@@ -235,7 +258,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     # The only thing settling writes, hence the only thing needing a writable dir.
     cache_path != data_path && mkpath(cache_path)
     dest_struc = joinpath(
-        cache_path, "settled_$(suffix).bin")
+        cache_path, "settled_$(settled_cache_tag())_$(suffix).bin")
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -279,9 +302,25 @@ function settle_wing(config::V3SettleConfig, init_row;
     # profile_law is taken from settings.yaml (loaded via Settings above).
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
+    # `nothing` until a cached geometry has actually been read back: the file
+    # existing is not enough, see `settled_cache_tag`.
+    sys = nothing
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled geometry" dest_struc
-        sys = deserialize(dest_struc)
+        try
+            sys = deserialize(dest_struc)
+        catch err
+            err isa InterruptException && rethrow()
+            # Reachable for caches written before the version tag entered the
+            # name, or by a package that changed a serialized struct without a
+            # version bump. Re-deriving from the source YAML is always correct,
+            # just slower, so warn and fall through rather than crash.
+            @warn "Cached settled geometry unreadable, using source geometry" dest_struc err
+            sys = nothing
+        end
+    end
+
+    if !isnothing(sys)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
         with_model_cache(cache_path) do
