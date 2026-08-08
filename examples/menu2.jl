@@ -18,20 +18,15 @@ end
 using REPL.TerminalMenus
 using V3Kite: set_default_turbulence
 
-# (label, script) pairs; `nothing` as script means "call the action directly" instead of
-# including a file. A `"name = include(...)"` string cannot express that: evaluating
-# `set_default_turbulence = set_default_turbulence()` would bind the returned number over the
-# function, so the second invocation would fail.
 files = sort(filter(f -> startswith(f, "simple_") && endswith(f, ".jl"), readdir(@__DIR__)))
-actions = Tuple{String, Union{String, Nothing}}[("set_default_turbulence", nothing)]
-append!(actions, [(f[1:end-3], f) for f in files])
-push!(actions, ("reel_out_v3", "reel_out_v3.jl"))
-push!(actions, ("reel_out_v3_plots", "reel_out_v3_plots.jl"))
-push!(actions, ("steering_test_v3", "steering_test_v3.jl"))
-push!(actions, ("steering_test_v3_plots", "steering_test_v3_plots.jl"))
-
-options = [isnothing(script) ? label : "$(label) = include(\"$(script)\")"
-           for (label, script) in actions]
+options = [string(f[1:end-3], " = include(\"", f, "\")") for f in files]
+# A bare call, not an assignment: `set_default_turbulence = set_default_turbulence()` would
+# bind the returned value over the function.
+pushfirst!(options, "set_default_turbulence()")
+push!(options, "reel_out_v3 = include(\"reel_out_v3.jl\")")
+push!(options, "reel_out_v3_plots = include(\"reel_out_v3_plots.jl\")")
+push!(options, "steering_test_v3 = include(\"steering_test_v3.jl\")")
+push!(options, "steering_test_v3_plots = include(\"steering_test_v3_plots.jl\")")
 push!(options, "quit")
 
 function example_menu()
@@ -41,12 +36,7 @@ function example_menu()
         choice = request("\nChoose example to run or `q` to quit: ", menu)
 
         if choice != -1 && choice != length(options)
-            _, script = actions[choice]
-            if isnothing(script)
-                set_default_turbulence()
-            else
-                eval(Meta.parse(options[choice]))
-            end
+            eval(Meta.parse(options[choice]))
         else
             println("Left menu. Press <ctrl><d> to quit Julia!")
             active = false
