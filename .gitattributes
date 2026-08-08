@@ -1,0 +1,3 @@
+# Pkg-generated lockfiles: collapse them in GitHub diffs and keep them out of the
+# language statistics. Covers Manifest-v<version>.toml.default and any future variant.
+Manifest*.toml* linguist-generated=true
