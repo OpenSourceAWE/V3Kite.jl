@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Jelle Poland, Bart van de Lint, Uwe Fechner
 # SPDX-License-Identifier: MPL-2.0
 
-using PackageCompiler
-
 # --- Standard Library & General Utilities ---
 using Pkg, LinearAlgebra, Statistics, Serialization, Printf, Dates
 
@@ -56,6 +54,14 @@ let mem = Sys.free_memory() / 1024^2
     end
 end
 
+# PackageCompiler is deliberately not a dependency of the test project: it is only needed to build
+# the sysimage, so install it into a temporary environment and keep building against the test
+# project, which is where all the packages listed below live.
+const TEST_PROJECT = dirname(Base.active_project())
+Pkg.activate(; temp=true)
+Pkg.add("PackageCompiler")
+using PackageCompiler
+
 @info "Creating sysimage ..."
 PackageCompiler.create_sysimage(
     [:Pkg, :LinearAlgebra, :Statistics, :Serialization, :Printf, :Dates,
@@ -67,5 +73,6 @@ PackageCompiler.create_sysimage(
      :AtmosphericModels, :KiteUtils, :KitePodModels, :VortexStepMethod,
      :SymbolicAWEModels];
     sysimage_path="kps-image_tmp.so",
+    project=TEST_PROJECT,
     precompile_execution_file=joinpath("test", "test_for_precompile.jl")
 )
