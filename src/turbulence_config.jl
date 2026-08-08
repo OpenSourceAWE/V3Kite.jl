@@ -35,35 +35,14 @@ function gui_yaml_path(data_path = get_data_path())
 end
 
 """
-    raw_default_turbulence(data_path = get_data_path())
-
-The `default_turbulence` setting of `data/gui.yaml` exactly as stored, without converting or
-validating it, and without printing anything. `nothing` if it cannot be read.
-
-Exists so callers can tell the keyword `"default"` apart from an unreadable file — both of which
-[`get_default_turbulence`](@ref) reports as `nothing`.
-"""
-function raw_default_turbulence(data_path = get_data_path())
-    gui_yaml = gui_yaml_path(data_path)
-    isnothing(gui_yaml) && return nothing
-    dict = try
-        YAML.load_file(gui_yaml)
-    catch
-        return nothing
-    end
-    haskey(dict, "gui") || return nothing
-    return get(dict["gui"], "default_turbulence", nothing)
-end
-
-"""
-    get_default_turbulence(data_path = get_data_path()) -> Union{Float64, Nothing}
+    get_default_turbulence(data_path = get_data_path()) -> Union{Float64, String, Nothing}
 
 Read `default_turbulence` from `data/gui.yaml`, the turbulence level `init` applies as
 `set.use_turbulence`. If the file does not exist it is created from `gui.yaml.default`.
 
-Returns `nothing` both for the keyword `"default"` — meaning `init` should keep the
-`environment.use_turbulence` of the settings YAML — and if the value cannot be read at all. The two
-are distinguished by their output: the keyword is silent, an unreadable value prints why.
+The keyword `"default"` comes back as the string, meaning `init` keeps the
+`environment.use_turbulence` of the settings YAML; `nothing` means the value could not be read
+and says why. Callers wanting a level therefore test `isa Real`, not `!== nothing`.
 """
 function get_default_turbulence(data_path = get_data_path())
     gui_yaml = gui_yaml_path(data_path)
@@ -80,8 +59,7 @@ function get_default_turbulence(data_path = get_data_path())
         return nothing
     end
     raw = dict["gui"]["default_turbulence"]
-    # Checked first: Float64("default") would otherwise hit the catch below and misreport a valid setting.
-    is_default_turbulence_keyword(raw) && return nothing
+    is_default_turbulence_keyword(raw) && return DEFAULT_TURBULENCE_KEYWORD
     try
         return Float64(raw)
     catch
@@ -109,7 +87,7 @@ function ask_default_turbulence()
 end
 
 """
-    set_default_turbulence([value]; data_path = get_data_path()) -> Union{Float64, Nothing}
+    set_default_turbulence([value]; data_path = get_data_path()) -> Union{Float64, String, Nothing}
 
 Persist `default_turbulence` in `data/gui.yaml` and return the new value. Without an argument, a
 menu asks for `"default"` or a specific value via [`ask_default_turbulence`](@ref); leaving the menu
@@ -131,17 +109,9 @@ function set_default_turbulence(value::Union{Nothing, Real, AbstractString} = no
     gui_yaml = gui_yaml_path(data_path)
     isnothing(gui_yaml) && return nothing
 
-    current = get_default_turbulence(data_path)
-
     if isnothing(value)
-        # Re-check the raw value: `current` is `nothing` for both "default" and an unreadable file.
-        current_str = if is_default_turbulence_keyword(raw_default_turbulence(data_path))
-            DEFAULT_TURBULENCE_KEYWORD
-        elseif isnothing(current)
-            "not set"
-        else
-            "$current"
-        end
+        current = get_default_turbulence(data_path)
+        current_str = isnothing(current) ? "not set" : "$current"
         options = [DEFAULT_TURBULENCE_KEYWORD, "specific value in [0.0, 1.0]...", "quit"]
         choice = request("\nSelect default_turbulence (current: $current_str): ",
                          RadioMenu(options, pagesize = 8))

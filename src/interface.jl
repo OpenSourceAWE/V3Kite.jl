@@ -539,9 +539,10 @@ it was serialized with, and `SystemStructure.am` is `const`, so `settle_wing`'s
 `use_turbulence` and other `am`-read settings (`calc_wind_factor`/`calc_rho`)
 never go stale against a cached `.bin`.
 
-The turbulence level itself comes from `data/gui.yaml` (see
-[`get_default_turbulence`](@ref)), a per-checkout preference applied before
-the wind-field decision above, not from the settings YAML directly.
+The turbulence level comes from `data/gui.yaml` (see
+[`get_default_turbulence`](@ref)), a per-checkout preference applied before the
+wind-field decision above; its `"default"` keyword leaves the settings YAML in
+charge.
 
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
@@ -624,7 +625,7 @@ function init(v_wind_gnd, l_tether;
     set.cs_4p = 1.0
 
     turb = get_default_turbulence(data_path)
-    turb !== nothing && (set.use_turbulence = turb)
+    turb isa Real && (set.use_turbulence = turb)
 
     sam.am.set = set
     clear(sam.am)
@@ -663,26 +664,20 @@ end
     apply_turbulence!(s::V3KITE) -> Bool
 
 Overwrite `s.set.wind_vec` with the turbulent wind sampled at the first wing, and return
-`true` if it did. Called by [`step!`](@ref) immediately before the integration step; the
-caller must restore `s.wind_vec_mean` afterwards whenever this returned `true`.
+`true` if it did; [`step!`](@ref) calls this immediately before the integration step and
+must restore `s.wind_vec_mean` afterwards. Returns `false` without touching anything when
+turbulence is off or the mean wind has no horizontal component.
 
-`set.wind_vec` is the only per-step wind hook that reaches the whole system: it becomes an
-MTK parameter that `next_step!` re-syncs every step, and the point apparent wind is built
-from it. The wing's `wind_disturb` parameter, used before, is dead on a `PARTICLE_DYNAMICS`
-wing — the per-point VSM solve never sees it.
+`set.wind_vec` is the per-step wind hook that reaches the whole system: it becomes an MTK
+parameter `next_step!` re-syncs every step, and the point apparent wind is built from it.
 
 The sampled wind already contains the mean at the kite height, so it is divided by
-`calc_wind_factor` at that height before it is written back into the ground vector — the DAE
-multiplies it in again. The clamp mirrors the one `calc_turbulent_wind`/`get_wind` apply
-internally; with `profile_law: 0` the factor is 1 and the division is a no-op.
-
-Since `wind_vec` is a single ground vector, the gust sampled at the kite acts coherently on
-the tether too, which overstates fluctuating tether drag. Returns `false` without touching
-anything when turbulence is off or the mean wind has no horizontal component.
+`calc_wind_factor` at that height before going back into the ground vector — the DAE
+multiplies it in again. With `profile_law: 0` the factor is 1 and the division is a no-op.
 
 The value is held constant over the step on purpose: `AtmosphericModels.get_wind` is a
-nearest-grid-point lookup into the Mann field, which would be a discontinuous,
-non-differentiable term if it were evaluated inside the implicit solve.
+nearest-grid-point lookup into the Mann field, a discontinuous term if it were evaluated
+inside the implicit solve.
 """
 function apply_turbulence!(s::V3KITE)
     s.set.use_turbulence > 0 || return false
@@ -690,6 +685,7 @@ function apply_turbulence!(s::V3KITE)
     isfinite(ud) || return false
     pos = s.sys.wings[1].pos_w
     v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
+    # 10 m clamp mirrors the one calc_turbulent_wind/get_wind apply internally.
     s.set.wind_vec = v_turb / calc_wind_factor(s.am, max(pos[3], 10.0))
     return true
 end

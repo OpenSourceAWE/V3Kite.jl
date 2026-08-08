@@ -75,17 +75,11 @@ environment:
   use_turbulence: 0.0 # turbulence intensity relative to Cabau, NL
   v_wind_gnds: [3.483, 5.324, 8.163, 9.51] # wind speeds at ref height for calculating the turbulent wind field [m/s]
   avg_height: 200.0 # average height during reel out          [m]
-  # First three: Cabauw scenarios (Fechner 2016). 9.51 m/s is the speed used by the
-  # simple_*/reel_out_v3/steering_test_v3 examples; its factor continues the log fit
-  # rel_turb = 0.342 + 0.283*(ln(v) - 1.248) through the three calibrated points.
-  rel_turbs: [0.342, 0.465, 0.583, 0.626] # relative turbulence at the v_wind_gnds
+  rel_turbs: [0.342, 0.465, 0.583, 0.626] # relative turbulence at the v_wind_gnds, see settings.yaml
   i_ref: 0.14 # is the expected value of the turbulence intensity at 15 m/s.
   v_ref:
     42.9 # five times the average wind speed in m/s at hub height over the full year    [m/s]
     # Cabauw: 8.5863 m/s * 5.0 = 42.9 m/s
-  # Must be declared explicitly: `KiteUtils.Settings(yaml)` (used by settle_wing) does not fill
-  # defaults, and an empty grid makes the wind-field filename lookup fail. [100, 4050, 500, 70]
-  # is the KiteUtils default and matches the generated data/windfield_100_4050_500_70_*.npz.
-  grid: [100, 4050, 500, 70] # grid size nx, ny, nz and minimal height z_min                      [m]
+  grid: [100, 4050, 500, 70] # grid size nx, ny, nz and minimal height z_min, see settings.yaml   [m]
   height_step: 2.0 # use a grid with 2m resolution in z direction                                 [m]
   grid_step: 2.0 # grid resolution in x and y direction                                         [m]

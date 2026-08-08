@@ -66,14 +66,15 @@ try
             @test Float64(inserted["gui"]["default_turbulence"]) ≈ 0.45
             @test get_default_turbulence() ≈ 0.45
 
-            # "default" means "no opinion": stored as the keyword, read back as `nothing`, which
-            # is what makes `init` keep `use_turbulence` from the settings YAML.
+            # "default" means "no opinion": stored and read back as the keyword, which is not a
+            # `Real` and so makes `init` keep `use_turbulence` from the settings YAML.
             @test set_default_turbulence("default") == "default"
             @test YAML.load_file(gui_yaml)["gui"]["default_turbulence"] == "default"
-            @test isnothing(get_default_turbulence())
-            # Casing is irrelevant, and a number takes over again afterwards
+            @test get_default_turbulence() == "default"
+            @test !(get_default_turbulence() isa Real)
+            # Casing is normalised, and a number takes over again afterwards
             @test set_default_turbulence("DeFaUlT") == "default"
-            @test isnothing(get_default_turbulence())
+            @test get_default_turbulence() == "default"
             @test set_default_turbulence(0.2) ≈ 0.2
             @test get_default_turbulence() ≈ 0.2
 
