@@ -27,6 +27,7 @@ using LinearAlgebra
 SIM_TIME = 60.0
 FPS = 20
 AERO_MODE = ContinuousAero()
+VSM_INTERVAL = 1   # steps between VSM aero solves
 MAX_HEADING = 40.0    # degrees
 PERIOD = 30.0         # seconds
 V_WIND = 15.4
@@ -57,6 +58,7 @@ settle_config = V3SettleConfig(
     dt = 0.05,
     num_steps = 40,
     num_substeps = 1,
+    decay_steps = 30,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = DEPOWER * 100.0 + 10.0,
     course_correction_mode = :heading,
@@ -108,7 +110,7 @@ for step in 1:n_steps
 
     set_steering!(sys, nominal_steering + steer_ctrl, gc)
 
-    if !sim_step!(sam; dt, vsm_interval=1)
+    if !sim_step!(sam; dt, vsm_interval = VSM_INTERVAL)
         @error "Simulation failed" step
         break
     end

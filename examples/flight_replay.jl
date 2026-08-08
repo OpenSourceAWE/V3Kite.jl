@@ -20,6 +20,7 @@ using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
 using GLMakie: save
 using CairoMakie
+using MakieControlPlots
 GLMakie.activate!(; px_per_unit=2.0)
 using Statistics
 using Rotations
@@ -38,7 +39,7 @@ using Dates
 generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
-N_SUBSTEPS = 1
+N_SUBSTEPS = 2     # data is 10 Hz; 2 substeps gives dt = 0.05 s
 VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
@@ -268,8 +269,8 @@ function run_physics_replay(h5_path;
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
         world_damping=0.0,
-        body_damping=[10.0, 10.0, 10.0],
-        decay_steps=69,
+        body_damping=[0.0, 0.0, 40.0],
+        decay_steps=50,
         min_damping=0.0,
         v_wind=row1.v_app,
         tether_length=tether_len,

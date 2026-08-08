@@ -530,7 +530,7 @@ trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solve
 steps several-fold at unchanged settled trim, but it also resists the deformation
 that produces steering and so **reduces the turn rate**. Use in-plane damping for
 parked/quasi-static runs, not for validating turning maneuvers, and note that
-settling goes unstable at `dt = 0.001` somewhere above 15. See
+settling goes unstable somewhere above 15. See
 PlanSuppressOscillations.md for the sweep.
 
 `warmup_time` [s] runs the returned model forward that long with the controls
@@ -577,9 +577,10 @@ function init(v_wind_gnd, l_tether;
     settle_config = V3SettleConfig(
         v_wind = v_wind_gnd,
         tether_length = l_tether,
-        dt = 0.001,
-        num_steps = 400,
-        num_substeps = 5,
+        dt = 0.05,
+        num_steps = 40,
+        num_substeps = 1,
+        decay_steps = 30,
         body_damping = body_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
@@ -759,7 +760,7 @@ held at `depower` and the winch in the mode the run will use, and afterwards
 replace the logger and `sys_state` so the run's first logged row is again
 `t = 0`. Called by [`init`](@ref) when `warmup_time > 0`.
 
-`settle_wing` returns an equilibrium of the SETTLING model (`dt = 0.001`, heavily
+`settle_wing` returns an equilibrium of the SETTLING model (heavily
 damped, winch braked), which is not a fixed point of the model the run
 integrates. Without a warm-up that difference is a decaying transient over the
 first second of every log, sharpest in the logged L/D. This is real integration,

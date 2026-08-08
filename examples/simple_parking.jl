@@ -37,17 +37,18 @@ using LinearAlgebra: norm
 
 PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
-DT               = 0.05/3   # Simulation timestep [s]
+DT               = 0.05     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 AERO_MODE        = ContinuousAero()
+VSM_INTERVAL     = 1   # steps between VSM aero solves
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping=[10.0, 10.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_damping = [0.0, 0.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
@@ -60,7 +61,8 @@ steps_done = 0
 t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0,
+              vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
     end

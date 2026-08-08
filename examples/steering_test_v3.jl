@@ -66,7 +66,7 @@ using Printf
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
 SIM_TIME         = 200.0    # Simulation time limit [s]; sized so the sweep ends first
                             # (~15 s per amplitude level, plus T_START)
-DT               = 0.05/3   # Simulation timestep [s]
+DT               = 0.05     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
@@ -95,6 +95,7 @@ MAX_REL_STD      = 0.35     # [-]
 # amplitude, so every amplitude level contributes.
 MIN_STEERING_FIT = START_STEERING / 2
 AERO_MODE        = ContinuousAero()
+VSM_INTERVAL     = 1   # steps between VSM aero solves
 
 # ======================== INIT =========================== #
 
@@ -113,7 +114,7 @@ AERO_MODE        = ContinuousAero()
 #  c2                 :  -0.3837 [-] ± 0.0573  (14.93 %)
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = [10.0, 10.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_damping = [0.0, 0.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
@@ -171,7 +172,8 @@ t_loop = @elapsed try
         end
 
         # Position mode: `set_length` holds the mean tether length.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+              vsm_interval = VSM_INTERVAL)
         global steps_done += 1
 
         # Elevation floor: the parked kite loses elevation as it turns, and a

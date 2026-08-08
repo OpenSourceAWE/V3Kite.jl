@@ -18,6 +18,7 @@ using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
 using GLMakie
+using MakieControlPlots
 using SymbolicAWEModels
 using LinearAlgebra
 using Statistics

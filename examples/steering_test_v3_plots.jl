@@ -42,7 +42,7 @@ using LaTeXStrings
 using V3Kite
 
 # Must match the corresponding constants in steering_test_v3.jl.
-DT               = 0.05/3
+DT               = 0.05
 T_START          = 10.0
 HEADING_OFFSET   = 10.0
 START_STEERING   = 0.05

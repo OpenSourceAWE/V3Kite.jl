@@ -41,8 +41,8 @@ followed by circular flight.
 function run_zenith_circles(;
         sim_time_zenith = 10.0, fps_zenith = 1,
         sim_time_circles = 0.0, fps_circles = 1,
-        body_damping = [0.0, 0.0, 20.0],
-        point_37_38_damping = [0.0, 20.0, 20.0],
+        body_damping = [0.0, 0.0, 0.0],
+        point_37_38_damping = [0.0, 0.0, 0.0],
         up = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
@@ -76,14 +76,12 @@ function run_zenith_circles(;
         tether_length = tether_length,
         g_earth = g_earth,
         kcu_mass = kcu_mass,
-        body_damping = body_damping .* 2.0,
-        body_damping_overrides = [
-            (37:38, point_37_38_damping .* 2.0),
-        ],
+        body_damping = [0.0, 0.0, 40.0],
+        decay_steps = 30,
         geom = V3GeomAdjustConfig(
             reduce_te = true, tether_length = tether_length
         ),
-        num_steps = 400, num_substeps = 5, dt = 0.001,
+        num_steps = 40, num_substeps = 1, dt = 0.05,
         start_depower = 40.0,
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
@@ -188,7 +186,7 @@ function run_zenith_circles(;
 
             if !sim_step!(
                     sam;
-                    set_values = [-wt], dt = dt_z, vsm_interval = 1
+                    set_values = [-wt], dt = dt_z, vsm_interval = VSM_INTERVAL
                 )
                 @error "Zenith phase failed" step
                 break
@@ -232,7 +230,7 @@ function run_zenith_circles(;
 
             if !sim_step!(
                     sam;
-                    set_values = [0.0], dt = dt_c, vsm_interval = 1
+                    set_values = [0.0], dt = dt_c, vsm_interval = VSM_INTERVAL
                 )
                 @error "Circular phase failed" step
                 break
@@ -303,10 +301,11 @@ sim_time_zenith = 2
 sim_time_circles = 200
 ramp_time_us = 2
 
-fps_zenith = 360
-fps_circles = 360
-body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 20.0, 20.0]
+fps_zenith = 20
+fps_circles = 20
+VSM_INTERVAL = 1   # steps between VSM aero solves
+body_damping = [0.0, 0.0, 0.0]
+point_37_38_damping = [0.0, 0.0, 0.0]
 AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]

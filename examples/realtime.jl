@@ -45,7 +45,8 @@ STEERING_TARGET = 15.0     # Target % when key held
 STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 
 MAX_TIME = 1000.0
-FPS = 30
+FPS = 20
+VSM_INTERVAL = 1   # steps between VSM aero solves
 DISPLAY_FPS = 10
 AERO_MODE = ContinuousAero()
 vector_scale = 1.0
@@ -78,9 +79,10 @@ wind_vec = [V_WIND, 0.0, 0.0]
 settle_config = V3SettleConfig(
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    dt = 0.001,
-    num_steps = 400,
-    num_substeps = 5,
+    dt = 0.05,
+    num_steps = 40,
+    num_substeps = 1,
+    decay_steps = 30,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = UP * 100.0 + 10.0,
     course_correction_mode = :heading,
@@ -203,7 +205,7 @@ try
 
         step_start = time()
         if !sim_step!(sam;
-                set_values=[0.0], dt, vsm_interval=1)
+                set_values=[0.0], dt, vsm_interval = VSM_INTERVAL)
             @warn "Simulation crashed at t=$t"
             break
         end
