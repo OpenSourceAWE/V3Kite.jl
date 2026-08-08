@@ -75,8 +75,8 @@ circular-flight target.
 """
 function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
-    body_damping=[0.0, 0.0, 0.0],
-    point_37_38_damping=[0.0, 0.0, 0.0],
+    body_damping=[0.0, 0.0, 20.0],
+    point_37_38_damping=[0.0, 0.0, 20.0],
     up=0.4,
     ramp_time_us=25.0,
     us=0.1,
@@ -115,7 +115,7 @@ function run_circles(;
         start_depower=40.0,
         course_correction_gain=0.0,
         course_correction_mode=:heading,
-        world_damping=0.0, min_damping=0.0,
+        world_damping=0.0, min_damping=[0.0, 0.0, 20.0],
         aero_mode=AERO_MODE,
     )
     sam, _settle_log, settle_failed = settle_wing(
@@ -319,8 +319,8 @@ ramp_time_us = 2
 
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
-body_damping = [0.0, 0.0, 0.0]
-point_37_38_damping = [0.0, 0.0, 0.0]
+body_damping = [0.0, 0.0, 20.0]
+point_37_38_damping = [0.0, 0.0, 20.0]
 AERO_MODE = ContinuousAero()
 
 combos = generate_run_combos(defaults, sweeps, combine_all)

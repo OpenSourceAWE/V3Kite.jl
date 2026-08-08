@@ -64,6 +64,8 @@ docs/src/.$kite_power_tools.drawio.bkp
 .zshrc
 /HEAD
 /config
+/config.lock
+/config.worktree
 /hooks
 /objects
 /refs

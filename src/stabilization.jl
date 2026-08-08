@@ -27,8 +27,9 @@ Base.@kwdef mutable struct V3SettleConfig
 
     # Damping
     world_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    # World- and body-frame damping decay linearly to zero over `decay_steps`
+    # Body-frame damping decays linearly over `decay_steps`, floored elementwise
+    # at `min_damping`; world-frame damping decays all the way to zero
+    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
     decay_steps::Int = 400
     body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 40.0]
     # Per-point overrides applied AFTER body_damping
@@ -457,15 +458,14 @@ function run_power_zone_settling!(config::V3SettleConfig;
     try
         for step in 1:config.num_steps
             decay = max(0.0, 1.0 - step / config.decay_steps)
-            damping = max(config.world_damping * decay,
-                config.min_damping)
+            decayed(x) = max.(x .* decay, config.min_damping)
+            damping = decayed(config.body_damping)
             SymbolicAWEModels.set_world_frame_damping(
-                sys, damping)
-            set_body_frame_damping!(sys,
-                config.body_damping * decay)
+                sys, config.world_damping .* decay)
+            set_body_frame_damping!(sys, damping)
             for (rng, damp) in config.body_damping_overrides
                 SymbolicAWEModels.set_body_frame_damping(
-                    sys, damp * decay, rng)
+                    sys, decayed(damp), rng)
             end
 
             # Ramp depower linearly over settling steps

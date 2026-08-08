@@ -520,8 +520,11 @@ it. An ABSOLUTE `system_yaml` is honoured as given and ignores `data_path`.
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
 the wing*, so it damps bridle vibration without slowing the kite's global motion
-(unlike world-frame damping). It is baked into the settled geometry and carries
-over into the returned model, so it also forms part of the settling cache key —
+(unlike world-frame damping). It is the value settling *starts* from: over
+`decay_steps` it decays linearly to the `min_damping` floor, and that floor is
+what the returned model runs with. It is baked into the settled geometry and
+carries over into the returned model, so it also forms part of the settling
+cache key —
 changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
 

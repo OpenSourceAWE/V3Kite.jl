@@ -58,11 +58,11 @@ REDUCE_STEERING = true
 STEERING_REDUCTION = 0.2
 REDUCE_TIP = true
 TIP_REDUCTION = 0.2
-BODY_DAMPING = [0.0, 0.0, 0.0]
+BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-POINT_37_38_DAMPING = [0.0, 0.0, 0.0]
+POINT_37_38_DAMPING = [0.0, 0.0, 20.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
@@ -271,7 +271,7 @@ function run_physics_replay(h5_path;
         world_damping=0.0,
         body_damping=[0.0, 0.0, 40.0],
         decay_steps=50,
-        min_damping=0.0,
+        min_damping = [0.0, 0.0, 20.0],
         v_wind=row1.v_app,
         tether_length=tether_len,
         dt=0.05,
