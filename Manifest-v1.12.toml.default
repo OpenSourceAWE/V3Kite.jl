@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "324136e10f4d8729f03ef2a98a3b6cc594acbec8"
+project_hash = "b4b8b49ac99b0fbfb68a15772c10638b8a329b1c"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "0a81a018463de6c3f4f2c9360121c562e5add9e4"
@@ -170,9 +170,9 @@ version = "1.11.0"
 
 [[deps.AtmosphericModels]]
 deps = ["FFTW", "HypergeometricFunctions", "KiteUtils", "LinearAlgebra", "MeshGrid", "NPZ", "Printf", "Random", "Statistics"]
-git-tree-sha1 = "e5f08c5e24bc8ac915ac0b0f3fbdf66496e918a7"
+git-tree-sha1 = "9e6ab74c7bef40dc0f224f20e0df1a26b798175d"
 uuid = "c59cac55-771d-4f45-b14d-1c681463a295"
-version = "0.3.5"
+version = "0.3.6"
 
 [[deps.Automa]]
 deps = ["PrecompileTools", "TranscodingStreams"]
@@ -1468,9 +1468,9 @@ version = "0.4.0"
 
 [[deps.KiteUtils]]
 deps = ["Arrow", "CSV", "DocStringExtensions", "LinearAlgebra", "OrderedCollections", "Parameters", "Parsers", "Pkg", "PrecompileTools", "RecursiveArrayTools", "ReferenceFrameRotations", "Rotations", "StaticArrays", "StructArrays", "StructTypes", "YAML"]
-git-tree-sha1 = "e2237cc9a3f4dd28445374c9667002f57a46cc0e"
+git-tree-sha1 = "0d7307b9656072383b235e7b4e6ca546bc3fd7ae"
 uuid = "90980105-b163-44e5-ba9f-8b1c83bb0533"
-version = "0.11.11"
+version = "0.11.13"
 
 [[deps.Krylov]]
 deps = ["LinearAlgebra", "Printf", "SparseArrays"]
@@ -3311,7 +3311,7 @@ version = "1.28.0"
     Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [[deps.V3Kite]]
-deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "ModelingToolkitBase", "Parameters", "PrecompileTools", "Printf", "Rotations", "Serialization", "StaticArrays", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod", "YAML"]
+deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "ModelingToolkitBase", "Parameters", "PrecompileTools", "Printf", "REPL", "Rotations", "Serialization", "StaticArrays", "Statistics", "SymbolicAWEModels", "UnPack", "VortexStepMethod", "YAML"]
 path = "."
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
 version = "1.0.2"

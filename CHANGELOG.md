@@ -1,5 +1,65 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Turbulent wind at the kite (Mann model, via
+  `AtmosphericModels.calc_turbulent_wind`; `AtmosphericModels` compat bumped
+  to `0.3.6`). `apply_turbulence!`, called from `step!`, samples the turbulent
+  wind at the wing, divides out the height profile factor the DAE will apply
+  again, and writes the result into `set.wind_vec` for the duration of the
+  solver call; a `finally` restores the commanded mean, which is kept on the
+  new `V3KITE.wind_vec_mean` field. The value is held constant over the step so
+  the discontinuous nearest-grid-point wind lookup never enters the implicit
+  solve, and the restore happens after `update_sys_state!`, so the logged
+  `v_wind_gnd` is the instantaneous wind the kite saw.
+
+  **Approximation:** `set.wind_vec` is a single ground vector, so the gust
+  sampled at the kite acts *coherently* on every tether and bridle point as
+  well — with `profile_law: 0` the whole tether feels the kite's gust. That
+  overstates fluctuating tether drag. It is accepted deliberately: `wind_vec`
+  is the only per-step wind hook that reaches the whole system, and the wing's
+  `wind_disturb` parameter (the injection point of the first implementation)
+  is dead on a `PARTICLE_DYNAMICS` wing, whose aero force is a per-point VSM
+  solve that never reads it.
+- `v_wind_gnds`/`rel_turbs` extended to `[3.483, 5.324, 8.163, 9.51]` /
+  `[0.342, 0.465, 0.583, 0.626]` in `settings.yaml`, `settings_reelout.yaml`
+  and `settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
+  an unlisted ground wind speed to a neighbour's turbulence intensity. The
+  `0.626` point extends the log fit `rel_turb = 0.342 + 0.283*(ln v - 1.248)`
+  fitted to the three Cabauw-calibrated points (turbulence intensity I₉₉ at
+  99 m):
+
+  | `v_wind_gnds` | `rel_turbs` | I₉₉ |
+  | ---: | ---: | ---: |
+  | 3.483 | 0.342 | 9.7 % |
+  | 5.324 | 0.465 | 10.4 % |
+  | 8.163 | 0.583 | 10.7 % |
+  | 9.51 | 0.626 | 10.9 % predicted, 10.8 % measured |
+
+  Wind fields pre-generated for 8.163 and 9.51 m/s (1.24 GB each); `grid:
+  [100, 4050, 500, 70]` made explicit in all three settings files.
+- `get_default_turbulence`/`set_default_turbulence`
+  (`src/turbulence_config.jl`), persisting a per-checkout turbulence
+  preference to `data/gui.yaml` (gitignored, created from the tracked
+  `gui.yaml.default`). Accepts `"default"` to defer to
+  `environment.use_turbulence` in the active settings YAML instead of
+  shadowing it. The no-argument dialog is an interactive `RadioMenu`
+  (`REPL.TerminalMenus`); a `set_default_turbulence` entry was added to
+  `examples/menu2.jl`.
+
+### Fixed
+- `init` now re-points the shared `AtmosphericModel` at the live `Settings`
+  and reloads the wind field, so turbulence (and `calc_wind_factor`/
+  `calc_rho`) no longer silently used settings stale from a cached
+  `settled_*.bin`.
+
+### Notes
+- Wind-field filenames keep only one decimal of `use_turbulence`
+  (`calc_full_name`, `%.1f`), so e.g. `0.30` and `0.34` would silently share
+  a field with up to ~15 % sigma error; `set_default_turbulence` now warns
+  when a value doesn't round-trip through one decimal.
+
 ## V3Kite v1.0.2 04-08-2026
 
 ### Changed
