@@ -73,3 +73,5 @@ settings.json
 .JETLSConfig.toml
 examples_2d/LocalPreferences.toml
 .markdownlint.json
+data/*.npz
+data/gui.yaml

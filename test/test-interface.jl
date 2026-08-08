@@ -288,7 +288,8 @@ end
         t0 = s.sys_state.time
         step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, v_wind_gnd = 12.0)
         @test s.sys_state.time ≈ t0 + s.dt
-        @test norm(s.set.wind_vec) ≈ 12.0
+        # The mean, not `set.wind_vec`: turbulence borrows the latter across the solve.
+        @test norm(s.wind_vec_mean) ≈ 12.0
     end
 end
 nothing
