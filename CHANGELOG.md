@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- `init(...; use_turbulence)`, which overrides the `default_turbulence` of
+  `data/gui.yaml`. A package driving V3Kite can then keep the preference in its
+  own writable `data/` — `data_path` cannot serve that role, since it must be
+  the directory holding the model geometry, which is read-only for a
+  Pkg-installed V3Kite. `nothing` (the default) keeps reading `gui.yaml`, and
+  the `"default"` keyword leaves the settings YAML in charge, exactly as the
+  file's value does.
 - Turbulent wind at the kite (Mann model, via
   `AtmosphericModels.calc_turbulent_wind`; `AtmosphericModels` compat bumped
   to `0.3.6`). `apply_turbulence!`, called from `step!`, samples the turbulent
