@@ -1,24 +1,6 @@
 # Copyright (c) 2026 Uwe Fechner
 # SPDX-License-Identifier: MPL-2.0
 
-# Persistent turbulence preference.
-#
-# The default turbulence level lives in `data/gui.yaml`, not in the settings YAML: it is a
-# per-checkout preference rather than a property of a simulation scenario. `gui.yaml` is the
-# gitignored working copy of the tracked `gui.yaml.default`, the same convention V3Kite uses for
-# `Manifest-v1.12.toml`. `init` reads it and copies it into `set.use_turbulence`.
-#
-# A numeric value therefore *shadows* `environment.use_turbulence` in the settings YAML: editing the
-# YAML has no effect while `gui.yaml` holds a number. `DEFAULT_TURBULENCE_KEYWORD` ("default") is the
-# opt-out: `get_default_turbulence` maps it to `nothing`, which `init` already treats as "leave
-# `set.use_turbulence` alone", so the settings YAML stays authoritative unless this file
-# deliberately overrides it. It is what `gui.yaml.default` ships, so a fresh checkout does not
-# shadow anything.
-#
-# `update_yaml_scalar`/`insert_yaml_scalar_in_section` are ported from `KiteModels.jl`
-# (`src/KiteModels.jl`), where the same `get_default_turbulence`/`set_default_turbulence` pair
-# lives. They edit the file line by line because a `YAML.jl` round-trip would drop every comment.
-
 """
 Value of `default_turbulence` meaning "no opinion, use the settings YAML".
 """
@@ -31,89 +13,6 @@ const DEFAULT_TURBULENCE_KEYWORD = "default"
 """
 is_default_turbulence_keyword(value) =
     value isa AbstractString && lowercase(strip(value)) == DEFAULT_TURBULENCE_KEYWORD
-
-"""
-    update_yaml_scalar(lines, key, value) -> (lines, updated)
-
-Replace the value of the first line whose stripped form starts with `key`, keeping the original
-indentation and trailing comment. `updated` is `false` if no such line exists.
-"""
-function update_yaml_scalar(lines::Vector{String}, key::AbstractString, value)
-    value_str = repr(value)
-    result = String[]
-    updated = false
-    pattern = Regex("^(\\s*" * escape_string(key) * "\\s*)([^#]*?)(\\s*(?:#.*)?)\$")
-    for line in lines
-        stripped = lstrip(line)
-        if !updated && startswith(stripped, key)
-            matched = match(pattern, line)
-            if isnothing(matched)
-                push!(result, key * " " * value_str)
-            else
-                prefix, _, suffix = matched.captures
-                push!(result, prefix * value_str * suffix)
-            end
-            updated = true
-        else
-            push!(result, line)
-        end
-    end
-    return result, updated
-end
-
-"""
-    insert_yaml_scalar_in_section(lines, section, key, value) -> (lines, true)
-
-Insert `key value` into `section`, indented like the section's existing children. Appends the
-section itself if it is not present at all.
-"""
-function insert_yaml_scalar_in_section(lines::Vector{String}, section::AbstractString,
-                                       key::AbstractString, value)
-    value_str = repr(value)
-    result = String[]
-    in_section = false
-    inserted = false
-    section_indent = 0
-    child_indent = "    "
-    section_found = false
-
-    for line in lines
-        stripped = lstrip(line)
-        indent = length(line) - length(stripped)
-
-        if !inserted && in_section && !isempty(stripped)
-            if indent <= section_indent
-                push!(result, child_indent * key * " " * value_str)
-                inserted = true
-                in_section = false
-            elseif indent > section_indent
-                child_indent = line[begin:indent]
-            end
-        end
-
-        push!(result, line)
-
-        if !inserted && startswith(stripped, section)
-            in_section = true
-            section_found = true
-            section_indent = indent
-            child_indent = line[begin:indent] * "    "
-        end
-    end
-
-    # Still inside the section at end of file: append the key there.
-    if !inserted && in_section
-        push!(result, child_indent * key * " " * value_str)
-        inserted = true
-    end
-
-    # Only add a new section if it was never found.
-    if !inserted && !section_found
-        push!(result, section)
-        push!(result, child_indent * key * " " * value_str)
-    end
-    return result, true
-end
 
 """
     gui_yaml_path(data_path = get_data_path()) -> Union{String, Nothing}
@@ -181,8 +80,7 @@ function get_default_turbulence(data_path = get_data_path())
         return nothing
     end
     raw = dict["gui"]["default_turbulence"]
-    # Checked before the numeric conversion: `Float64("default")` would land in the `catch` below
-    # and print an error for what is a perfectly valid setting.
+    # Checked first: Float64("default") would otherwise hit the catch below and misreport a valid setting.
     is_default_turbulence_keyword(raw) && return nothing
     try
         return Float64(raw)
@@ -193,11 +91,29 @@ function get_default_turbulence(data_path = get_data_path())
 end
 
 """
+    ask_default_turbulence() -> Union{Float64, Nothing}
+
+Prompt for a turbulence level in `[0.0, 1.0]`, re-asking on invalid input; `nothing` on empty input
+(cancel).
+"""
+function ask_default_turbulence()
+    while true
+        input = Base.prompt("default_turbulence in [0.0, 1.0]")
+        (isnothing(input) || isempty(strip(input))) && return nothing
+        value = tryparse(Float64, strip(input))
+        if !isnothing(value) && 0.0 <= value <= 1.0
+            return value
+        end
+        println("Enter a number between 0.0 and 1.0, e.g. 0.5.")
+    end
+end
+
+"""
     set_default_turbulence([value]; data_path = get_data_path()) -> Union{Float64, Nothing}
 
-Persist `default_turbulence` in `data/gui.yaml` and return the new value. Without an argument the
-current value is shown and a new one is read from the terminal; a blank line cancels. Values
-outside `[0.0, 1.0]` are rejected. Returns `nothing` when nothing was written.
+Persist `default_turbulence` in `data/gui.yaml` and return the new value. Without an argument, a
+menu asks for `"default"` or a specific value via [`ask_default_turbulence`](@ref); leaving the menu
+cancels. Values outside `[0.0, 1.0]` are rejected. Returns `nothing` when nothing was written.
 
 `0.0` disables turbulence, `1.0` is the Cabauw-calibrated reference level — the setting scales the
 turbulence, it is not an absolute intensity. The value takes effect at the next [`init`](@ref).
@@ -218,33 +134,29 @@ function set_default_turbulence(value::Union{Nothing, Real, AbstractString} = no
     current = get_default_turbulence(data_path)
 
     if isnothing(value)
-        # `current` is `nothing` for the keyword as well as for an unreadable file, so read the
-        # raw setting back for the prompt: showing "not set" for a deliberate "default" would be
-        # misleading.
-        if is_default_turbulence_keyword(raw_default_turbulence(data_path))
-            println("Current default_turbulence: $DEFAULT_TURBULENCE_KEYWORD " *
-                    "(init uses use_turbulence from the settings YAML)")
-        elseif isnothing(current)
-            println("Current default_turbulence is not set.")
-        else
-            println("Current default_turbulence: $current")
-        end
-        print("Enter new default_turbulence [0.0..1.0] or " *
-              "\"$DEFAULT_TURBULENCE_KEYWORD\" (blank to cancel): ")
-        input = strip(readline())
-        if isempty(input)
-            println("Cancelled.")
-            return nothing
-        end
-        value = if is_default_turbulence_keyword(input)
+        # Re-check the raw value: `current` is `nothing` for both "default" and an unreadable file.
+        current_str = if is_default_turbulence_keyword(raw_default_turbulence(data_path))
             DEFAULT_TURBULENCE_KEYWORD
+        elseif isnothing(current)
+            "not set"
         else
-            try
-                parse(Float64, input)
-            catch
-                println("Invalid number: $input")
+            "$current"
+        end
+        options = [DEFAULT_TURBULENCE_KEYWORD, "specific value in [0.0, 1.0]...", "quit"]
+        choice = request("\nSelect default_turbulence (current: $current_str): ",
+                         RadioMenu(options, pagesize = 8))
+        if choice == 1
+            value = DEFAULT_TURBULENCE_KEYWORD
+        elseif choice == 2
+            picked = ask_default_turbulence()
+            if isnothing(picked)
+                println("Cancelled.")
                 return nothing
             end
+            value = picked
+        else
+            println("Cancelled.")
+            return nothing
         end
     end
 
@@ -262,18 +174,18 @@ function set_default_turbulence(value::Union{Nothing, Real, AbstractString} = no
             return nothing
         end
         if round(new_value, digits = 1) != new_value
-            # calc_full_name formats this with "%.1f", so two values that differ only in the second
-            # decimal name the same file and silently share one field.
+            # calc_full_name formats this with "%.1f", so two values differing only in the second decimal share a file.
             println("Warning: the wind-field filename keeps only one decimal of this value; " *
                     "$new_value shares its file with $(round(new_value, digits = 1)).")
         end
     end
 
+    # KiteUtils >= 0.11.13; a YAML.jl round-trip would drop every comment in the file.
     lines = KiteUtils.readfile(gui_yaml)
-    new_lines, updated = update_yaml_scalar(lines, "default_turbulence:", new_value)
+    new_lines, updated = KiteUtils.update_yaml_scalar(lines, "default_turbulence:", new_value)
     if !updated
-        new_lines, updated = insert_yaml_scalar_in_section(lines, "gui:", "default_turbulence:",
-                                                           new_value)
+        new_lines, updated = KiteUtils.insert_yaml_scalar_in_section(lines, "gui:",
+                                                           "default_turbulence:", new_value)
         if !updated
             println("Could not update default_turbulence in $gui_yaml")
             return nothing

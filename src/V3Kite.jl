@@ -26,6 +26,7 @@ using Serialization
 using Parameters
 using StaticArrays
 using YAML
+using REPL.TerminalMenus
 
 import KiteUtils: calc_elevation, calc_heading
 

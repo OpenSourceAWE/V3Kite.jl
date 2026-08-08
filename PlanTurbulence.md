@@ -427,8 +427,33 @@ strings (25 tests pass). End to end, with `gui.yaml` set to `"default"` and the 
 temporarily at `1.0`, the same `init` yields `1.0` and loads the field — i.e. the YAML now drives
 it, which is exactly what the comment asked for.
 
-## Address second reviewer comment
+## Address second reviewer comment (done)
 The two YAML helpers are copied from KiteModels.jl; rather upstream them
 to KiteUtils now so you don't need the forked code.
 
-Yes, please do that. KiteUtils is checked out
+Yes, please do that. Done: `update_yaml_scalar`/`insert_yaml_scalar_in_section` now live in
+`KiteUtils` (`src/yaml_utils.jl`, released as v0.11.13). `Project.toml`'s `KiteUtils` compat was
+bumped to `0.11.13`, the forked copies were deleted from `src/turbulence_config.jl`, and its two
+call sites now use `KiteUtils.update_yaml_scalar`/`KiteUtils.insert_yaml_scalar_in_section`.
+
+## Improve set_default_turbulence (done)
+The dialog to select a number or default should work similar to select_sim_time.jl of the repo SimpleKiteControllers.jl.
+
+Done: `set_default_turbulence()`'s no-argument path now shows a `RadioMenu`
+(`REPL.TerminalMenus`, added as a `V3Kite` dependency) with `"default"` / `"specific value in
+[0.0, 1.0]..."` / `"quit"`, mirroring `select_sim_time.jl`'s `select_sim_time`. The numeric branch
+delegates to a new `ask_default_turbulence()`, mirroring `ask_sim_time_seconds`: it loops on
+`Base.prompt`, re-asking on an out-of-range or unparsable value and returning `nothing` on a blank
+line. `test/test-default_turbulence.jl` still passes 25/25 (it only exercises the value-argument
+path, so the interactive rewrite added no test surface).
+
+## Cleanup comments
+
+Apply the following rules to the files interface.jl and turbulence_config.jl.
+
+- Inline comments are ONLY allowed when stating a very non-obvious fact, and
+  then keep them to 1 line at most. Give every type/function a docstring ("""
+  not #) instead, but not too verbose, people won't reed it if your docstring is
+  too long, and explain how the code works in the docstring, but not the whole
+  story behind it.
+- Remove or make inline comments 1 line where you see them.

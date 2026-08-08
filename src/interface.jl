@@ -2,11 +2,6 @@ import SymbolicAWEModels: winch_force, tether_length
 using Printf
 
 # ===================== Winch position controller ===================== #
-# Gains for the cascaded winch length controller (see `winch_position_torque!`)
-# are stored in a `WC_Settings` struct loaded from `data/wc_settings.yaml`
-# (see `src/wc_settings.jl`), not hard-coded here. The KCU actuator tape rate
-# limits (`v_depower`/`v_steering`) live in the `kcu:` section of
-# `data/settings.yaml` and are loaded into `Settings` like any other field.
 
 """
     WinchPosController
@@ -17,6 +12,11 @@ proportional loop on the tether length error produces a speed setpoint
 `step!`), and an inner PI loop (`speed_pid`) on the speed error produces a
 winch-torque correction added to a force feed-forward. `v_sp_prev` carries
 the rate-limited speed setpoint between steps.
+
+Gains come from a `WC_Settings` struct loaded from `data/wc_settings.yaml`
+(`src/wc_settings.jl`); the KCU tape rate limits (`v_depower`/`v_steering`)
+live in the `kcu:` section of `data/settings.yaml`, loaded like any other
+`Settings` field.
 """
 Base.@kwdef mutable struct WinchPosController
     "Inner speed PI controller; output is a winch torque correction [N·m]"
@@ -290,6 +290,13 @@ function kite_ref_frame(s::V3KITE)
     return R_b_w[:, 1], R_b_w[:, 2], R_b_w[:, 3]
 end
 
+"""
+    calc_orient_quat(s::V3KITE; viewer=false) -> Vector{Float64}
+
+Return the kite orientation as a quaternion `[w, x, y, z]`. With `viewer=true`,
+build it from a camera-style triad (kite position looking towards `z`, up
+`-x`) instead of the body axes rotated into NED.
+"""
 function calc_orient_quat(s::V3KITE; viewer=false)
     if viewer
         x, _, z = kite_ref_frame(s)
@@ -329,7 +336,10 @@ end
 """
     calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
 
-Determine the heading angle of the kite in radian.
+Determine the heading angle of the kite in radian. Adds a `π` correction
+because `SymbolicAWEModels`' body x-axis points opposite to the Xsens-sensor
+convention `KiteUtils.calc_heading` assumes — the same correction
+`calc_csv_heading` applies to EKF-derived orientation.
 """
 function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
     orientation = orient_euler(s)
@@ -340,9 +350,6 @@ function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
         azimuth = calc_azimuth(s)
     end
     heading = KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
-    # SymbolicAWEModels' body x-axis points opposite to the Xsens-sensor
-    # convention `KiteUtils.calc_heading` assumes (same correction as
-    # `calc_csv_heading` applies to EKF-derived orientation).
     wrap_to_pi(heading + π)
 end
 
@@ -409,9 +416,6 @@ function spring_forces(s::V3KITE)
 end
 
 # ============================ High-level interface ============================ #
-# Two functions, `init` and `step!`, wrap the settle/simulate/log boilerplate
-# (cf. examples/parking.jl) so that an example reduces to `init` plus a loop of
-# `step!` calls.
 
 """
     winch_position_torque!(s::V3KITE, set_length, speed_limit,
@@ -523,6 +527,17 @@ resolved against `data_path`, and the caller's `set_data_path` still holds when
 it returns, so a `save_log`/`load_log` after `init` lands where the caller put
 it. An ABSOLUTE `system_yaml` is honoured as given and ignores `data_path`.
 
+A cached settled geometry is deserialized together with the `AtmosphericModel`
+it was serialized with, and `SystemStructure.am` is `const`, so `settle_wing`'s
+`sys.set = set` cannot re-point it. `init` re-points `am.set` at the live
+`set` and reloads the wind field itself (chosen by `set.v_wind`, ~1.2 GB), so
+`use_turbulence` and other `am`-read settings (`calc_wind_factor`/`calc_rho`)
+never go stale against a cached `.bin`.
+
+The turbulence level itself comes from `data/gui.yaml` (see
+[`get_default_turbulence`](@ref)), a per-checkout preference applied before
+the wind-field decision above, not from the settings YAML directly.
+
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
 the wing*, so it damps bridle vibration without slowing the kite's global motion
@@ -564,11 +579,7 @@ function init(v_wind_gnd, l_tether;
               warmup_time = 0.0,
               warmup_wfc = nothing,
               remake = false)
-    # Every read below is resolved against `data_path` explicitly: `init` must not
-    # move the caller's KiteUtils data path, which outlives the call.
     system_path = joinpath(data_path, system_yaml)
-    # Winch-controller settings fall back to the file named in the `wc_settings`
-    # field of system.yaml.
     isnothing(wc) &&
         (wc = WC_Settings(joinpath(dirname(system_path), wc_settings(system_path))))
     if isnothing(elevation)
@@ -577,7 +588,6 @@ function init(v_wind_gnd, l_tether;
     el_rad = deg2rad(elevation)
     wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)
 
-    # ---- Settling (see examples/parking.jl) ----
     position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
     settle_config = V3SettleConfig(
         v_wind = v_wind_gnd,
@@ -606,23 +616,11 @@ function init(v_wind_gnd, l_tether;
 
     set = sam.set
     set.wind_vec = wind_vec
-    # `set.v_depower`/`set.v_steering` come from the `kcu:` section of
-    # data/settings.yaml (loaded via Settings in settle_wing).
     set.cs_4p = 1.0
 
-    # Turbulence level comes from data/gui.yaml, not from the settings YAML: it is a per-checkout
-    # preference. Applied before the block below, which decides on `use_turbulence` whether to
-    # load a wind field.
     turb = get_default_turbulence(data_path)
     turb !== nothing && (set.use_turbulence = turb)
 
-    # A cached settled geometry is deserialized together with the AtmosphericModel it was
-    # serialized with, and `SystemStructure.am` is const, so `sys.set = set` in `settle_wing`
-    # cannot re-point it: `am.set` still holds the settings captured back then. Everything that
-    # reads `am` — the DAE's `calc_wind_factor`/`calc_rho` and `update_turbulence!` — would
-    # silently use those, e.g. `use_turbulence` still 0 after it was switched on in the YAML.
-    # The wind field is (re)loaded here because it is chosen by `set.v_wind`, which `init` has
-    # just changed; loading one takes a few seconds and ~1.2 GB.
     sam.am.set = set
     clear(sam.am)
     sam.am.wf = set.use_turbulence > 0 ? WindField(sam.am, set.v_wind) : nothing
@@ -630,15 +628,13 @@ function init(v_wind_gnd, l_tether;
     isnothing(dt) && (dt = 1 / set.sample_freq)
     isnothing(sim_time) && (sim_time = set.sim_time)
 
-    # KCU: start at the settled depower/steering so the first step introduces
-    # no geometry jump.
+    # Start at the settled depower/steering so the first step introduces no geometry jump.
     kcu = KCU(set)
     kcu.set_depower = depower_setpoint
     kcu.depower = depower_setpoint
     kcu.set_steering = 0.0
     kcu.steering = 0.0
 
-    # Winch position controller (inner speed PI, torque output).
     speed_pid = DiscretePID(; K = wc.winch_speed_k, Ti = wc.winch_speed_ti,
         Td = false, Ts = dt,
         umin = -wc.winch_torque_limit, umax = wc.winch_torque_limit)
@@ -678,9 +674,8 @@ The tether is not covered — `SymbolicAWEModels` has no per-segment disturbance
 `v_wind_tether` return value of `calc_turbulent_wind` is unused.
 """
 function update_turbulence!(s::V3KITE)
-    # `upwind_dir` must be qualified here and in `step!`: the keyword argument of `step!`
-    # shadows the V3Kite function of the same name.
-    ud = V3Kite.upwind_dir(s)   # NaN if the wind vector has no horizontal component
+    # V3Kite-qualified: step!'s keyword argument of the same name would shadow this call.
+    ud = V3Kite.upwind_dir(s)
     for wing in s.sys.wings
         if s.set.use_turbulence > 0 && isfinite(ud)
             pos = wing.pos_w
@@ -706,7 +701,10 @@ Advance the simulation by `s.dt`, update `s.sys_state` (including
 `rel_depower` (`0..1`) and `rel_steering` (`-1..1`) are routed through the KCU
 actuator model (finite tape speed) before being applied to the geometry.
 `v_wind_gnd` [m/s] and/or `upwind_dir` [rad], if given, update the live wind
-vector `set.wind_vec` (read by the DAE via `get_wind_vec`) before the step.
+vector `set.wind_vec` (read by the DAE via `get_wind_vec`) before the step;
+either may be omitted since KiteUtils keeps `set.v_wind`/`set.upwind_dir` in
+sync with `set.wind_vec` (`use_wind_vec: true`), filling in whichever is
+missing.
 
 The single winch runs in exactly one mode per step: if `set_length` [m] is
 given, the cascaded position controller (`speed_limit` [m/s],
@@ -742,9 +740,6 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     dt = s.dt
     t = s.sys_state.time + dt
 
-    # Optional live wind update (read by the DAE via get_wind_vec).
-    # set.v_wind/set.upwind_dir are kept in sync with set.wind_vec by
-    # KiteUtils (use_wind_vec: true), so they fill in the omitted argument.
     if v_wind_gnd !== nothing || upwind_dir !== nothing
         vw = something(v_wind_gnd, s.set.v_wind)
         ud = upwind_dir === nothing ? deg2rad(s.set.upwind_dir) : upwind_dir
@@ -753,12 +748,9 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     update_turbulence!(s)
 
-    # KCU actuator dynamics: command → finite-speed tape motion → geometry.
-    # The KCU getters must be qualified: V3Kite's calibration.jl defines
-    # get_depower/get_steering(sys, config), which shadow the KitePodModels
-    # (kcu) methods of the same name.
     set_depower_steering(s.kcu, rel_depower, rel_steering)
     KitePodModels.on_timer(s.kcu, dt)
+    # Qualified: calibration.jl's get_depower/get_steering(sys, config) would shadow these.
     dp = KitePodModels.get_depower(s.kcu)
     st = KitePodModels.get_steering(s.kcu)
     set_depower!(s.sys, dp, st, s.gc)
@@ -779,9 +771,6 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     update_sys_state!(s.sys_state, s)
     s.sys_state.time = t
-    # Both channels log the command and the KCU's tape-lagged actual value.
-    # `steering`/`set_steering` are the standard SysState pair; depower has no
-    # `set_depower` field, so its command goes to the spare slot `var_14`.
     s.sys_state.steering = st
     s.sys_state.set_steering = rel_steering
     s.sys_state.var_14 = rel_depower
@@ -854,7 +843,6 @@ function warmup!(s::V3KITE, warmup_time; depower = 0.0, wfc = nothing)
                   set_torque = winch_force_torque!(wfc, s, l_hold))
         end
     end
-    # Discard the warm-up log and re-log the now-relaxed t = 0 row.
     logger, sys_state = create_logger(s.sam, s.steps)
     s.logger = logger
     s.sys_state = sys_state
