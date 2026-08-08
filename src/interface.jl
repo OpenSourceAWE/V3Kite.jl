@@ -76,6 +76,11 @@ WinchForceController(wc::WC_Settings) = WinchForceController(
     am::AtmosphericModel = sam.am
     "Geometry config used by the depower/steering tape conversions"
     gc::V3GeomAdjustConfig = V3GeomAdjustConfig()
+    """
+    Commanded mean ground wind vector [m/s]; `set.wind_vec` equals this except across the
+    solver call, where [`apply_turbulence!`](@ref) replaces it by the turbulent wind.
+    """
+    wind_vec_mean::KiteUtils.SVec3 = zeros(KiteUtils.SVec3)
     "Time step of the high-level `step!` loop [s]"
     dt::Float64 = NaN
     "Current simulation state, updated in place every `step!`"
@@ -647,7 +652,7 @@ function init(v_wind_gnd, l_tether;
 
     s = V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
-        winch_ctrl = winch_ctrl)
+        winch_ctrl = winch_ctrl, wind_vec_mean = wind_vec)
 
     warmup_time > 0 && warmup!(s, warmup_time;
                                depower = depower_setpoint, wfc = warmup_wfc)
@@ -655,38 +660,38 @@ function init(v_wind_gnd, l_tether;
 end
 
 """
-    update_turbulence!(s::V3KITE)
+    apply_turbulence!(s::V3KITE) -> Bool
 
-Refresh the turbulent wind disturbance of every wing, or clear it when
-`s.set.use_turbulence == 0`. Called by [`step!`](@ref) before the integration step.
+Overwrite `s.set.wind_vec` with the turbulent wind sampled at the first wing, and return
+`true` if it did. Called by [`step!`](@ref) immediately before the integration step; the
+caller must restore `s.wind_vec_mean` afterwards whenever this returned `true`.
 
-The DAE gets its wind as `set.wind_vec` scaled by the height-only profile factor at each
-position (`calc_wind_factor`), so only the *deviation* from that mean may be injected here.
-It goes into the wing's `wind_disturb` parameter, which `SymbolicAWEModels` adds to the
-wing's apparent wind. The mean is evaluated at `wing.pos_w`, the same position the DAE uses,
-so that the two cancel exactly.
+`set.wind_vec` is the only per-step wind hook that reaches the whole system: it becomes an
+MTK parameter that `next_step!` re-syncs every step, and the point apparent wind is built
+from it. The wing's `wind_disturb` parameter, used before, is dead on a `PARTICLE_DYNAMICS`
+wing — the per-point VSM solve never sees it.
 
-The disturbance is held constant over the step on purpose: `AtmosphericModels.get_wind` is a
-nearest-grid-point lookup into the Mann field, which would be a discontinuous, non-differentiable
-term if it were evaluated inside the implicit solve.
+The sampled wind already contains the mean at the kite height, so it is divided by
+`calc_wind_factor` at that height before it is written back into the ground vector — the DAE
+multiplies it in again. The clamp mirrors the one `calc_turbulent_wind`/`get_wind` apply
+internally; with `profile_law: 0` the factor is 1 and the division is a no-op.
 
-The tether is not covered — `SymbolicAWEModels` has no per-segment disturbance term, so the
-`v_wind_tether` return value of `calc_turbulent_wind` is unused.
+Since `wind_vec` is a single ground vector, the gust sampled at the kite acts coherently on
+the tether too, which overstates fluctuating tether drag. Returns `false` without touching
+anything when turbulence is off or the mean wind has no horizontal component.
+
+The value is held constant over the step on purpose: `AtmosphericModels.get_wind` is a
+nearest-grid-point lookup into the Mann field, which would be a discontinuous,
+non-differentiable term if it were evaluated inside the implicit solve.
 """
-function update_turbulence!(s::V3KITE)
-    # V3Kite-qualified: step!'s keyword argument of the same name would shadow this call.
-    ud = V3Kite.upwind_dir(s)
-    for wing in s.sys.wings
-        if s.set.use_turbulence > 0 && isfinite(ud)
-            pos = wing.pos_w
-            v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
-            v_mean = calc_wind_factor(s.am, max(1.0, pos[3])) * s.set.wind_vec
-            wing.wind_disturb .= v_turb .- v_mean
-        else
-            wing.wind_disturb .= 0.0
-        end
-    end
-    nothing
+function apply_turbulence!(s::V3KITE)
+    s.set.use_turbulence > 0 || return false
+    ud = upwind_dir(s.wind_vec_mean)
+    isfinite(ud) || return false
+    pos = s.sys.wings[1].pos_w
+    v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
+    s.set.wind_vec = v_turb / calc_wind_factor(s.am, max(pos[3], 10.0))
+    return true
 end
 
 """
@@ -704,7 +709,12 @@ actuator model (finite tape speed) before being applied to the geometry.
 vector `set.wind_vec` (read by the DAE via `get_wind_vec`) before the step;
 either may be omitted since KiteUtils keeps `set.v_wind`/`set.upwind_dir` in
 sync with `set.wind_vec` (`use_wind_vec: true`), filling in whichever is
-missing.
+missing. That mean is also kept on `s.wind_vec_mean`, because
+[`apply_turbulence!`](@ref) borrows `set.wind_vec` for the duration of the
+solver call and a `finally` puts the mean back — including when the step
+fails, so no gust is ever latched into the settings. The restore happens
+*after* `update_sys_state!`, so the logged `v_wind_gnd` is the instantaneous
+wind the kite saw.
 
 The single winch runs in exactly one mode per step: if `set_length` [m] is
 given, the cascaded position controller (`speed_limit` [m/s],
@@ -744,9 +754,8 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
         vw = something(v_wind_gnd, s.set.v_wind)
         ud = upwind_dir === nothing ? deg2rad(s.set.upwind_dir) : upwind_dir
         s.set.wind_vec = wind_vec_from_angles(vw, ud, 0.0)
+        s.wind_vec_mean = s.set.wind_vec
     end
-
-    update_turbulence!(s)
 
     set_depower_steering(s.kcu, rel_depower, rel_steering)
     KitePodModels.on_timer(s.kcu, dt)
@@ -765,11 +774,15 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
         force_to_torque(winch_force(s), s.sys)
     end
 
-    if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval)
-        error("next_step! failed at t=$(round(t, digits=3)) s")
+    turbulent = apply_turbulence!(s)
+    try
+        if !sim_step!(s.sam; set_values = [torque], dt, vsm_interval)
+            error("next_step! failed at t=$(round(t, digits=3)) s")
+        end
+        update_sys_state!(s.sys_state, s)
+    finally
+        turbulent && (s.set.wind_vec = s.wind_vec_mean)
     end
-
-    update_sys_state!(s.sys_state, s)
     s.sys_state.time = t
     s.sys_state.steering = st
     s.sys_state.set_steering = rel_steering

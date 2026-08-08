@@ -5,15 +5,23 @@
 ### Added
 - Turbulent wind at the kite (Mann model, via
   `AtmosphericModels.calc_turbulent_wind`; `AtmosphericModels` compat bumped
-  to `0.3.6`). Unlike `KiteModels.jl`, which writes the turbulent wind
-  straight into model state (`set_v_wind_ground!`), V3Kite's wind enters a
-  ModelingToolkit DAE through a height-only, time-independent
-  `calc_wind_factor`, so turbulence is injected instead as the *deviation*
-  from that mean wind into each wing's `wind_disturb` parameter
-  (`update_turbulence!`, called from `step!`), held constant for one step so
-  the discontinuous nearest-grid-point wind lookup never enters the
-  implicit solve. Tether turbulence is out of scope — `SymbolicAWEModels`
-  has no per-segment disturbance hook yet.
+  to `0.3.6`). `apply_turbulence!`, called from `step!`, samples the turbulent
+  wind at the wing, divides out the height profile factor the DAE will apply
+  again, and writes the result into `set.wind_vec` for the duration of the
+  solver call; a `finally` restores the commanded mean, which is kept on the
+  new `V3KITE.wind_vec_mean` field. The value is held constant over the step so
+  the discontinuous nearest-grid-point wind lookup never enters the implicit
+  solve, and the restore happens after `update_sys_state!`, so the logged
+  `v_wind_gnd` is the instantaneous wind the kite saw.
+
+  **Approximation:** `set.wind_vec` is a single ground vector, so the gust
+  sampled at the kite acts *coherently* on every tether and bridle point as
+  well — with `profile_law: 0` the whole tether feels the kite's gust. That
+  overstates fluctuating tether drag. It is accepted deliberately: `wind_vec`
+  is the only per-step wind hook that reaches the whole system, and the wing's
+  `wind_disturb` parameter (the injection point of the first implementation)
+  is dead on a `PARTICLE_DYNAMICS` wing, whose aero force is a per-point VSM
+  solve that never reads it.
 - `v_wind_gnds`/`rel_turbs` extended to `[3.483, 5.324, 8.163, 9.51]` /
   `[0.342, 0.465, 0.583, 0.626]` in `settings.yaml`, `settings_reelout.yaml`
   and `settings_cabauw.yaml`, closing the gap where `load_windfield` snapped

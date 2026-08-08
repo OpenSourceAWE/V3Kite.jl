@@ -164,4 +164,6 @@ using KitePodModels: KCU
 
     include("test-interface.jl")
 
+    include("test-turbulence-injection.jl")
+
 end
