@@ -23,7 +23,7 @@ materials:
 # Point(idx, pos_cad, type; wing_idx=1, transform_idx=1,
 #       mass=0.0, body_frame_damping=0.0,
 #       world_frame_damping=0.0)
-# type: STATIC, DYNAMIC, DYNAMIC, QUASI_STATIC
+# type: STATIC, DYNAMIC, QUASI_STATIC
 # pos_cad is a 3-element array [x, y, z]
 
 points:
