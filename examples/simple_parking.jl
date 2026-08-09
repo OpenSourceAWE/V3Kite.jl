@@ -17,7 +17,7 @@ At the end it prints the AoA ripple metrics (see `src/ripple_metrics.jl` and
 PlanSuppressOscillations.md) together with the solver cost and the wall clock, so
 a change to e.g. the body-frame damping can be judged on both the oscillation and
 the simulation speed. The numbers are only comparable across runs that fix
-PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, SIM_TIME and DT.
+PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, REL_STEERING, SIM_TIME and DT.
 """
 
 using Pkg
@@ -37,10 +37,11 @@ using LinearAlgebra: norm
 
 PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
-DT               = 0.05     # Simulation timestep [s]
+DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
+REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
 
@@ -61,8 +62,8 @@ steps_done = 0
 t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0,
-              vsm_interval = VSM_INTERVAL)
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING,
+              set_length = l0, vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
     end
