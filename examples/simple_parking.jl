@@ -40,6 +40,7 @@ SIM_TIME         = 10.0     # Total simulation time [s]
 DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
+USE_BRAKE        = true     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero()
@@ -52,6 +53,9 @@ set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = [0.0, 0.0, 40.0],
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
+
+# `init` leaves the winch un-braked; brake it to park at constant tether length.
+s.sys.winches[1].brake = USE_BRAKE
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
