@@ -491,7 +491,8 @@ end
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
          aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
-         warmup_time=0.0, warmup_wfc=nothing, remake=false) -> V3KITE
+         use_turbulence=nothing, warmup_time=0.0, warmup_wfc=nothing,
+         remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -543,7 +544,11 @@ never go stale against a cached `.bin`.
 The turbulence level comes from `data/gui.yaml` (see
 [`get_default_turbulence`](@ref)), a per-checkout preference applied before the
 wind-field decision above; its `"default"` keyword leaves the settings YAML in
-charge.
+charge. `use_turbulence` overrides that file: pass a level in `[0.0, 1.0]`, or
+the `"default"` keyword to keep the settings YAML. It is what a package driving
+V3Kite uses to keep the preference in its OWN `data/`, since `data_path` must
+be the directory holding the model geometry and is read-only for an installed
+V3Kite.
 
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
@@ -587,6 +592,7 @@ function init(v_wind_gnd, l_tether;
               aero_mode = SymbolicAWEModels.AeroDirect(),
               data_path = v3_data_path(),
               cache_path = nothing,
+              use_turbulence = nothing,
               warmup_time = 0.0,
               warmup_wfc = nothing,
               remake = false)
@@ -631,7 +637,7 @@ function init(v_wind_gnd, l_tether;
     set.wind_vec = wind_vec
     set.cs_4p = 1.0
 
-    turb = get_default_turbulence(data_path)
+    turb = something(use_turbulence, get_default_turbulence(data_path), Some(nothing))
     turb isa Real && (set.use_turbulence = turb)
 
     sam.am.set = set
