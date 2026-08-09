@@ -57,11 +57,9 @@ try
             s.set.use_turbulence = 0.5
             clear(s.am)
             idx = findmin(abs.(s.set.v_wind_gnds .- s.set.v_wind))[2]
-            field = AtmosphericModels.calc_full_name(s.set.v_wind_gnds[idx];
-                basename = AtmosphericModels.calc_basename(s.set),
-                rel_sigma = s.set.use_turbulence) * ".npz"
-            if !isfile(field)
-                @info "Skipping end-to-end turbulence test: $field not found"
+            field = AtmosphericModels.find_windfield(s.set, s.set.v_wind_gnds[idx])
+            if isnothing(field)
+                @info "Skipping end-to-end turbulence test: no wind field for $(s.set.v_wind_gnds[idx]) m/s"
             else
                 s.am.wf = WindField(s.am, s.set.v_wind)
                 l0 = unstretched_length(s)

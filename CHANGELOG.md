@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+- `AtmosphericModels` compat raised to `0.3.8`, which applies `use_turbulence` when the
+  wind field is read instead of baking it into the stored field. One `windfield_*.npz`
+  per ground wind speed now serves every turbulence level, so `set_default_turbulence` no
+  longer warns that a value with two decimals shares a file, and switching level costs no
+  regeneration. Existing `windfield_<grid>_1.0_<speed>.npz` files stay valid under the
+  name with `_1.0` dropped; files generated at any other level are pre-scaled and must be
+  deleted. 0.3.8 also moves new wind fields out of `data/` into a shared scratchspace
+  (`AtmosphericModels.windfield_path()`); the ones already in `data/` are still found
+  there, and can be moved into the scratchspace to be shared with the other repos.
+
 ### Added
 - `init(...; use_turbulence)`, which overrides the `default_turbulence` of
   `data/gui.yaml`. A package driving V3Kite can then keep the preference in its

@@ -100,9 +100,9 @@ turbulence, it is not an absolute intensity. The value takes effect at the next 
 of the active settings YAML instead of overriding it. Use it whenever turbulence belongs to the
 scenario rather than to this checkout — a numeric value here silently wins over the settings YAML.
 
-A wind field is stored per `(grid, use_turbulence, ground wind speed)`, so a value with no matching
-`data/windfield_*.npz` makes the next run generate one (~1.2 GB, tens of seconds). Note the filename
-keeps only one decimal of `use_turbulence`, so e.g. 0.30 and 0.34 would share a file.
+A wind field is stored per `(grid, ground wind speed)` and scaled by `use_turbulence` when read, so
+any value here works off the same `windfield_*.npz`; only a new ground wind speed makes the next run
+generate one (~1.2 GB, tens of seconds) in `AtmosphericModels.windfield_path()`.
 """
 function set_default_turbulence(value::Union{Nothing, Real, AbstractString} = nothing;
                                 data_path = get_data_path())
@@ -142,11 +142,6 @@ function set_default_turbulence(value::Union{Nothing, Real, AbstractString} = no
         if new_value < 0.0 || new_value > 1.0
             println("Value out of range. Please use a value between 0.0 and 1.0")
             return nothing
-        end
-        if round(new_value, digits = 1) != new_value
-            # calc_full_name formats this with "%.1f", so two values differing only in the second decimal share a file.
-            println("Warning: the wind-field filename keeps only one decimal of this value; " *
-                    "$new_value shares its file with $(round(new_value, digits = 1)).")
         end
     end
 
