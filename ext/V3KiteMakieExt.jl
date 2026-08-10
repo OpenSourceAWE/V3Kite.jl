@@ -176,7 +176,7 @@ Extra points connected per-strut and LE.
 - `extra_groups`: Optional groups from load_extra_points
 - `dir::Symbol`: Viewing direction (:side, :front, or :top)
 - `labels`: Optional vector of labels for each sys_struct
-- `point_idxs`: Optional vector of point indices to plot (default: WING points only)
+- `point_idxs`: Optional vector of point indices to plot (default: wing nodes only)
 - `point_size`: Size of simulation points (default: 10)
 - `extra_point_size`: Size of extra points (default: 8)
 - `figsize`: Figure size tuple (default: (560, 420))
@@ -279,11 +279,9 @@ function V3Kite.plot_body_frame_local(sys_structs;
             end
         end
 
-        # Twist for WING point pairs
         if show_twist
             wing_pts = sort(
-                [p for p in points
-                 if p.type == SymbolicAWEModels.WING],
+                [p for p in points if p.is_wing_node],
                 by=p -> p.idx)
             span_ys = Float64[]
             aoas = Float64[]
@@ -314,9 +312,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
                  labels[s_idx]))
         end
 
-        # Select points to plot: use point_idxs if provided, otherwise WING points
         if isnothing(point_idxs)
-            plot_points = [p for p in points if p.type == SymbolicAWEModels.WING]
+            plot_points = [p for p in points if p.is_wing_node]
         else
             plot_points = [points[i] for i in point_idxs if i <= length(points)]
         end
@@ -731,8 +728,7 @@ function V3Kite.plot_twist_dist(sys_structs;
         end
 
         wing_pts = sort(
-            [p for p in points
-             if p.type == SymbolicAWEModels.WING],
+            [p for p in points if p.is_wing_node],
             by=p -> p.idx)
         le_pos = [wing_pts[i].pos_b
                   for i in 1:2:length(wing_pts)]
@@ -1558,6 +1554,201 @@ function V3Kite.plot_2d_trajectory(
 end
 
 # =====================================================================
+# record_2d_trajectory — animated growing-trail video
+# =====================================================================
+
+"""
+    build_2d_trajectory_anim(logs; kwargs...) -> NamedTuple
+
+Build the figure, observables and per-frame update closure for
+an animated 2D y-z trajectory (growing velocity-colored trail).
+Returns `(fig, n_frames, update_frame!, get_time)`. Shared by
+`record_2d_trajectory` (and any future interactive replay).
+"""
+function build_2d_trajectory_anim(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
+        gradient::Symbol=:vel,
+        tapes=nothing,
+        labels=nothing,
+        colormap=:viridis,
+        size=(560, 420),
+        labelsize=20,
+        t_start=nothing,
+        t_end=nothing,
+        frame_indexes=nothing)
+
+    if gradient == :steering && isnothing(tapes)
+        error("tapes required for gradient=:steering")
+    end
+
+    log_ranges, tape_ranges = compute_ranges(
+        logs, tapes, t_start, t_end)
+
+    y_data = Vector{Vector{Float64}}(undef, length(logs))
+    z_data = Vector{Vector{Float64}}(undef, length(logs))
+    val_data = Vector{Vector{Float64}}(undef, length(logs))
+    time_data = Vector{Vector{Float64}}(undef, length(logs))
+    for (i, lg) in enumerate(logs)
+        sl = lg.syslog
+        rng = log_ranges[i]
+        y_data[i] = [sl.Y[k][1] for k in rng]
+        z_data[i] = [sl.Z[k][1] for k in rng]
+        time_data[i] = [collect(sl.time)[k] for k in rng]
+        val_data[i] = gradient == :vel ?
+            [norm(sl.vel_kite[k]) for k in rng] :
+            collect(Float64, tapes[i].steering[tape_ranges[i]])
+    end
+
+    all_vals = reduce(vcat, val_data)
+    vmin, vmax = extrema(all_vals)
+    all_y = reduce(vcat, y_data)
+    all_z = reduce(vcat, z_data)
+
+    fig = Figure(; size)
+    ax = Axis(fig[1, 1];
+        xlabel=L"y \; [m]", ylabel=L"z \; [m]",
+        xlabelsize=labelsize, ylabelsize=labelsize,
+        aspect=DataAspect())
+    pad_y = 0.05 * (maximum(all_y) - minimum(all_y) + eps())
+    pad_z = 0.05 * (maximum(all_z) - minimum(all_z) + eps())
+    limits!(ax,
+        minimum(all_y) - pad_y, maximum(all_y) + pad_y,
+        minimum(all_z) - pad_z, maximum(all_z) + pad_z)
+
+    pts_obs = [Observable(Point2f[]) for _ in logs]
+    col_obs = [Observable(Float64[]) for _ in logs]
+    head_obs = [Observable(Point2f[]) for _ in logs]
+    lw = 4.0
+    for i in reverse(eachindex(logs))
+        lines!(ax, pts_obs[i];
+            color=col_obs[i], colormap,
+            colorrange=(vmin, vmax), linewidth=lw)
+        if i > 1
+            lines!(ax, pts_obs[i];
+                color=:white, linewidth=lw,
+                linestyle=Makie.Linestyle([0, 1, 5, 6]))
+        end
+    end
+    for i in reverse(eachindex(logs))
+        scatter!(ax, head_obs[i];
+            color=:black, markersize=12,
+            strokecolor=:white, strokewidth=1.5,
+            marker=:circle)
+    end
+
+    # Frame markers appear once the trail reaches their time.
+    frame_specs = NamedTuple[]
+    if !isnothing(frame_indexes)
+        sl1 = logs[1].syslog
+        for (j, (frame_nr, syslog_idx)) in
+                enumerate(frame_indexes)
+            clr = FRAME_COLORS[mod1(j, length(FRAME_COLORS))]
+            t_frame = collect(sl1.time)[syslog_idx]
+            pts = Point2f[]
+            for lg in logs
+                sl = lg.syslog
+                t_all = collect(sl.time)
+                idx = argmin(abs.(t_all .- t_frame))
+                push!(pts, Point2f(sl.Y[idx][1], sl.Z[idx][1]))
+            end
+            obs = Observable(Point2f[])
+            scatter!(ax, obs; color=clr, markersize=14,
+                marker=:circle)
+            push!(frame_specs,
+                (; frame_nr, clr, t_frame, pts, obs))
+        end
+    end
+
+    cb_label = gradient == :vel ?
+        L"v_{\text{k}} \; [m/s]" : L"u_{\text{s}} \; [-]"
+    Colorbar(fig[2, 1]; colormap,
+        colorrange=(vmin, vmax), label=cb_label,
+        labelsize, vertical=false, flipaxis=false)
+    rowgap!(fig.layout, 1, 8)
+
+    legend_elems = []
+    legend_labels = String[]
+    for (i, _) in enumerate(logs)
+        lbl = isnothing(labels) ? "trajectory $i" : labels[i]
+        llw = i == 1 ? 4.0 : 2.5
+        ls = i == 1 ? :solid : Makie.Linestyle([0, 1, 3, 4])
+        push!(legend_elems, [LineElement(;
+            color=:black, linewidth=llw, linestyle=ls)])
+        push!(legend_labels, lbl)
+    end
+    for spec in frame_specs
+        push!(legend_elems, [MarkerElement(color=spec.clr,
+            marker=:circle, markersize=10)])
+        push!(legend_labels, "frame $(spec.frame_nr)")
+    end
+    if !isempty(legend_labels)
+        axislegend(ax, legend_elems, legend_labels;
+            labelsize=14, position=:lb,
+            margin=(0, 0, 0, 0), padding=(6, 6, 6, 6))
+    end
+
+    n_frames = length(time_data[1])
+    function update_frame!(frame)
+        t = time_data[1][frame]
+        for i in eachindex(logs)
+            idx = max(1, searchsortedlast(time_data[i], t))
+            pts_obs[i][] = Point2f.(
+                y_data[i][1:idx], z_data[i][1:idx])
+            col_obs[i][] = val_data[i][1:idx]
+            head_obs[i][] = [Point2f(
+                y_data[i][idx], z_data[i][idx])]
+        end
+        for spec in frame_specs
+            spec.obs[] = t >= spec.t_frame ? spec.pts : Point2f[]
+        end
+    end
+
+    get_time(frame) = time_data[1][frame]
+    return (; fig, n_frames, update_frame!, get_time)
+end
+
+"""
+    record_2d_trajectory(logs, filename; gradient=:vel,
+        tapes, labels, framerate=30, kwargs...)
+
+Animate the 2D y-z trajectory as a growing velocity-colored
+trail and write it to `filename` (format from the extension).
+The 2D analogue of `SymbolicAWEModels.record`. Pass a single
+log or a vector of logs; with multiple logs the first is drawn
+solid on top and the rest dashed. GLMakie must be active.
+"""
+function V3Kite.record_2d_trajectory(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog},
+        filename::String;
+        framerate::Int=30,
+        px_per_unit::Real=2.0,
+        kwargs...)
+
+    anim = build_2d_trajectory_anim(logs; kwargs...)
+    println("Recording 2D trajectory to: $filename")
+    println("Framerate: $framerate fps")
+    println("Total frames: $(anim.n_frames)")
+    Makie.record(anim.fig, filename, 1:anim.n_frames;
+            framerate, px_per_unit) do frame
+        anim.update_frame!(frame)
+        if frame % max(1, div(anim.n_frames, 10)) == 0 ||
+                frame == anim.n_frames
+            pct = round(100 * frame / anim.n_frames; digits=1)
+            println("  Progress: $pct% " *
+                "($frame/$(anim.n_frames) frames)")
+        end
+    end
+    println("Video saved: $filename")
+    return anim.fig
+end
+
+function V3Kite.record_2d_trajectory(
+        lg::SymbolicAWEModels.KiteUtils.SysLog,
+        filename::String; kwargs...)
+    return V3Kite.record_2d_trajectory([lg], filename; kwargs...)
+end
+
+# =====================================================================
 # plot_2d_panels — time-series subplots
 # =====================================================================
 
@@ -2119,6 +2310,67 @@ function V3Kite.plot_2d_panels(
 
 
     return fig
+end
+
+# =====================================================================
+# record_2d_panels — panels with a sweeping time cursor
+# =====================================================================
+
+"""
+    record_2d_panels(logs, filename; framerate=30,
+        px_per_unit=2.0, t_start=nothing, t_end=nothing, kwargs...)
+
+Animate the 2D time-series panels with a vertical cursor sweeping
+across all panels, written to `filename` (format from the
+extension). Builds the static panels via [`plot_2d_panels`](@ref)
+(all other kwargs pass through) and overlays the moving cursor.
+GLMakie must be active.
+"""
+function V3Kite.record_2d_panels(
+        logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog},
+        filename::String;
+        framerate::Int=30,
+        px_per_unit::Real=2.0,
+        t_start=nothing,
+        t_end=nothing,
+        kwargs...)
+
+    fig = V3Kite.plot_2d_panels(logs; t_start, t_end, kwargs...)
+    axes = [c for c in fig.content
+            if c isa Axis && c.xaxisposition[] == :bottom]
+    isempty(axes) && error("No panels to record")
+
+    log_ranges, _ = compute_ranges(
+        [logs[1]], nothing, t_start, t_end)
+    times = [collect(logs[1].syslog.time)[k]
+             for k in log_ranges[1]]
+    cursor = Observable([times[1]])
+    for ax in axes
+        vlines!(ax, cursor; color=:red, linewidth=1.5)
+    end
+
+    n_frames = length(times)
+    println("Recording 2D panels to: $filename")
+    println("Framerate: $framerate fps")
+    println("Total frames: $n_frames")
+    Makie.record(fig, filename, 1:n_frames;
+            framerate, px_per_unit) do frame
+        cursor[] = [times[frame]]
+        if frame % max(1, div(n_frames, 10)) == 0 ||
+                frame == n_frames
+            pct = round(100 * frame / n_frames; digits=1)
+            println("  Progress: $pct% " *
+                "($frame/$n_frames frames)")
+        end
+    end
+    println("Video saved: $filename")
+    return fig
+end
+
+function V3Kite.record_2d_panels(
+        lg::SymbolicAWEModels.KiteUtils.SysLog,
+        filename::String; kwargs...)
+    return V3Kite.record_2d_panels([lg], filename; kwargs...)
 end
 
 end # module

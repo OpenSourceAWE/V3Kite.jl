@@ -21,15 +21,17 @@ Base.@kwdef mutable struct V3SettleConfig
     system_yaml::String = "system.yaml"
 
     # Simulation parameters
-    num_steps::Int = 8000
+    num_steps::Int = 1600
     num_substeps::Int = 1
-    dt::Float64 = 0.01
+    dt::Float64 = 0.05
 
     # Damping
     world_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    decay_steps::Int = 2000
-    body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
+    # Body-frame damping decays linearly over `decay_steps`, floored elementwise
+    # at `min_damping`; world-frame damping decays all the way to zero
+    min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
+    decay_steps::Int = 400
+    body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 40.0]
     # Per-point overrides applied AFTER body_damping
     body_damping_overrides::Vector{
         Tuple{UnitRange{Int}, Vector{Float64}}} =
@@ -57,7 +59,91 @@ Base.@kwdef mutable struct V3SettleConfig
     course_correction_mode::Symbol = :course
 
     # Model options
+    aero_mode::SymbolicAWEModels.AbstractAeroModel =
+        SymbolicAWEModels.AeroDirect()
     fix_sphere_idxs::Vector{Int} = Int[]
+end
+
+"""
+    settled_struct_path(config, init_row; data_path=nothing,
+                        cache_path=nothing) -> String
+
+Path of the serialized settled `SystemStructure` for `config` and
+`init_row`. Deterministic from the geometry adjustments,
+depower/steering, wind speed, tether length, damping, the elevation
+implied by `init_row` and gravity, so the same flight state always
+maps to the same file. Settings are read from `data_path`; the file
+lives under `cache_path` (default
+[`default_cache_path`](@ref)`(data_path)`).
+"""
+function settled_struct_path(config::V3SettleConfig, init_row;
+                             data_path=nothing, cache_path=nothing)
+    if isnothing(data_path)
+        data_path = v3_data_path()
+    end
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
+    gc = config.geom
+    dp_reduction = gc.reduce_depower ?
+        gc.depower_reduction : 0.0
+    st_reduction = gc.reduce_steering ?
+        gc.steering_reduction : 0.0
+    dp_norm = isnothing(config.end_depower) ?
+        init_row.depower : config.end_depower / 100.0
+    st_norm = init_row.steering
+    depower_tape = depower_percentage_to_length(
+        dp_norm * 100.0;
+        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
+    L_left, L_right = steering_percentage_to_lengths(
+        st_norm * 100.0;
+        l0_base=V3_STEERING_L0_BASE - st_reduction)
+    tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
+    te_f = gc.reduce_te ? gc.te_frac : 1.0
+    suffix = build_geom_suffix(depower_tape,
+        L_left, L_right, tip_red, te_f)
+    el_deg = rad2deg(KiteUtils.calc_elevation(
+        [init_row.x, init_row.y, init_row.z]))
+    suffix *= "_vapp$(round(config.v_wind, digits=2))" *
+        "_lt$(Int(round(config.tether_length)))" *
+        "_el$(num_tag(round(el_deg, digits=1)))" *
+        "_g$(Int(round(config.g_earth * 10)))" *
+        "_sys$(splitext(basename(config.system_yaml))[1])"
+    yaml_kcu_mass = Settings(joinpath(data_path, config.system_yaml)).kcu_mass
+    resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
+        (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
+    if !isnothing(resolved_kcu_mass)
+        suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
+    end
+    suffix *= "_bd$(num_tag(config.body_damping))"
+    for (rng, damp) in config.body_damping_overrides
+        suffix *= "_bd$(first(rng))t$(last(rng))-$(num_tag(damp))"
+    end
+    if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
+        suffix *= "_wd$(num_tag(config.world_damping))" *
+                  "_md$(num_tag(config.min_damping))"
+    end
+    return joinpath(cache_path,
+        "settled_$(settled_cache_tag())_$(suffix).bin")
+end
+
+"""
+    load_settled_struct(config, init_row;
+                        data_path=nothing, cache_path=nothing,
+                        set=nothing)
+
+Deserialize the settled `SystemStructure` for `config`/`init_row`
+(see [`settled_struct_path`](@ref)), assigning `set` to it when
+given. Errors when the file is missing; run [`settle_wing`](@ref)
+first to create it.
+"""
+function load_settled_struct(config::V3SettleConfig, init_row;
+                             data_path=nothing, cache_path=nothing,
+                             set=nothing)
+    path = settled_struct_path(config, init_row; data_path, cache_path)
+    isfile(path) ||
+        error("No settled struct at $path; run settle_wing first")
+    sys = deserialize(path)
+    isnothing(set) || (sys.set = set)
+    return sys
 end
 
 """
@@ -208,57 +294,9 @@ function settle_wing(config::V3SettleConfig, init_row;
     gc = config.geom
     gc.tether_length = config.tether_length
 
-    dp_reduction = gc.reduce_depower ?
-        gc.depower_reduction : 0.0
-    st_reduction = gc.reduce_steering ?
-        gc.steering_reduction : 0.0
-    dp_norm = isnothing(config.end_depower) ?
-        init_row.depower : config.end_depower / 100.0
-    st_norm = init_row.steering
-    depower_tape = depower_percentage_to_length(
-        dp_norm * 100.0;
-        l0_base=V3_DEPOWER_L0_BASE - dp_reduction)
-    L_left, L_right = steering_percentage_to_lengths(
-        st_norm * 100.0;
-        l0_base=V3_STEERING_L0_BASE - st_reduction)
-    tip_red = gc.reduce_tip ? gc.tip_reduction : 0.0
-    te_f = gc.reduce_te ? gc.te_frac : 1.0
-    suffix = build_geom_suffix(depower_tape,
-        L_left, L_right, tip_red, te_f)
-    # Elevation arrives through `init_row`, not `config`, but selects its own equilibrium.
-    el_deg = rad2deg(KiteUtils.calc_elevation(
-        [init_row.x, init_row.y, init_row.z]))
-    suffix *= "_vapp$(round(config.v_wind, digits=2))" *
-        "_lt$(Int(round(config.tether_length)))" *
-        "_el$(num_tag(round(el_deg, digits=1)))" *
-        "_g$(Int(round(config.g_earth * 10)))" *
-        "_sys$(splitext(basename(config.system_yaml))[1])"
-    # Mirrors the config/settings-YAML fallback in `setup_settling_model`,
-    # so the cache key changes whenever the resolved KCU mass changes.
-    yaml_kcu_mass = Settings(joinpath(data_path, config.system_yaml)).kcu_mass
-    resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
-        (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
-    if !isnothing(resolved_kcu_mass)
-        suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
-    end
-    # Damping belongs in the key: `setup_settling_model` writes it into the
-    # points' `body_frame_damping`, which is serialized with the geometry, so a
-    # cached file carries whatever damping produced it. Without this, changing
-    # `body_damping` against a warm cache silently changes nothing.
-    suffix *= "_bd$(num_tag(config.body_damping))"
-    for (rng, damp) in config.body_damping_overrides
-        suffix *= "_bd$(first(rng))t$(last(rng))-$(num_tag(damp))"
-    end
-    # World-frame damping only shapes the settling transient (it decays to
-    # `min_damping`), but it still moves the equilibrium it converges to.
-    if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
-        suffix *= "_wd$(num_tag(config.world_damping))" *
-                  "_md$(num_tag(config.min_damping))"
-    end
-    # The only thing settling writes, hence the only thing needing a writable dir.
     cache_path != data_path && mkpath(cache_path)
-    dest_struc = joinpath(
-        cache_path, "settled_$(settled_cache_tag())_$(suffix).bin")
+    dest_struc = settled_struct_path(
+        config, init_row; data_path, cache_path)
     source_struc = joinpath(
         data_path, config.source_struc_path)
     source_aero = joinpath(
@@ -337,7 +375,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+            aero_mode=config.aero_mode)
         sam = SymbolicAWEModel(set, sys)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
@@ -370,7 +409,8 @@ function setup_settling_model(config::V3SettleConfig;
 
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+        aero_mode=config.aero_mode)
 
     # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
     # otherwise fall back to the `kcu_mass` field of the active settings YAML
@@ -383,8 +423,7 @@ function setup_settling_model(config::V3SettleConfig;
 
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_damping)
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, config.body_damping)
+    set_body_frame_damping!(sys, config.body_damping)
     for (rng, damp) in config.body_damping_overrides
         SymbolicAWEModels.set_body_frame_damping(
             sys, damp, rng)
@@ -458,11 +497,16 @@ function run_power_zone_settling!(config::V3SettleConfig;
     failed = false
     try
         for step in 1:config.num_steps
-            damping = max(config.world_damping *
-                (1.0 - step / config.decay_steps),
-                config.min_damping)
+            decay = max(0.0, 1.0 - step / config.decay_steps)
+            decayed(x) = max.(x .* decay, config.min_damping)
+            damping = decayed(config.body_damping)
             SymbolicAWEModels.set_world_frame_damping(
-                sys, damping)
+                sys, config.world_damping .* decay)
+            set_body_frame_damping!(sys, damping)
+            for (rng, damp) in config.body_damping_overrides
+                SymbolicAWEModels.set_body_frame_damping(
+                    sys, decayed(damp), rng)
+            end
 
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)
@@ -479,7 +523,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
             SymbolicAWEModels.reposition!(
                 sys.transforms, sys)
             SymbolicAWEModels.reinit!(
-                sam, sam.prob, SymbolicAWEModels.FBDF())
+                sam, sam.prob, SymbolicAWEModels.FBDF(); prn=false)
 
             for sub in 1:config.num_substeps
                 global_step =
@@ -551,6 +595,9 @@ function run_power_zone_settling!(config::V3SettleConfig;
     # `settle_wing` turns this into `settle_failed = true`.
     failed && error("Settling diverged before completing " *
                     "$(config.num_steps) steps; geometry not serialized")
+
+    # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
+    SymbolicAWEModels.reposition!(sys.transforms, sys)
 
     # Copy settled world positions into CAD slots so
     # that copy_cad_to_world! during init! restores

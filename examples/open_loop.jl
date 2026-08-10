@@ -15,6 +15,7 @@ end
 
 using V3Kite
 using GLMakie
+using MakieControlPlots
 using CairoMakie
 GLMakie.activate!()
 using SymbolicAWEModels
@@ -39,7 +40,9 @@ RAMP_START_US = 3.0
 RAMP_END_US = 5.0
 
 SIM_TIME = 60.0
-FPS = 120
+FPS = 20
+VSM_INTERVAL = 1   # steps between VSM aero solves
+AERO_MODE = ContinuousAero()
 
 # =============================================================================
 # Settling setup (matches flight_replay)
@@ -59,14 +62,16 @@ wind_vec = [V_WIND, 0.0, 0.0]
 settle_config = V3SettleConfig(
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    dt = 0.001,
-    num_steps = 400,
-    num_substeps = 5,
+    dt = 0.05,
+    num_steps = 80,
+    num_substeps = 1,
+    decay_steps = 30,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = UP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 gc = settle_config.geom
 
@@ -111,7 +116,7 @@ for step in 1:n_steps
     push!(tape_steering_pct, rf_us * US * 100)
     push!(tape_depower_pct, UP * 100)
 
-    if !sim_step!(sam; set_values=[0.0], dt, vsm_interval=1)
+    if !sim_step!(sam; set_values=[0.0], dt, vsm_interval = VSM_INTERVAL)
         @error "Simulation failed" step
         break
     end

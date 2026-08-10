@@ -490,8 +490,9 @@ end
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
-         data_path=v3_data_path(), cache_path=nothing, use_turbulence=nothing,
-         warmup_time=0.0, warmup_wfc=nothing, remake=false) -> V3KITE
+         aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
+         use_turbulence=nothing, warmup_time=0.0, warmup_wfc=nothing,
+         remake=false) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -507,7 +508,8 @@ length-controller gains; when `nothing` (the default) they are loaded from the
 file named in the `wc_settings` field of `system.yaml` (see `WC_Settings`).
 `system_yaml` names the system-YAML file (default `"system.yaml"`) that points
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
-alternate config.
+alternate config. `aero_mode` selects the aerodynamics model used for settling
+and the returned model (default `AeroDirect()`).
 
 `data_path` is the directory the geometry/settings YAMLs are READ from,
 defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
@@ -551,8 +553,11 @@ V3Kite.
 `body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
 applied to every point during settling. It acts on point velocity *relative to
 the wing*, so it damps bridle vibration without slowing the kite's global motion
-(unlike world-frame damping). It is baked into the settled geometry and carries
-over into the returned model, so it also forms part of the settling cache key —
+(unlike world-frame damping). It is the value settling *starts* from: over
+`decay_steps` it decays linearly to the `min_damping` floor, and that floor is
+what the returned model runs with. It is baked into the settled geometry and
+carries over into the returned model, so it also forms part of the settling
+cache key —
 changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
 
@@ -561,7 +566,7 @@ trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solve
 steps several-fold at unchanged settled trim, but it also resists the deformation
 that produces steering and so **reduces the turn rate**. Use in-plane damping for
 parked/quasi-static runs, not for validating turning maneuvers, and note that
-settling goes unstable at `dt = 0.001` somewhere above 15. See
+settling goes unstable somewhere above 15. See
 PlanSuppressOscillations.md for the sweep.
 
 `warmup_time` [s] runs the returned model forward that long with the controls
@@ -584,6 +589,7 @@ function init(v_wind_gnd, l_tether;
               wc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
+              aero_mode = SymbolicAWEModels.AeroDirect(),
               data_path = v3_data_path(),
               cache_path = nothing,
               use_turbulence = nothing,
@@ -603,15 +609,17 @@ function init(v_wind_gnd, l_tether;
     settle_config = V3SettleConfig(
         v_wind = v_wind_gnd,
         tether_length = l_tether,
-        dt = 0.001,
-        num_steps = 400,
-        num_substeps = 5,
+        dt = 0.05,
+        num_steps = 40,
+        num_substeps = 1,
+        decay_steps = 30,
         body_damping = body_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
         geom = gc,
         system_yaml = system_yaml,
+        aero_mode = aero_mode,
     )
     @info "init: settling V3 model at rel_depower = $depower_setpoint..."
     sam, _, settle_failed = settle_wing(settle_config;
@@ -821,7 +829,7 @@ held at `depower` and the winch in the mode the run will use, and afterwards
 replace the logger and `sys_state` so the run's first logged row is again
 `t = 0`. Called by [`init`](@ref) when `warmup_time > 0`.
 
-`settle_wing` returns an equilibrium of the SETTLING model (`dt = 0.001`, heavily
+`settle_wing` returns an equilibrium of the SETTLING model (heavily
 damped, winch braked), which is not a fixed point of the model the run
 integrates. Without a warm-up that difference is a decaying transient over the
 first second of every log, sharpest in the logged L/D. This is real integration,

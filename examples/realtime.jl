@@ -23,9 +23,11 @@ end
 using V3Kite
 using GLMakie
 using SymbolicAWEModels
+using MakieControlPlots
 using LinearAlgebra
 using Statistics
 using Printf
+using Dates
 
 # =============================================================================
 # Configuration
@@ -42,9 +44,11 @@ UP = 0.25              # Depower fraction [0, 1]
 STEERING_TARGET = 15.0     # Target % when key held
 STEERING_RAMP_RATE = 20.0  # %/s ramp speed
 
-SIM_TIME = 60.0
-FPS = 120
+MAX_TIME = 1000.0
+FPS = 20
+VSM_INTERVAL = 1   # steps between VSM aero solves
 DISPLAY_FPS = 10
+AERO_MODE = ContinuousAero()
 vector_scale = 1.0
 
 # Keyboard control
@@ -53,8 +57,9 @@ max_depower_pct = 50.0
 
 # Recording
 record_video = false
-output_filename = joinpath(
-    v3_data_path(), "v3_realtime.mp4")
+run_name = "realtime_v3_" *
+    Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
+output_filename = joinpath(v3_data_path(), run_name * ".mp4")
 
 # =============================================================================
 # Settling setup (matches open_loop / flight_replay)
@@ -74,14 +79,16 @@ wind_vec = [V_WIND, 0.0, 0.0]
 settle_config = V3SettleConfig(
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    dt = 0.001,
-    num_steps = 400,
-    num_substeps = 5,
+    dt = 0.05,
+    num_steps = 40,
+    num_substeps = 1,
+    decay_steps = 30,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = UP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 gc = settle_config.geom
 
@@ -162,16 +169,9 @@ end
 # Simulation loop
 # =============================================================================
 
-n_steps = if record_video
-    Int(round(FPS * SIM_TIME))
-else
-    typemax(Int)
-end
+n_steps = Int(round(FPS * MAX_TIME))
 
-if record_video
-    logger, sys_state = create_logger(
-        sam, Int(round(FPS * SIM_TIME)))
-end
+logger, sys_state = create_logger(sam, n_steps)
 
 io = if record_video
     VideoStream(scene; framerate=DISPLAY_FPS)
@@ -179,7 +179,7 @@ else
     nothing
 end
 
-wing_points = [p for p in sys.points if p.type == WING]
+wing_points = [p for p in sys.points if p.is_wing_node]
 
 @info "Starting real-time simulation..." dt FPS
 start_time = time()
@@ -205,16 +205,14 @@ try
 
         step_start = time()
         if !sim_step!(sam;
-                set_values=[0.0], dt, vsm_interval=1)
+                set_values=[0.0], dt, vsm_interval = VSM_INTERVAL)
             @warn "Simulation crashed at t=$t"
             break
         end
         simulation_time += time() - step_start
         last_t = t
 
-        if record_video
-            log_state!(logger, sys_state, sam, t)
-        end
+        log_state!(logger, sys_state, sam, t)
 
         if step % display_interval == 0
             plot!(sys; vector_scale)
@@ -247,11 +245,14 @@ end
 if record_video
     save(output_filename, io)
     @info "Video saved" output_filename
+end
 
-    report_performance(SIM_TIME, simulation_time)
+report_performance(last_t, simulation_time)
+save_log(logger, run_name)
+@info "Log saved" file=joinpath(get_data_path(), run_name * ".arrow")
 
-    save_log(logger, "realtime_v3")
-    syslog = load_log("realtime_v3")
+if record_video
+    syslog = load_log(run_name)
     replay_scene = SymbolicAWEModels.replay(
         syslog, sys; autoplay=false, loop=true)
     display(replay_scene)

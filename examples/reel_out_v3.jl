@@ -13,6 +13,7 @@ end
 using Timers
 tic()
 using V3Kite
+using V3Kite: init, step!
 using LinearAlgebra
 using MakieControlPlots
 using Printf
@@ -21,8 +22,8 @@ toc("Loaded packages")
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
 # the following values can be changed to match your interest
-dt    = 0.05/3
-STEPS = 600*3
+dt    = 0.05
+STEPS = 600
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
@@ -31,13 +32,16 @@ REL_STEERING  = -0.0016 # tuned so heading(end) is between 0 and 2 degrees
 TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
 T_MIN =  0.0          # only plot results from T_MIN onwards
+AERO_MODE = ContinuousAero()
+VSM_INTERVAL = 1   # steps between VSM aero solves
 # end of user parameter section #
 
 @info "Initializing model..."
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
-                                depower_setpoint = DEPOWER_SETPOINT, dt, sim_time = STEPS*dt)
+                                depower_setpoint = DEPOWER_SETPOINT, dt,
+                                sim_time = STEPS*dt, aero_mode = AERO_MODE)
 toc("Initialized V3KITE instance")
 
 function simulate(s, steps, plot=false)
@@ -50,7 +54,8 @@ function simulate(s, steps, plot=false)
         force = winch_force(s)
         winch = s.sys.winches[1]
         set_torque = -winch.drum_radius / winch.gear_ratio * force + dforce
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque)
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque,
+              vsm_interval = VSM_INTERVAL)
         iter += 1
 
         if plot

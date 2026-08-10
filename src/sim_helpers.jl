@@ -129,7 +129,7 @@ end
     compute_drag(sam) -> Float64
 
 Wing drag force [N]: VSM aero drag plus parasitic drag
-from WING-type points.
+from the wing nodes.
 """
 function compute_drag(sam)
     sys = sam.sys_struct
@@ -145,7 +145,7 @@ function compute_drag(sam)
     # Parasitic drag from wing points (world frame)
     parasitic_w = zeros(3)
     for p in sys.points
-        p.type == WING || continue
+        p.is_wing_node || continue
         parasitic_w .+= p.drag_force
     end
     R_b_w = calc_R_b_w(sys)
@@ -159,7 +159,7 @@ end
     compute_drag_coeff(sam) -> Float64
 
 Wing drag coefficient: VSM aero drag plus parasitic drag
-from WING-type points. Together with tether, bridle, and
+from the wing nodes. Together with tether, bridle, and
 KCU drag coefficients, the four sum to the total CD.
 """
 function compute_drag_coeff(sam)
@@ -188,7 +188,7 @@ end
 """
     compute_tether_drag(sam) -> Float64
 
-Total parasitic drag force [N] from all non-WING points
+Total parasitic drag force [N] from all non-wing points
 (tether, bridle, and KCU), projected onto the kite
 apparent-wind direction. The force-form counterpart of
 `compute_tether_drag_coeff` and friends; combined with the
@@ -207,7 +207,7 @@ function compute_tether_drag(sam)
 
     drag_w = zeros(3)
     for p in sys.points
-        p.type == WING && continue
+        p.is_wing_node && continue
         drag_w .+= p.drag_force
     end
     return dot(drag_w, va_hat_w)
@@ -270,23 +270,6 @@ function drag_floor(sam; cd_min = LD_CD_MIN)
 end
 
 """
-    tether_point_idxs(sys) -> Set{Int}
-
-Collect all point indices that belong to tether segments.
-"""
-function tether_point_idxs(sys)
-    pts = Set{Int}()
-    for tether in sys.tethers
-        for seg_idx in tether.segment_idxs
-            seg = sys.segments[seg_idx]
-            push!(pts, seg.point_idxs[1])
-            push!(pts, seg.point_idxs[2])
-        end
-    end
-    return pts
-end
-
-"""
     drag_coeff_ref(wing) -> (va_hat_b, q_ref)
 
 Common reference quantities for drag coefficient functions:
@@ -332,7 +315,7 @@ function compute_tether_drag_coeff(sam)
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     return point_drag_cd(sys, wing,
-        tether_point_idxs(sys))
+        Set(tether_point_idxs(sys)))
 end
 
 """
@@ -346,11 +329,11 @@ function compute_bridle_drag_coeff(sam)
     sys = sam.sys_struct
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
-    tether_pts = tether_point_idxs(sys)
+    tether_pts = Set(tether_point_idxs(sys))
     bridle_idxs = Set{Int}()
     for p in sys.points
         p.idx in tether_pts && continue
-        p.type == WING && continue
+        p.is_wing_node && continue
         p.idx == 1 && continue  # KCU
         push!(bridle_idxs, p.idx)
     end
@@ -729,7 +712,7 @@ end
 
 """
     build_replay_sys_struct(set, geom, source_struc,
-        vsm_set) -> (sam, sys_struct)
+        vsm_set; aero_mode) -> (sam, sys_struct)
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
@@ -738,10 +721,12 @@ branch of `flight_replay.jl` so plotting can be done after
 deserializing a syslog.
 """
 function build_replay_sys_struct(set,
-        geom::V3GeomAdjustConfig, source_struc, vsm_set)
+        geom::V3GeomAdjustConfig, source_struc, vsm_set;
+        aero_mode=SymbolicAWEModels.AeroDirect())
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set)
+        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
+        aero_mode)
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, geom)
     SymbolicAWEModels.init!(sam;

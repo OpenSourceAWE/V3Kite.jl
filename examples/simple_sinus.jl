@@ -25,6 +25,7 @@ end
 
 using Timers; tic()
 using V3Kite
+using V3Kite: init, step!
 using DiscretePIDs: set_Td!
 using Statistics
 using Printf
@@ -35,7 +36,7 @@ using Printf
 
 PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 120.0     # Total simulation time [s]
-DT               = 0.05/3   # Simulation timestep [s]
+DT               = 0.05     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
@@ -60,13 +61,16 @@ HEADING_I = false
 # the settled RMS is unaffected.
 HEADING_D = 0.15
 MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
+AERO_MODE = ContinuousAero()
+VSM_INTERVAL = 1   # steps between VSM aero solves
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH;
-    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT, system_yaml = PROJECT)
+    depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
@@ -90,7 +94,8 @@ try
         set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_PERIOD)))
         rel_steering = heading_pid(target, s.sys_state.heading, 0.0)
         # Position mode: `set_length` holds the mean tether length.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+              vsm_interval = VSM_INTERVAL)
         # The current system state is available via `s.sys_state`.
     end
 catch e

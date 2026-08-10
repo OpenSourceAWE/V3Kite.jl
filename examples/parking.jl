@@ -21,6 +21,7 @@ end
 using Timers
 tic()
 using V3Kite
+using V3Kite: replay
 using V3Kite.KitePodModels
 using GLMakie
 using MakieControlPlots
@@ -41,7 +42,9 @@ ELEVATION     = 72.0     # Initial elevation angle [deg]
 AZIMUTH       = 0.0      # Initial azimuth angle [deg]
 REL_DEPOWER   = 0.25     # Depower setting held during parking [-]
 TETHER_DIAM   = 5.0      # Tether diameter for this example [mm]
-FPS           = 50       # Simulation/log frames per second (dt = 20 ms)
+FPS           = 20       # Simulation/log frames per second (dt = 50 ms)
+VSM_INTERVAL  = 1   # steps between VSM aero solves
+AERO_MODE     = ContinuousAero()
 const PLOT    = true
 REPLAY_LOG    = true     # Interactive 3D replay after simulation
 
@@ -62,14 +65,16 @@ settle_config = V3SettleConfig(
     system_yaml = PROJECT,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
-    dt = 0.001,
-    num_steps = 400,
-    num_substeps = 5,
+    dt = 0.05,
+    num_steps = 80,
+    num_substeps = 1,
+    decay_steps = 30,
     body_damping = [0.0, 0.0, 40.0],
     start_depower = REL_DEPOWER * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
     geom = V3GeomAdjustConfig(),
+    aero_mode = AERO_MODE,
 )
 
 @info "Settling V3 model at rel_depower = $REL_DEPOWER..."
@@ -107,7 +112,7 @@ sim_start_time = time()
 for step in 1:n_steps
     t = step * dt
 
-    if !sim_step!(sam; set_values = [0.0], dt, vsm_interval = 1)
+    if !sim_step!(sam; set_values = [0.0], dt, vsm_interval = VSM_INTERVAL)
         @error "Simulation failed" step
         break
     end

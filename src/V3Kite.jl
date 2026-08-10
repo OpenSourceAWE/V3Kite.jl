@@ -34,7 +34,7 @@ import KiteUtils: calc_elevation, calc_heading
 export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
 export init!, next_step!, update_sys_state!, log!, save_log, load_log, replay
-export PARTICLE_DYNAMICS, RIGID_DYNAMICS, WING
+export PARTICLE_DYNAMICS, RIGID_DYNAMICS, AeroDirect, ContinuousAero
 export Settings
 export SymbolicAWEModels
 export record, replay
@@ -75,7 +75,7 @@ export get_depower, set_depower!
 # Model setup exports
 export V3GeomAdjustConfig, apply_geom_adjustments!
 export distribute_wing_drag!, distribute_wing_mass!
-export set_v3_body_damping!
+export set_v3_body_damping!, set_body_frame_damping!, tether_point_idxs
 export generate_drag_adjusted_polars
 export segment_stretch_stats
 
@@ -140,6 +140,7 @@ export kite_ref_frame, calc_orient_quat, orient_euler
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
+export settled_struct_path, load_settled_struct
 
 # Photogrammetry exports
 export load_extra_points
@@ -150,7 +151,8 @@ export plot_photogrammetry
 export plot_yaw_rate_vs_steering, plot_turn_rate_vs_time
 export plot_wind_compare
 export plot_replay, plot_sphere_trajectory
-export plot_2d_trajectory, plot_2d_panels
+export plot_2d_trajectory, plot_2d_panels, record_2d_trajectory
+export record_2d_panels
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -258,6 +260,31 @@ Load GLMakie before using: `using GLMakie`
 """
 function plot_2d_panels end
 
-include("precompile.jl") # precompilation workload (see PlanPrecompile.md)
+"""
+    record_2d_trajectory(logs, filename; kwargs...)
+
+Animate the 2D y-z trajectory as a growing velocity-colored
+trail and write it to a video/GIF file (format from the
+extension, e.g. `.gif`, `.mp4`). The 2D analogue of
+`SymbolicAWEModels.record`. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function record_2d_trajectory end
+
+"""
+    record_2d_panels(logs, filename; kwargs...)
+
+Animate the 2D time-series panels with a sweeping time cursor and
+write it to a video/GIF file. Builds the panels via
+`plot_2d_panels`. Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function record_2d_panels end
+
+include("precompile.jl")
 
 end # module

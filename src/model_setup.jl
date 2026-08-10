@@ -61,7 +61,7 @@ point's `drag_coeff`. This lets the solver account for
 parasitic drag distributed along the span.
 """
 function distribute_wing_drag!(sys, area, drag_coeff)
-    wing_pts = [p for p in sys.points if p.type == WING]
+    wing_pts = [p for p in sys.points if p.is_wing_node]
     n = length(wing_pts)
     n > 0 || error("No wing points found")
     area_per_point = area / n
@@ -80,7 +80,7 @@ length. `dist` controls the LE/TE split (0.75 = 75% on LE).
 """
 function distribute_wing_mass!(sys, mass; dist=0.75)
     wing_pts = sort(
-        [p for p in sys.points if p.type == WING],
+        [p for p in sys.points if p.is_wing_node],
         by=p -> p.idx)
     n = length(wing_pts)
     iseven(n) || error(
@@ -99,15 +99,44 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
 end
 
 """
+    tether_point_idxs(sys) -> Vector{Int}
+
+Sorted indices of every point belonging to a tether: the endpoints
+of all segments referenced by the system's tethers.
+"""
+function tether_point_idxs(sys)
+    idxs = Set{Int}()
+    for tether in sys.tethers, segment_idx in tether.segment_idxs
+        i, j = sys.segments[segment_idx].point_idxs
+        push!(idxs, i, j)
+    end
+    return sort!(collect(idxs))
+end
+
+"""
+    set_body_frame_damping!(sys, damping)
+
+Apply body-frame `damping` to every point except tether points
+(see [`tether_point_idxs`](@ref)). A tether-skipping replacement for
+`SymbolicAWEModels.set_body_frame_damping`.
+"""
+function set_body_frame_damping!(sys, damping)
+    skip = Set(tether_point_idxs(sys))
+    keep = [i for i in eachindex(sys.points) if !(i in skip)]
+    SymbolicAWEModels.set_body_frame_damping(sys, damping, keep)
+    return nothing
+end
+
+"""
     set_v3_body_damping!(sys, body_damping, point_37_38_damping)
 
 Apply the V3 two-region body-frame damping pattern: `body_damping`
-on points 1:38 and the `point_37_38_damping` override on 37:38.
+on all non-tether points and the `point_37_38_damping` override on
+points 37:38.
 """
 function set_v3_body_damping!(sys, body_damping,
                               point_37_38_damping)
-    SymbolicAWEModels.set_body_frame_damping(
-        sys, body_damping, 1:38)
+    set_body_frame_damping!(sys, body_damping)
     SymbolicAWEModels.set_body_frame_damping(
         sys, point_37_38_damping, 37:38)
     return nothing

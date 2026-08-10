@@ -44,12 +44,15 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using V3Kite: init, step!
 using KiteUtils                       # SysState, Logger, get_data_path, save_log
 using Oxygen
 using HTTP
 using JSON3
 using Logging
 using LoggingExtras
+
+AERO_MODE = ContinuousAero()
 
 # ============================ Session state ============================ #
 
@@ -235,7 +238,7 @@ function run_init(session::Session, params)
         kite = with_logger(tee) do
             init(params.v_wind, params.l_tether;
                  depower_setpoint = params.depower_setpoint, sim_time = params.sim_time,
-                 system_yaml = params.system_yaml)
+                 system_yaml = params.system_yaml, aero_mode = AERO_MODE)
         end
         lock(session.lock) do
             session.s = kite

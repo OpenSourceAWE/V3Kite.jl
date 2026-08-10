@@ -76,7 +76,7 @@ circular-flight target.
 function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
     body_damping=[0.0, 0.0, 20.0],
-    point_37_38_damping=[0.0, 20.0, 20.0],
+    point_37_38_damping=[0.0, 0.0, 20.0],
     up=0.4,
     ramp_time_us=25.0,
     us=0.1,
@@ -107,16 +107,16 @@ function run_circles(;
         tether_length=tether_length,
         g_earth=g_earth,
         kcu_mass=kcu_mass,
-        body_damping=body_damping .* 2.0,
-        body_damping_overrides=[
-            (37:38, point_37_38_damping .* 2.0)],
+        body_damping=[0.0, 0.0, 40.0],
+        decay_steps=30,
         geom=V3GeomAdjustConfig(
             reduce_te=true, tether_length=tether_length),
-        num_steps=400, num_substeps=5, dt=0.001,
+        num_steps=40, num_substeps=1, dt=0.05,
         start_depower=40.0,
         course_correction_gain=0.0,
         course_correction_mode=:heading,
-        world_damping=0.0, min_damping=0.0,
+        world_damping=0.0, min_damping=[0.0, 0.0, 20.0],
+        aero_mode=AERO_MODE,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -191,7 +191,7 @@ function run_circles(;
         sys.set.v_wind = v_wind_base + vw_change * rf
 
         if !sim_step!(something(sam);
-            set_values=[0.0], dt=dt_c, vsm_interval=1)
+            set_values=[0.0], dt=dt_c, vsm_interval=VSM_INTERVAL)
             @error "Circular phase failed" step
             break
         end
@@ -317,9 +317,11 @@ isdir(batch_dir) || mkpath(batch_dir)
 sim_time_circles = 200
 ramp_time_us = 2
 
-fps_circles = 200
+fps_circles = 20
+VSM_INTERVAL = 1   # steps between VSM aero solves
 body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 20.0, 20.0]
+point_37_38_damping = [0.0, 0.0, 20.0]
+AERO_MODE = ContinuousAero()
 
 combos = generate_run_combos(defaults, sweeps, combine_all)
 @info "Batch combos generated" n=length(combos)
