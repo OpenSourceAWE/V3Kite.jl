@@ -75,6 +75,13 @@ implied by `init_row` and gravity, so the same flight state always
 maps to the same file. Settings are read from `data_path`; the file
 lives under `cache_path` (default
 [`default_cache_path`](@ref)`(data_path)`).
+
+The aerodynamics enter the name too, because a settled
+`SystemStructure` carries the wing's aero object and a cache hit
+would otherwise hand back the mode it was settled with, silently
+ignoring `config.aero_mode`. The default `AeroDirect()` adds
+nothing, which keeps every cache file written before this existed
+in use; every other mode gets an `_aero<tag>` of its own.
 """
 function settled_struct_path(config::V3SettleConfig, init_row;
                              data_path=nothing, cache_path=nothing)
@@ -121,6 +128,8 @@ function settled_struct_path(config::V3SettleConfig, init_row;
         suffix *= "_wd$(num_tag(config.world_damping))" *
                   "_md$(num_tag(config.min_damping))"
     end
+    aero_tag = SymbolicAWEModels.aero_mode_tag(config.aero_mode)
+    aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
     return joinpath(cache_path,
         "settled_$(settled_cache_tag())_$(suffix).bin")
 end
@@ -175,8 +184,11 @@ model on purpose; it is part of the cache key for that reason.
 When `remake=false` and the destination file already exists, the
 simulation is skipped and the settled geometry is loaded from
 file. The cache file name encodes the settling inputs, including
-the elevation implied by the initial position, so runs that only
-differ in elevation get their own file instead of sharing one.
+the elevation implied by the initial position and a non-default
+`aero_mode`, so runs that only differ in elevation or in
+aerodynamics get their own file instead of sharing one. A cached
+geometry whose aerodynamics disagree with `config.aero_mode` is
+rejected and re-derived from the source YAML.
 
 `data_path` is where the source geometry/settings YAMLs are read
 from (default [`v3_data_path`](@ref)); `cache_path` is where
@@ -281,6 +293,24 @@ function settled_cache_tag()
     "_jl$(VERSION.major).$(VERSION.minor)"
 end
 
+"""
+    aero_mode_matches(sys, mode) -> Bool
+
+Whether every wing of `sys` carries aerodynamics of `mode`'s kind, compared by
+`aero_mode_tag` — the same name the model binary is keyed on. Wings without
+aerodynamics (`RIGID_DYNAMICS`) never disagree.
+
+A settled `SystemStructure` is deserialized with the aero object it was settled
+with, so this is what stops a cache hit from overriding a requested aero mode.
+"""
+function aero_mode_matches(sys, mode)
+    tag = SymbolicAWEModels.aero_mode_tag(mode)
+    return all(sys.wings) do wing
+        isnothing(wing.aero) ||
+            SymbolicAWEModels.aero_mode_tag(wing.aero) == tag
+    end
+end
+
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      cache_path=nothing,
@@ -354,6 +384,13 @@ function settle_wing(config::V3SettleConfig, init_row;
             # version bump. Re-deriving from the source YAML is always correct,
             # just slower, so warn and fall through rather than crash.
             @warn "Cached settled geometry unreadable, using source geometry" dest_struc err
+            sys = nothing
+        end
+        if !isnothing(sys) && !aero_mode_matches(sys, config.aero_mode)
+            # A file written before the aero tag entered the key, or renamed by
+            # hand: its aero object would override config.aero_mode in silence.
+            @warn "Cached settled geometry was settled with another aero mode, \
+                   using source geometry" dest_struc requested=config.aero_mode
             sys = nothing
         end
     end
