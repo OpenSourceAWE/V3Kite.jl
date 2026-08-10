@@ -109,6 +109,33 @@ using KitePodModels: KCU
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
+    @testset "Settled Cache Aero Mode" begin
+        # An aero mode reaches the settled geometry through the wing's aero
+        # object, so it has to reach the cache name too.
+        init_row = (x=100.0, y=0.0, z=180.0, vx=0.0, vy=0.0, vz=0.0,
+                    heading=0.0, steering=0.0, depower=0.25,
+                    wind_vec=[10.0, 0.0, 0.0])
+        cfg_dir = V3Kite.V3SettleConfig()
+        cfg_cont = V3Kite.V3SettleConfig(
+            aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero())
+        path_dir = V3Kite.settled_struct_path(cfg_dir, init_row)
+        path_cont = V3Kite.settled_struct_path(cfg_cont, init_row)
+        @test path_dir != path_cont
+        @test occursin("_aerocont", path_cont)
+        # The default adds nothing, so caches predating the aero tag stay in use.
+        @test !occursin("_aero", path_dir)
+
+        # Guards a file written before the tag existed, or renamed by hand.
+        cont_wing = (aero=V3Kite.SymbolicAWEModels.ContinuousAero(),)
+        @test V3Kite.aero_mode_matches((wings=[cont_wing],),
+            V3Kite.SymbolicAWEModels.ContinuousAero())
+        @test !V3Kite.aero_mode_matches((wings=[cont_wing],),
+            V3Kite.SymbolicAWEModels.AeroDirect())
+        # A wing without aerodynamics cannot disagree.
+        @test V3Kite.aero_mode_matches((wings=[(aero=nothing,)],),
+            V3Kite.SymbolicAWEModels.AeroDirect())
+    end
+
     @testset "Default Cache Path" begin
         # A development checkout caches in place, keeping the existing data/*.bin.
         dev = v3_data_path()

@@ -10,6 +10,14 @@ const V3_MODEL_NAME = "v3"
 const V3_RIGID_DYNAMICS_MODEL_NAME = "v3_rigid_dynamics"
 
 """
+Aero-mode tag left out of the settled-geometry cache key, so files written
+before the key knew about aerodynamics keep being found. See
+[`settled_struct_path`](@ref).
+"""
+const DEFAULT_AERO_TAG = SymbolicAWEModels.aero_mode_tag(
+    SymbolicAWEModels.AeroDirect())
+
+"""
     v3_data_path()
 
 Return the path to the V3 data directory bundled with V3Kite.jl.
