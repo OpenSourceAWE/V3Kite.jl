@@ -490,6 +490,7 @@ end
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
+         min_damping=[0.0, 0.0, 20.0],
          aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_wfc=nothing,
          remake=false) -> V3KITE
@@ -561,6 +562,17 @@ cache key —
 changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
 
+`min_damping` is that floor, applied elementwise, and is therefore the damping
+the RETURNED MODEL FLIES WITH — `body_damping` only shapes the settling
+transient above it. Two consequences: any `body_damping` above the floor gives
+the same flown damping and differs only in the settled geometry it converges to,
+and an in-plane `body_damping` decays to zero in flight unless `min_damping`
+carries the in-plane terms too. It is part of the cache key as well, so a
+changed floor re-settles instead of reusing the old `.bin`. Runs identified
+before 2026-08-08 saw no floor at all (`[0, 0, 0]`) and settled 400 steps of a
+2000-step ramp, ending at `0.8 * body_damping`; reproducing such a run means
+passing `min_damping = 0.8 .* body_damping`, not the default.
+
 The default damps only normal to the wing surface. The in-plane (x, y) terms
 trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solver
 steps several-fold at unchanged settled trim, but it also resists the deformation
@@ -589,6 +601,7 @@ function init(v_wind_gnd, l_tether;
               wc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
+              min_damping = [0.0, 0.0, 20.0],
               aero_mode = SymbolicAWEModels.AeroDirect(),
               data_path = v3_data_path(),
               cache_path = nothing,
@@ -614,6 +627,7 @@ function init(v_wind_gnd, l_tether;
         num_substeps = 1,
         decay_steps = 30,
         body_damping = body_damping,
+        min_damping = min_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
