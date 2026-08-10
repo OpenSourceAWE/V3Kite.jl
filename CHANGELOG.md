@@ -1,6 +1,6 @@
 # Changelog
 
-## V3Kite v1.0.4 10-08-2026
+## V3Kite v1.1.0 10-08-2026
 
 ### Changed
 - `AtmosphericModels` compat raised to `0.3.8`, which applies `use_turbulence` when the
