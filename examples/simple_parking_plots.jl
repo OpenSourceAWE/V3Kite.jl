@@ -9,7 +9,10 @@ plot as parking.jl, entirely from logged data — no re-simulation needed.
 v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
 during simple_parking.jl's simulation loop (var_15 = L/D_wing, var_16 =
-L/D_eff). The single-winch V3 model has no l_diff panel; the depower panel
+L/D_eff). F_c is the largest compression force over all tether and bridle
+segments, which simple_parking.jl writes into var_01 (positive means a segment
+is in compression, 0 means all are in tension). The single-winch V3 model has
+no l_diff panel; the depower panel
 instead shows the actual value (`depower`, the KCU's tape-lagged fraction)
 against the command (`var_14`, written by `step!`), matching parking.jl. Both
 come from the log, so nothing here needs to be kept in sync with
@@ -55,6 +58,7 @@ p = plotx(
     sl.time[rng],
     first.(sl.v_reelout[rng]),
     first.(sl.winch_force[rng]),
+    sl.var_01[rng],
     rad2deg.(sl.elevation[rng]),
     rad2deg.(sl.heading[rng]),
     rad2deg.(sl.AoA[rng]),
@@ -66,6 +70,7 @@ p = plotx(
     ylabels = [
         L"v_{\mathrm{ro}}~[\mathrm{m/s}]",
         L"F_{\mathrm{t}}~[\mathrm{N}]",
+        L"F_{\mathrm{c}}~[\mathrm{N}]",
         L"\mathrm{elevation}~[°]",
         L"\mathrm{heading}~[°]",
         L"\mathrm{AoA}~[°]",
@@ -78,6 +83,7 @@ p = plotx(
         nothing,
         nothing,
         nothing,
+        nothing,
         [L"u_{\mathrm{d}}", L"u_{\mathrm{d,set}}"],
         [L"L/D_{\mathrm{wing}}", L"L/D_{\mathrm{eff}}"],
     ],
@@ -85,6 +91,14 @@ p = plotx(
 )
 display(p)
 sleep(0.1)  # Allow Makie to render the plot before continuing
+
+F_compr_max, i_compr = findmax(sl.var_01[rng])
+if F_compr_max > 0
+    @info "Peak compression: $(round(F_compr_max, digits=2)) N " *
+          "at t=$(round(sl.time[rng][i_compr], digits=2)) s"
+else
+    @info "No compression: all tether and bridle segments stayed in tension."
+end
 
 ripple = aoa_ripple(sl)
 print("\n", format_ripple_report(ripple; sl))
