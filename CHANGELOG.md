@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.0.4 10-08-2026
 
 ### Changed
 - `AtmosphericModels` compat raised to `0.3.8`, which applies `use_turbulence` when the
@@ -12,6 +12,38 @@
   deleted. 0.3.8 also moves new wind fields out of `data/` into a shared scratchspace
   (`AtmosphericModels.windfield_path()`); the ones already in `data/` are still found
   there, and can be moved into the scratchspace to be shared with the other repos.
+- `SymbolicAWEModels` compat raised from `0.11` to `0.13` and `VortexStepMethod` from
+  `3.3.4` to `4.0.0`, which is what brings the selectable aerodynamics model below.
+- Settling is coarser and shorter: `V3SettleConfig` defaults move to
+  `num_steps = 1600`, `decay_steps = 400` and a `min_damping` floor of
+  `[0.0, 0.0, 20.0]` (was `8000`/`2000`/zero), and `init` settles at `dt = 0.05` in
+  40 steps of 1 substep instead of `dt = 0.001` in 400 steps of 5. `body_damping` is
+  therefore the value settling *starts* from — it decays linearly to `min_damping`
+  over `decay_steps`, and that floor is what the returned model runs with.
+
+### Added
+- Selectable aerodynamics: `AeroDirect` (the default, VSM load held frozen over a
+  step) and `ContinuousAero` (the load integrated) are exported and reach the model
+  through `init(...; aero_mode)` and `V3SimConfig.aero_mode`. A `nothing` on the
+  config resolves by wing type — `AeroDirect()` for `PARTICLE_DYNAMICS`, the
+  upstream default for `RIGID_DYNAMICS`.
+- The aero mode enters the settled-geometry cache key (`_aero<tag>`, with the
+  default `AeroDirect()` adding nothing, so files written before this stay in use),
+  and a cached geometry whose wings disagree with the requested `aero_mode` is
+  rejected and re-derived rather than silently overriding it. A settled
+  `SystemStructure` carries its wing's aero object, which is what made a cache hit
+  able to win over the request.
+- `record_2d_trajectory` and `record_2d_panels` (V3KiteMakieExt), animating the 2D
+  trajectory and the 2D time-series panels to a video/GIF.
+- `settled_struct_path`, `load_settled_struct`, `set_body_frame_damping!` and
+  `tether_point_idxs` are now exported.
+- `examples/simple_parking.jl` logs and plots the tether compression force, and
+  drives the run through a `REL_STEERING` constant.
+
+### Removed
+- The `WING` export, whose wing type was dropped upstream in `SymbolicAWEModels`.
+
+## V3Kite v1.0.3 09-08-2026
 
 ### Added
 - `init(...; use_turbulence)`, which overrides the `default_turbulence` of
