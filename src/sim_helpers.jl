@@ -457,8 +457,10 @@ solver; see [`compute_wing_incidence`](@ref) for a geometric alternative.
 """
 function span_mean_aoa(sys)
     wing = sys.wings[1]
-    hasproperty(wing, :vsm_solver) || return NaN
-    alphas = wing.vsm_solver.sol.alpha_geometric_dist
+    # The engine hangs off the aero mode; `hasproperty(wing, ...)` misses the forwarding.
+    engine = SymbolicAWEModels.vsm_engine(wing.aero)
+    isnothing(engine) && return NaN
+    alphas = engine.vsm_solver.sol.alpha_geometric_dist
     # The VSM returns some panels as `pi + atan(...)`; wrap as update_sys_state! does.
     n = 0
     acc = 0.0
