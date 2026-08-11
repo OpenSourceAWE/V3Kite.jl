@@ -53,13 +53,18 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
+# `BODY_DAMPING` only shapes the settling transient, decaying to `MIN_DAMPING`,
+# which is the damping the parked run actually FLIES with.
+BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
+MIN_DAMPING      = [0.0, 0.0, 40.0]   # Floor it decays to; what the run FLIES
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = [0.0, 0.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
+    min_damping = MIN_DAMPING,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
