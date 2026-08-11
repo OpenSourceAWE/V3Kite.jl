@@ -24,7 +24,8 @@ At the end it prints the AoA ripple metrics (see `src/ripple_metrics.jl` and
 PlanSuppressOscillations.md) together with the solver cost and the wall clock, so
 a change to e.g. the body-frame damping can be judged on both the oscillation and
 the simulation speed. The numbers are only comparable across runs that fix
-PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, REL_STEERING, SIM_TIME and DT.
+PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, REL_STEERING, SIM_TIME, DT and
+the damping constants.
 """
 
 using Pkg
@@ -61,6 +62,21 @@ MIN_DAMPING      = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES
 # part of the settling cache key (it vanishes at equilibrium), so changing it
 # re-uses the settled geometry and only changes what the run flies with.
 PULLEY_DAMPING   = 5.0    # Damping of the pulley velocity [1/s]
+# Structural damping of the tether and bridle lines, given as the ratio of the
+# damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
+# It overrides the `damping_per_stiffness` of the `dyneema` material in
+# `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
+# Like PULLEY_DAMPING it is proportional to velocity and vanishes at equilibrium,
+# so it is applied after settling and leaves the settled geometry (and its cache
+# key) untouched.
+# ONLY LOWER IT: 0.002 is the material value the model is settled with, and above
+# it the run does not survive. The bridle segments are short and nearly massless,
+# so a higher ratio puts them tens of times beyond critical damping, and a damping
+# force stays at FULL strength on a line gone slack, whose stiffness has nearly
+# vanished (`compression_frac` = 0.01). At 0.053 the solver aborts ~1.2 s in, and
+# even 0.01 aborts, whether it is applied at once or ramped in over the first
+# seconds. The tether alone takes 0.053 without trouble.
+DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
 # ======================== INIT =========================== #
@@ -78,22 +94,15 @@ s.sys.winches[1].brake = USE_BRAKE
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
 
+# ============== TETHER AND BRIDLE SEGMENTS =============== #
+
+# Both helpers come from V3Kite (`src/model_setup.jl`) and take the
+# `SystemStructure`, not the `V3KITE` model.
+sys_struct = s.sam.sys_struct
+line_segs = tether_bridle_segments(sys_struct)
+set_damping_per_stiffness!(sys_struct, line_segs, DAMPING_PER_STIFFNESS)
+
 # ================= COMPRESSION LOGGING =================== #
-
-"""
-    tether_bridle_segments(s) -> Vector{Int}
-
-Indices of the tether and bridle segments, i.e. every segment except the wing
-frame (LE tubes, struts, TE wires, diagonals), which is stiff in compression by
-design and would dominate any compression metric. A segment belongs to the wing
-frame when both of its endpoints are wing nodes.
-"""
-function tether_bridle_segments(s)
-    points = s.sam.sys_struct.points
-    return [seg.idx for seg in s.sam.sys_struct.segments
-            if !(points[seg.point_idxs[1]].is_wing_node &&
-                 points[seg.point_idxs[2]].is_wing_node)]
-end
 
 """
     log_max_compression!(s, seg_idxs, peaks) -> (force, seg_idx)
@@ -151,8 +160,7 @@ end
 
 steps_done = 0
 F_compr_max, F_compr_seg, F_compr_t = 0.0, 0, 0.0
-compr_segs = tether_bridle_segments(s)
-compr_peaks = zeros(length(compr_segs))
+compr_peaks = zeros(length(line_segs))
 t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
@@ -160,7 +168,7 @@ t_loop = @elapsed try
               set_length = l0, vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
-        F_c, seg_idx = log_max_compression!(s, compr_segs, compr_peaks)
+        F_c, seg_idx = log_max_compression!(s, line_segs, compr_peaks)
         if F_c > F_compr_max
             global F_compr_max, F_compr_seg, F_compr_t = F_c, seg_idx, s.sys_state.time
         end
@@ -180,7 +188,7 @@ if F_compr_max > 0
 else
     @info "No compression: all tether and bridle segments stayed in tension."
 end
-print_compression_report(s, compr_segs, compr_peaks, COMPRESSION_LIMIT)
+print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
 
 # ==================== RIPPLE METRICS ===================== #
 

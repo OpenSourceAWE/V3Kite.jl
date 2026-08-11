@@ -86,6 +86,16 @@ MIN_DAMPING  = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES [1/s]
 # default of 5.0 suppresses pulley oscillation at the price of a slower bridle
 # response, i.e. a slower steering response for the heading PID to work against.
 PULLEY_DAMPING = 5.0
+# Structural damping of the tether and bridle lines, given as the ratio of the
+# damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
+# It overrides the `damping_per_stiffness` of the `dyneema` material in
+# `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
+# Like PULLEY_DAMPING it is proportional to velocity and vanishes at equilibrium,
+# so it is applied after settling and leaves the settled geometry (and its cache
+# key) untouched.
+# ONLY LOWER IT: 0.002 is the material value the model is settled with, and above
+# it the run does not survive (see simple_parking.jl for the details).
+DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 
 # ======================== INIT =========================== #
 
@@ -98,6 +108,12 @@ s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
+
+# Both helpers come from V3Kite (`src/model_setup.jl`) and take the
+# `SystemStructure`, not the `V3KITE` model.
+sys_struct = s.sam.sys_struct
+set_damping_per_stiffness!(sys_struct, tether_bridle_segments(sys_struct),
+                           DAMPING_PER_STIFFNESS)
 
 heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,

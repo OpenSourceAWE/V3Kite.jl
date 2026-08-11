@@ -143,6 +143,47 @@ function set_v3_body_damping!(sys, body_damping,
 end
 
 """
+    tether_bridle_segments(sys) -> Vector{Int}
+
+Indices of the tether and bridle segments, i.e. every segment except the wing
+frame (LE tubes, struts, TE wires, diagonals), which is stiff in compression by
+design and would dominate any compression metric. A segment belongs to the wing
+frame when both of its endpoints are wing nodes.
+"""
+function tether_bridle_segments(sys)
+    points = sys.points
+    return [seg.idx for seg in sys.segments
+            if !(points[seg.point_idxs[1]].is_wing_node &&
+                 points[seg.point_idxs[2]].is_wing_node)]
+end
+
+"""
+    set_damping_per_stiffness!(sys, seg_idxs, ratio)
+
+Damp the segments `seg_idxs` proportionally to their stiffness:
+`unit_damping = ratio * unit_stiffness` [N·s], the relation the `materials`
+section of `struc_geometry.yaml` uses to derive `unit_damping` from
+`damping_per_stiffness`. Segments carrying a callable force law instead of a
+stiffness are skipped, as there is no `unit_stiffness` to scale.
+
+`unit_damping` is a flattened MTK parameter re-synced from the live
+`SystemStructure` before every `step!`, so this takes effect on the next step
+without rebuilding the model. Like the pulley damping the term is proportional
+to velocity and vanishes at equilibrium, so applying it after settling leaves
+the settled geometry (and its cache key) untouched.
+
+See [`tether_bridle_segments`](@ref) for the usual choice of `seg_idxs`.
+"""
+function set_damping_per_stiffness!(sys, seg_idxs, ratio)
+    segments = sys.segments
+    for idx in seg_idxs
+        segments[idx].unit_stiffness isa Real || continue
+        segments[idx].unit_damping = ratio * segments[idx].unit_stiffness
+    end
+    return nothing
+end
+
+"""
     generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
 
 Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
