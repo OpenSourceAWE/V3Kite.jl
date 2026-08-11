@@ -234,6 +234,19 @@ end
         @test s.winch_ctrl.kp_pos ≈ 0.5  # from data/wc_settings.yaml
     end
 
+    @testset "init default min_damping" begin
+        # Settling decays `body_damping` linearly to the `min_damping` floor and
+        # the returned model runs with that floor, so the default `min_damping`
+        # is readable off the settled points: 0.8 .* the default body_damping.
+        expected = 0.8 .* [0.0, 0.0, 40.0]
+        tether_pts = Set(tether_point_idxs(s.sys))
+        wing_pts = [i for i in eachindex(s.sys.points) if !(i in tether_pts)]
+        @test !isempty(wing_pts)
+        @test all(i -> s.sys.points[i].body_frame_damping ≈ expected, wing_pts)
+        # Tether points are skipped by `set_body_frame_damping!`, floor or not.
+        @test all(i -> all(iszero, s.sys.points[i].body_frame_damping), tether_pts)
+    end
+
     l0 = unstretched_length(s)
 
     @testset "step! holding torque (no set_length/set_torque)" begin
@@ -290,6 +303,38 @@ end
         @test s.sys_state.time ≈ t0 + s.dt
         # The mean, not `set.wind_vec`: turbulence borrows the latter across the solve.
         @test norm(s.wind_vec_mean) ≈ 12.0
+    end
+
+    @testset "init damping_per_stiffness" begin
+        # Deliberately below MIN_SETTLE_DAMPING_PER_STIFFNESS: settling runs at
+        # the floor and `init` applies the flown ratio to the settled structure
+        # afterwards, so the returned model must carry the flown one, not the
+        # floor. Settles once (the ratio enters the cache key) and is not
+        # stepped; only the structural damping is under test here.
+        RATIO = 0.001
+        @test RATIO < V3Kite.MIN_SETTLE_DAMPING_PER_STIFFNESS
+        s_dps = init(V_WIND, TETHER_LENGTH;
+            depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME,
+            system_yaml = PROJECT, damping_per_stiffness = RATIO)
+
+        seg_idxs = tether_bridle_segments(s_dps.sys)
+        @test !isempty(seg_idxs)
+        # Segments with a callable force law have no stiffness to scale.
+        damped = [i for i in seg_idxs
+                  if s_dps.sys.segments[i].unit_stiffness isa Real]
+        @test !isempty(damped)
+        @test all(i -> s_dps.sys.segments[i].unit_damping ≈
+                       RATIO * s_dps.sys.segments[i].unit_stiffness, damped)
+        # `s` was built with the default `nothing`, which leaves the material
+        # values of struc_geometry.yaml: 0.002 on the bridles and none on the
+        # main tether, so every one of these segments changed.
+        @test all(i -> s_dps.sys.segments[i].unit_damping !=
+                       s.sys.segments[i].unit_damping, damped)
+        # The wing frame keeps the damping given in struc_geometry.yaml.
+        wing_segs = setdiff(collect(eachindex(s_dps.sys.segments)), seg_idxs)
+        @test !isempty(wing_segs)
+        @test all(i -> s_dps.sys.segments[i].unit_damping ==
+                       s.sys.segments[i].unit_damping, wing_segs)
     end
 end
 nothing
