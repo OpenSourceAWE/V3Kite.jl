@@ -149,6 +149,18 @@ using KitePodModels: KCU
         @test cl > cd  # kites typically have CL/CD > 1
     end
 
+    @testset "span_mean_aoa" begin
+        # NaN would mean the VSM engine was not FOUND, not an unloaded wing: it
+        # hangs off `wing.aero` and is only reached through `getproperty`
+        # forwarding, so any feature test on the wing itself silently disables this.
+        alpha = span_mean_aoa(sys)
+        @test isfinite(alpha)
+        @test abs(alpha) < deg2rad(45)
+        # The VSM's own span mean, over effective instead of geometric AoA:
+        # the two differ by the induced angle, a degree or so here.
+        @test abs(alpha - sys.wings[1].vsm_aoa) < deg2rad(10)
+    end
+
     @testset "winch_force" begin
         f = winch_force(v3kite)
         @test isfinite(f)
