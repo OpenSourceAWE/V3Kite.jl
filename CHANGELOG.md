@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `pulley_damping` [1/s], a new `init` keyword and `V3SettleConfig` field, sets the damping
+  of the bridle pulley velocity (previously hardcoded to `5.0` in `SymbolicAWEModels`). It
+  is applied to every pulley during settling and re-applied to the returned model, but is
+  deliberately NOT part of the settling cache key: the term vanishes at equilibrium, so it
+  leaves the settled geometry unchanged and a cache hit still flies with the value passed.
+  `examples/simple_parking.jl` exposes it as `PULLEY_DAMPING`. Needs a `SymbolicAWEModels`
+  version carrying the per-pulley `damping` field and `set_pulley_damping`.
+
 ## V3Kite v1.1.0 10-08-2026
 
 ### Changed

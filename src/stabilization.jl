@@ -36,6 +36,9 @@ Base.@kwdef mutable struct V3SettleConfig
     body_damping_overrides::Vector{
         Tuple{UnitRange{Int}, Vector{Float64}}} =
         Tuple{UnitRange{Int}, Vector{Float64}}[]
+    # Damping of the pulley velocity [1/s], applied to every pulley. Not part of
+    # the settled-cache key: it vanishes at equilibrium (see `init`).
+    pulley_damping::Float64 = SymbolicAWEModels.DEFAULT_PULLEY_DAMPING
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -75,6 +78,11 @@ implied by `init_row` and gravity, so the same flight state always
 maps to the same file. Settings are read from `data_path`; the file
 lives under `cache_path` (default
 [`default_cache_path`](@ref)`(data_path)`).
+
+`config.pulley_damping` deliberately does NOT enter the name: it
+damps the pulley velocity, which is zero at equilibrium, so it
+leaves the settled geometry unchanged and re-settling for it would
+be wasted. [`init`](@ref) re-applies it to the loaded structure.
 
 The aerodynamics enter the name too, because a settled
 `SystemStructure` carries the wing's aero object and a cache hit
@@ -465,6 +473,7 @@ function setup_settling_model(config::V3SettleConfig;
         SymbolicAWEModels.set_body_frame_damping(
             sys, damp, rng)
     end
+    SymbolicAWEModels.set_pulley_damping(sys, config.pulley_damping)
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)

@@ -490,7 +490,7 @@ end
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
-         min_damping=[0.0, 0.0, 20.0],
+         min_damping=[0.0, 0.0, 20.0], pulley_damping=5.0,
          aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_wfc=nothing,
          remake=false) -> V3KITE
@@ -581,6 +581,17 @@ parked/quasi-static runs, not for validating turning maneuvers, and note that
 settling goes unstable somewhere above 15. See
 PlanSuppressOscillations.md for the sweep.
 
+`pulley_damping` [1/s] damps the pulley velocity — the rate at which the bridle
+pulleys redistribute line length — as `pulley_acc - pulley_damping *
+pulley_vel`. It is applied to every pulley, both during settling and on the
+returned model. Unlike the point damping above it is NOT part of the settling
+cache key: the term is proportional to the pulley velocity and so vanishes at
+equilibrium, leaving the settled geometry unchanged. `init` therefore re-applies
+it after settling, and a cache hit flies with the value passed here rather than
+the one it was settled with. The default is the value the model used before it
+was tunable; raise it to suppress pulley oscillation, at the price of a slower
+bridle response.
+
 `warmup_time` [s] runs the returned model forward that long with the controls
 held at the settled values and then discards those steps, so the run does not
 start on the settling-to-dynamics transient; `0.0`, the default, skips it.
@@ -602,6 +613,7 @@ function init(v_wind_gnd, l_tether;
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
               min_damping = [0.0, 0.0, 20.0],
+              pulley_damping = SymbolicAWEModels.DEFAULT_PULLEY_DAMPING,
               aero_mode = SymbolicAWEModels.AeroDirect(),
               data_path = v3_data_path(),
               cache_path = nothing,
@@ -628,6 +640,7 @@ function init(v_wind_gnd, l_tether;
         decay_steps = 30,
         body_damping = body_damping,
         min_damping = min_damping,
+        pulley_damping = pulley_damping,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
@@ -642,6 +655,10 @@ function init(v_wind_gnd, l_tether;
         data_path, cache_path, remake)
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
+
+    # Re-applied here because it is not part of the settling cache key: a cached
+    # geometry settled with another value must still FLY with the one asked for.
+    SymbolicAWEModels.set_pulley_damping(sys, pulley_damping)
 
     # The serialized `set_value` is stale: releasing the brake alone steps at t = 0.
     sys.winches[1].brake = false

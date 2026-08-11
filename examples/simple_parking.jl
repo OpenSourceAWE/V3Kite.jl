@@ -51,12 +51,16 @@ TETHER_LENGTH    = 150.0    # Initial tether length [m]
 USE_BRAKE        = true     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
-AERO_MODE        = ContinuousAero()
+AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
 # `BODY_DAMPING` only shapes the settling transient, decaying to `MIN_DAMPING`,
 # which is the damping the parked run actually FLIES with.
 BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
-MIN_DAMPING      = [0.0, 0.0, 40.0]   # Floor it decays to; what the run FLIES
+MIN_DAMPING      = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES
+# Damping of the bridle pulleys [1/s]. Unlike the point damping above it is not
+# part of the settling cache key (it vanishes at equilibrium), so changing it
+# re-uses the settled geometry and only changes what the run flies with.
+PULLEY_DAMPING   = 5.0    # Damping of the pulley velocity [1/s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
 # ======================== INIT =========================== #
@@ -64,7 +68,7 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    min_damping = MIN_DAMPING,
+    min_damping = MIN_DAMPING, pulley_damping = PULLEY_DAMPING,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
