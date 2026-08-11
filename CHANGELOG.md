@@ -3,13 +3,21 @@
 ## Unreleased
 
 ### Added
-- `pulley_damping` [1/s], a new `init` keyword and `V3SettleConfig` field, sets the damping
-  of the bridle pulley velocity (previously hardcoded to `5.0` in `SymbolicAWEModels`). It
-  is applied to every pulley during settling and re-applied to the returned model, but is
-  deliberately NOT part of the settling cache key: the term vanishes at equilibrium, so it
-  leaves the settled geometry unchanged and a cache hit still flies with the value passed.
-  `examples/simple_parking.jl` exposes it as `PULLEY_DAMPING`. Needs a `SymbolicAWEModels`
-  version carrying the per-pulley `damping` field and `set_pulley_damping`.
+- `damping_per_stiffness` [s], a new `init` keyword and `V3SettleConfig` field, sets the
+  structural damping of the tether and bridle segments as a ratio of their stiffness
+  (`unit_damping = ratio * unit_stiffness`), overriding the `damping_per_stiffness` of the
+  material in `data/struc_geometry.yaml`; the wing frame keeps the damping given there.
+  It is applied from the START of settling rather than to the settled model, so the run is
+  damped throughout, with one floor: settling diverges below the new
+  `MIN_SETTLE_DAMPING_PER_STIFFNESS` (0.0015), so a lower ratio settles at the floor and is
+  then set on the settled structure, which has no transient left to destabilize. The
+  floored value is what enters the settling cache key, so every flown ratio below the floor
+  shares one `data/settled_*.bin`. Settling tolerates 0.0015 … 0.0028 for the V3; the
+  examples fly 0.001. The default `nothing` leaves the segments as loaded — bridles at the
+  material value, main tether undamped — and leaves existing cache file names unchanged. The
+  underlying helpers `tether_bridle_segments` and `set_damping_per_stiffness!` (both in
+  `src/model_setup.jl`, taking the `SystemStructure`) are exported too, and the examples
+  expose the ratio as `DAMPING_PER_STIFFNESS`.
 
 ## V3Kite v1.1.0 10-08-2026
 

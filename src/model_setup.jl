@@ -168,9 +168,13 @@ stiffness are skipped, as there is no `unit_stiffness` to scale.
 
 `unit_damping` is a flattened MTK parameter re-synced from the live
 `SystemStructure` before every `step!`, so this takes effect on the next step
-without rebuilding the model. Like the pulley damping the term is proportional
-to velocity and vanishes at equilibrium, so applying it after settling leaves
-the settled geometry (and its cache key) untouched.
+without rebuilding the model.
+
+[`init`](@ref) calls this for its `damping_per_stiffness` keyword before
+settling, which is the usual way in: the run is then damped from the very first
+step, and settling and flight never differ in it. Calling it on an already
+settled model instead steps the damping mid-run, which the short bridle segments
+tolerate badly (see `examples/simple_parking.jl`).
 
 See [`tether_bridle_segments`](@ref) for the usual choice of `seg_idxs`.
 """

@@ -80,21 +80,14 @@ VSM_INTERVAL = 1   # steps between VSM aero solves
 # either one re-settles instead of reusing the cached geometry.
 BODY_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
 MIN_DAMPING  = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES [1/s]
-# Damping of the bridle pulleys [1/s]. It is not part of the settling cache key
-# (the term vanishes at equilibrium), so changing it re-uses the settled
-# geometry and only changes what the run flies with. Raising it above the `init`
-# default of 5.0 suppresses pulley oscillation at the price of a slower bridle
-# response, i.e. a slower steering response for the heading PID to work against.
-PULLEY_DAMPING = 5.0
 # Structural damping of the tether and bridle lines, given as the ratio of the
 # damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
 # It overrides the `damping_per_stiffness` of the `dyneema` material in
 # `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
-# Like PULLEY_DAMPING it is proportional to velocity and vanishes at equilibrium,
-# so it is applied after settling and leaves the settled geometry (and its cache
-# key) untouched.
-# ONLY LOWER IT: 0.002 is the material value the model is settled with, and above
-# it the run does not survive (see simple_parking.jl for the details).
+# `init` applies it from the START of settling, floored at 0.0015 for the
+# settling run only (below that settling diverges) and set unfloored on the
+# settled structure. 0.002 is the material value the bridles already carry; the
+# tether carries none by default. See simple_parking.jl for the details.
 DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 
 # ======================== INIT =========================== #
@@ -102,18 +95,12 @@ DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    min_damping = MIN_DAMPING, pulley_damping = PULLEY_DAMPING,
+    min_damping = MIN_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
-
-# Both helpers come from V3Kite (`src/model_setup.jl`) and take the
-# `SystemStructure`, not the `V3KITE` model.
-sys_struct = s.sam.sys_struct
-set_damping_per_stiffness!(sys_struct, tether_bridle_segments(sys_struct),
-                           DAMPING_PER_STIFFNESS)
 
 heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,

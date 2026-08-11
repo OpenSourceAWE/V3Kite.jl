@@ -58,24 +58,25 @@ VSM_INTERVAL     = 1   # steps between VSM aero solves
 # which is the damping the parked run actually FLIES with.
 BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
 MIN_DAMPING      = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES
-# Damping of the bridle pulleys [1/s]. Unlike the point damping above it is not
-# part of the settling cache key (it vanishes at equilibrium), so changing it
-# re-uses the settled geometry and only changes what the run flies with.
-PULLEY_DAMPING   = 5.0    # Damping of the pulley velocity [1/s]
 # Structural damping of the tether and bridle lines, given as the ratio of the
 # damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
 # It overrides the `damping_per_stiffness` of the `dyneema` material in
 # `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
-# Like PULLEY_DAMPING it is proportional to velocity and vanishes at equilibrium,
-# so it is applied after settling and leaves the settled geometry (and its cache
-# key) untouched.
-# ONLY LOWER IT: 0.002 is the material value the model is settled with, and above
-# it the run does not survive. The bridle segments are short and nearly massless,
-# so a higher ratio puts them tens of times beyond critical damping, and a damping
-# force stays at FULL strength on a line gone slack, whose stiffness has nearly
-# vanished (`compression_frac` = 0.01). At 0.053 the solver aborts ~1.2 s in, and
-# even 0.01 aborts, whether it is applied at once or ramped in over the first
-# seconds. The tether alone takes 0.053 without trouble.
+# `init` applies it from the START of settling, with one floor: settling diverges
+# below `MIN_SETTLE_DAMPING_PER_STIFFNESS` = 0.0015, so this value settles at the
+# floor and is then set on the settled structure. The FLOORED value is the
+# settling cache key, so any ratio below the floor reuses one settled geometry.
+# 0.002 is the `dyneema` material value, which the bridles already carry by
+# default — the tether does not (its default damping is zero), so setting this
+# at all adds tether damping and shifts the settled elevation ~0.3 degrees.
+# NARROW BAND for settling: 0.0015 … 0.0028 survive, 0.0014 and below and 0.003
+# and above diverge (measured at the BODY_DAMPING/MIN_DAMPING above, 40 settling
+# steps). The bridle segments are short and nearly massless, so a higher ratio
+# puts them tens of times beyond critical damping, and a damping force stays at
+# FULL strength on a line gone slack, whose stiffness has nearly vanished
+# (`compression_frac` = 0.01); too little lets the settling transient run away.
+# Flown values are less constrained — 0.001 flies fine — but not unconstrained:
+# 0.01 and 0.053 abort the solver, the latter ~1.2 s in.
 DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
@@ -84,7 +85,7 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    min_damping = MIN_DAMPING, pulley_damping = PULLEY_DAMPING,
+    min_damping = MIN_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
@@ -96,11 +97,10 @@ l0 = s.sys_state.l_tether[1]
 
 # ============== TETHER AND BRIDLE SEGMENTS =============== #
 
-# Both helpers come from V3Kite (`src/model_setup.jl`) and take the
-# `SystemStructure`, not the `V3KITE` model.
-sys_struct = s.sam.sys_struct
-line_segs = tether_bridle_segments(sys_struct)
-set_damping_per_stiffness!(sys_struct, line_segs, DAMPING_PER_STIFFNESS)
+# The segments the compression report below is taken over — the same ones `init`
+# applied `DAMPING_PER_STIFFNESS` to. `tether_bridle_segments` comes from V3Kite
+# (`src/model_setup.jl`) and takes the `SystemStructure`, not the `V3KITE` model.
+line_segs = tether_bridle_segments(s.sam.sys_struct)
 
 # ================= COMPRESSION LOGGING =================== #
 
