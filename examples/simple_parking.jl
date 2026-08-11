@@ -54,10 +54,10 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `BODY_DAMPING` only shapes the settling transient, decaying to `MIN_DAMPING`,
-# which is the damping the parked run actually FLIES with.
+# `BODY_DAMPING` only shapes the settling transient, decaying to the `min_damping`
+# floor of `init` (0.8 x this by default), which is the damping the parked run
+# actually FLIES with.
 BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
-MIN_DAMPING      = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES
 # Structural damping of the tether and bridle lines, given as the ratio of the
 # damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
 # It overrides the `damping_per_stiffness` of the `dyneema` material in
@@ -70,7 +70,7 @@ MIN_DAMPING      = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES
 # default — the tether does not (its default damping is zero), so setting this
 # at all adds tether damping and shifts the settled elevation ~0.3 degrees.
 # NARROW BAND for settling: 0.0015 … 0.0028 survive, 0.0014 and below and 0.003
-# and above diverge (measured at the BODY_DAMPING/MIN_DAMPING above, 40 settling
+# and above diverge (measured at the BODY_DAMPING above, 40 settling
 # steps). The bridle segments are short and nearly massless, so a higher ratio
 # puts them tens of times beyond critical damping, and a damping force stays at
 # FULL strength on a line gone slack, whose stiffness has nearly vanished
@@ -85,7 +85,7 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    min_damping = MIN_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
+    damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 

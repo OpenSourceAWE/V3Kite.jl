@@ -56,8 +56,8 @@ HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
 # The tracking error is almost pure phase lag, so it scales with 1/loop gain,
-# but only below the stability boundary. Sweep at the BODY_DAMPING/MIN_DAMPING
-# set below, [0, 0, 40]/[0, 0, 20] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
+# but only below the stability boundary. Sweep at the BODY_DAMPING set below,
+# [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
 # the same window): K = 1.2 keeps a
 # ~1.6x margin to the boundary at K ≈ 1.9; K = 1.6 tracks better (0.52°) but
 # sits right at the edge.
@@ -74,12 +74,12 @@ HEADING_D = 0.15
 MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
 AERO_MODE = AeroDirect()    # ContinuousAero() or AeroDirect()
 VSM_INTERVAL = 1   # steps between VSM aero solves
-# `BODY_DAMPING` only shapes the settling transient, decaying to `MIN_DAMPING`,
-# which is the damping the run actually FLIES with — and which the heading gains
-# above were tuned at. Both are part of the settling cache key, so changing
-# either one re-settles instead of reusing the cached geometry.
+# `BODY_DAMPING` only shapes the settling transient, decaying to the `min_damping`
+# floor of `init` (0.8 x this by default), which is the damping the run actually
+# FLIES with — and which the heading gains above were tuned at. Both are part of
+# the settling cache key, so changing this re-settles instead of reusing the
+# cached geometry.
 BODY_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
-MIN_DAMPING  = [0.0, 0.0, 32.0]   # Floor it decays to; what the run FLIES [1/s]
 # Structural damping of the tether and bridle lines, given as the ratio of the
 # damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
 # It overrides the `damping_per_stiffness` of the `dyneema` material in
@@ -95,7 +95,7 @@ DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    min_damping = MIN_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
+    damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
