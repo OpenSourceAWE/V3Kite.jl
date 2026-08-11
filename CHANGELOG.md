@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+- The `min_damping` default of `init` is now computed from `body_damping` as
+  `0.8 .* body_damping` instead of the fixed `[0.0, 0.0, 20.0]`. With the default
+  `body_damping = [0.0, 0.0, 40.0]` the floor becomes `[0.0, 0.0, 32.0]`, which is what the
+  examples already pass explicitly and what the pre-2026-08-08 ramp ended at; raising
+  `body_damping` now raises the flown damping with it, and an in-plane `body_damping` keeps
+  its in-plane terms in flight. Callers that pass `min_damping` explicitly are unaffected;
+  callers relying on the old default get a different settling cache key and re-settle.
+
 ### Added
 - `damping_per_stiffness` [s], a new `init` keyword and `V3SettleConfig` field, sets the
   structural damping of the tether and bridle segments as a ratio of their stiffness

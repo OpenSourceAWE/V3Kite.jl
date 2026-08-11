@@ -490,7 +490,7 @@ end
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), wc=nothing, body_damping=[0.0, 0.0, 40.0],
-         min_damping=[0.0, 0.0, 20.0], damping_per_stiffness=nothing,
+         min_damping=0.8 .* body_damping, damping_per_stiffness=nothing,
          aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_wfc=nothing,
          remake=false) -> V3KITE
@@ -518,29 +518,10 @@ everything generated is WRITTEN — the settled-geometry cache
 (`settled_*.bin`), the settling log, and the serialized model binary
 (`model_*.bin`).
 
-`cache_path` defaults to [`default_cache_path`](@ref)`(data_path)`: `data_path`
-itself for a development checkout, and a depot scratch directory when V3Kite is
-Pkg-INSTALLED, since a package directory is neither reliably writable nor safe
-to write to (`Pkg.gc` eventually deletes it). Pass it explicitly to put the
-cache somewhere of your own — a per-project directory keeps one project's
-re-settles from invalidating another's.
-
 Redirecting `data_path` as well means that directory must hold the source
 geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
 the system YAML and the settings file it names), since the settling stage reads
 all of them from it.
-
-`init` does NOT change KiteUtils' global data path: every file it needs is
-resolved against `data_path`, and the caller's `set_data_path` still holds when
-it returns, so a `save_log`/`load_log` after `init` lands where the caller put
-it. An ABSOLUTE `system_yaml` is honoured as given and ignores `data_path`.
-
-A cached settled geometry is deserialized together with the `AtmosphericModel`
-it was serialized with, and `SystemStructure.am` is `const`, so `settle_wing`'s
-`sys.set = set` cannot re-point it. `init` re-points `am.set` at the live
-`set` and reloads the wind field itself (chosen by `set.v_wind`, ~1.2 GB), so
-`use_turbulence` and other `am`-read settings (`calc_wind_factor`/`calc_rho`)
-never go stale against a cached `.bin`.
 
 The turbulence level comes from `data/gui.yaml` (see
 [`get_default_turbulence`](@ref)), a per-checkout preference applied before the
@@ -558,20 +539,8 @@ the wing*, so it damps bridle vibration without slowing the kite's global motion
 `decay_steps` it decays linearly to the `min_damping` floor, and that floor is
 what the returned model runs with. It is baked into the settled geometry and
 carries over into the returned model, so it also forms part of the settling
-cache key —
-changing it produces a different `data/settled_*.bin` rather than silently
+cache key — changing it produces a different `data/settled_*.bin` rather than silently
 reusing the old one.
-
-`min_damping` is that floor, applied elementwise, and is therefore the damping
-the RETURNED MODEL FLIES WITH — `body_damping` only shapes the settling
-transient above it. Two consequences: any `body_damping` above the floor gives
-the same flown damping and differs only in the settled geometry it converges to,
-and an in-plane `body_damping` decays to zero in flight unless `min_damping`
-carries the in-plane terms too. It is part of the cache key as well, so a
-changed floor re-settles instead of reusing the old `.bin`. Runs identified
-before 2026-08-08 saw no floor at all (`[0, 0, 0]`) and settled 400 steps of a
-2000-step ramp, ending at `0.8 * body_damping`; reproducing such a run means
-passing `min_damping = 0.8 .* body_damping`, not the default.
 
 The default damps only normal to the wing surface. The in-plane (x, y) terms
 trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solver
@@ -587,16 +556,6 @@ segments as a ratio of their stiffness, `unit_damping = ratio * unit_stiffness`
 `data/struc_geometry.yaml`, while the wing frame keeps the damping given there.
 `nothing`, the default, leaves the segments as loaded: the bridles at the
 material value (0.002 for `dyneema`) and the main tether undamped.
-
-It is applied from the START of settling, not to the settled model, so the run is
-damped throughout — with one floor: settling itself diverges below
-[`MIN_SETTLE_DAMPING_PER_STIFFNESS`](@ref) (0.0015), so a lower ratio settles at
-that floor and is then set on the settled structure, which has no transient left
-to destabilize. What enters the settling cache key is the floored value, so every
-flown ratio below the floor reuses one `.bin`. The bridle segments are short and
-nearly massless, so the band settling tolerates is narrow at the top as well:
-0.0028 settles, 0.003 and above diverge. See `examples/simple_parking.jl` for the
-measured limits.
 
 `warmup_time` [s] runs the returned model forward that long with the controls
 held at the settled values and then discards those steps, so the run does not
@@ -618,7 +577,7 @@ function init(v_wind_gnd, l_tether;
               wc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
-              min_damping = [0.0, 0.0, 20.0],
+              min_damping = 0.8 .* body_damping,
               damping_per_stiffness = nothing,
               aero_mode = SymbolicAWEModels.AeroDirect(),
               data_path = v3_data_path(),
