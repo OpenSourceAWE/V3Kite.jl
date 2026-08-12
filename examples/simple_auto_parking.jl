@@ -22,7 +22,8 @@ the closed-loop response stays roughly invariant when the apparent wind speed
 changes. Because `DiscretePID` is in standard form (`K*(e + ...)`), scaling `K`
 scales the D action along with it.
 
-Logs the run to "tmp_auto_parking". For verification, run
+Logs the run to "tmp_auto_parking" in the `output` folder
+(`examples/../output`, created if missing). For verification, run
 `include("examples/simple_auto_parking.jl")` and check the printed heading
 regulation RMS error.
 
@@ -122,10 +123,12 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_auto_parking"; colmeta=timestamp_colmeta())
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
+save_log(s.logger, "tmp_auto_parking"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 # Regulation error over the settled part (skip the initial transient).
-syslog = load_log("tmp_auto_parking")
+syslog = load_log("tmp_auto_parking"; path=OUTPUT_DIR)
 sl = syslog.syslog
 settled = findall(t -> t >= 10.0, sl.time)
 if !isempty(settled)

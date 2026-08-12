@@ -11,7 +11,8 @@ parked at a constant tether length: `step!` runs in POSITION MODE, with
 controller, so the kite parks without any net reel-out.
 
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
-script is its `init`/`step!` counterpart. Logs the run to "tmp_parking".
+script is its `init`/`step!` counterpart. Logs the run to "tmp_parking" in the
+`output` folder (`examples/../output`, created if missing).
 
 The largest compression force over all tether and bridle segments is logged
 per step into the free `var_01` slot (see `log_max_compression!`) and its peak
@@ -49,7 +50,7 @@ SIM_TIME         = 10.0     # Total simulation time [s]
 DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-USE_BRAKE        = true     # use the brake of the winch (or not)
+USE_BRAKE        = false     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
@@ -162,7 +163,9 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_parking"; colmeta=timestamp_colmeta())
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
+save_log(s.logger, "tmp_parking"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 
