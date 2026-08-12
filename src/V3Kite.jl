@@ -76,6 +76,7 @@ export get_depower, set_depower!
 export V3GeomAdjustConfig, apply_geom_adjustments!
 export distribute_wing_drag!, distribute_wing_mass!
 export set_v3_body_damping!, set_body_frame_damping!, tether_point_idxs
+export tether_bridle_segments, set_damping_per_stiffness!
 export generate_drag_adjusted_polars
 export segment_stretch_stats
 

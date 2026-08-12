@@ -8,6 +8,16 @@ the settled positions back to YAML files.
 """
 
 """
+    MIN_SETTLE_DAMPING_PER_STIFFNESS
+
+Lowest tether/bridle `damping_per_stiffness` [s] the settling run stays stable
+at. Settling is a violent transient and needs the structural damping that the
+settled model can then fly without: 0.0015 settles, 0.0014 and below diverge
+(measured at `body_damping = [0, 0, 40]`, `min_damping = [0, 0, 32]`, 40 steps).
+"""
+const MIN_SETTLE_DAMPING_PER_STIFFNESS = 0.0015
+
+"""
     V3SettleConfig
 
 Configuration for wing settling simulation.
@@ -36,6 +46,15 @@ Base.@kwdef mutable struct V3SettleConfig
     body_damping_overrides::Vector{
         Tuple{UnitRange{Int}, Vector{Float64}}} =
         Tuple{UnitRange{Int}, Vector{Float64}}[]
+    # Structural damping of the tether and bridle segments, as a ratio of their
+    # stiffness (see `set_damping_per_stiffness!`). Applied from the start of
+    # settling, but never below `min_settle_damping_per_stiffness`; `nothing`
+    # keeps the values loaded from `struc_geometry.yaml`.
+    damping_per_stiffness::Union{Nothing, Float64} = nothing
+    # Floor on the ratio DURING SETTLING only: below it the settling transient
+    # diverges. `init` applies the unfloored ratio to the settled structure.
+    min_settle_damping_per_stiffness::Float64 =
+        MIN_SETTLE_DAMPING_PER_STIFFNESS
 
     # Flight condition
     v_wind::Float64 = 10.72
@@ -65,6 +84,21 @@ Base.@kwdef mutable struct V3SettleConfig
 end
 
 """
+    settle_damping_per_stiffness(config) -> Union{Nothing, Float64}
+
+The tether/bridle `damping_per_stiffness` settling actually runs at:
+`config.damping_per_stiffness` raised to
+`config.min_settle_damping_per_stiffness`, or `nothing` when the ratio is not
+set at all. The flown value can be lower — [`init`](@ref) applies it to the
+settled structure, where there is no transient left to destabilize.
+"""
+function settle_damping_per_stiffness(config::V3SettleConfig)
+    isnothing(config.damping_per_stiffness) && return nothing
+    return max(config.damping_per_stiffness,
+               config.min_settle_damping_per_stiffness)
+end
+
+"""
     settled_struct_path(config, init_row; data_path=nothing,
                         cache_path=nothing) -> String
 
@@ -75,6 +109,14 @@ implied by `init_row` and gravity, so the same flight state always
 maps to the same file. Settings are read from `data_path`; the file
 lives under `cache_path` (default
 [`default_cache_path`](@ref)`(data_path)`).
+
+The tether/bridle damping enters the name as well (as `_dps`, in
+units of 1e-3 s), because it is applied from the start of settling
+and so shapes the transient the settled geometry converges along.
+What enters is [`settle_damping_per_stiffness`](@ref), the floored
+value settling ran at, so every flown ratio below the floor shares
+one settled geometry. The default `nothing` adds nothing, which
+keeps every cache file written before it existed in use.
 
 The aerodynamics enter the name too, because a settled
 `SystemStructure` carries the wing's aero object and a cache hit
@@ -127,6 +169,12 @@ function settled_struct_path(config::V3SettleConfig, init_row;
     if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
         suffix *= "_wd$(num_tag(config.world_damping))" *
                   "_md$(num_tag(config.min_damping))"
+    end
+    settle_dps = settle_damping_per_stiffness(config)
+    if !isnothing(settle_dps)
+        # In units of 1e-3 s: `num_tag` rounds to 3 digits, which would map the
+        # whole usable range of this ratio onto one or two tags.
+        suffix *= "_dps$(num_tag(settle_dps * 1e3))"
     end
     aero_tag = SymbolicAWEModels.aero_mode_tag(config.aero_mode)
     aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
@@ -464,6 +512,11 @@ function setup_settling_model(config::V3SettleConfig;
     for (rng, damp) in config.body_damping_overrides
         SymbolicAWEModels.set_body_frame_damping(
             sys, damp, rng)
+    end
+    settle_dps = settle_damping_per_stiffness(config)
+    if !isnothing(settle_dps)
+        set_damping_per_stiffness!(sys, tether_bridle_segments(sys),
+                                   settle_dps)
     end
 
     sam = SymbolicAWEModel(set, sys)

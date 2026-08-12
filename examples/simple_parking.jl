@@ -11,7 +11,8 @@ parked at a constant tether length: `step!` runs in POSITION MODE, with
 controller, so the kite parks without any net reel-out.
 
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
-script is its `init`/`step!` counterpart. Logs the run to "tmp_parking".
+script is its `init`/`step!` counterpart. Logs the run to "tmp_parking" in the
+`output` folder (`examples/../output`, created if missing).
 
 The largest compression force over all tether and bridle segments is logged
 per step into the free `var_01` slot (see `log_max_compression!`) and its peak
@@ -24,7 +25,8 @@ At the end it prints the AoA ripple metrics (see `src/ripple_metrics.jl` and
 PlanSuppressOscillations.md) together with the solver cost and the wall clock, so
 a change to e.g. the body-frame damping can be judged on both the oscillation and
 the simulation speed. The numbers are only comparable across runs that fix
-PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, REL_STEERING, SIM_TIME and DT.
+PROJECT, V_WIND, TETHER_LENGTH, DEPOWER_SETPOINT, REL_STEERING, SIM_TIME, DT and
+the damping constants.
 """
 
 using Pkg
@@ -48,18 +50,27 @@ SIM_TIME         = 10.0     # Total simulation time [s]
 DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-USE_BRAKE        = true     # use the brake of the winch (or not)
+USE_BRAKE        = false     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
-AERO_MODE        = ContinuousAero()
+AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
+# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
+# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with.
+INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
+FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+# Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
+# default in `data/struc_geometry.yaml`. `init` floors it during settling
+# (see `stabilization.jl`) then applies the raw value to the settled structure.
+DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = [0.0, 0.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
+    min_damping = FLOWN_BODY_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
@@ -69,22 +80,14 @@ s.sys.winches[1].brake = USE_BRAKE
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
 
+# ============== TETHER AND BRIDLE SEGMENTS =============== #
+
+# The segments the compression report below is taken over — the same ones `init`
+# applied `DAMPING_PER_STIFFNESS` to. `tether_bridle_segments` comes from V3Kite
+# (`src/model_setup.jl`) and takes the `SystemStructure`, not the `V3KITE` model.
+line_segs = tether_bridle_segments(s.sam.sys_struct)
+
 # ================= COMPRESSION LOGGING =================== #
-
-"""
-    tether_bridle_segments(s) -> Vector{Int}
-
-Indices of the tether and bridle segments, i.e. every segment except the wing
-frame (LE tubes, struts, TE wires, diagonals), which is stiff in compression by
-design and would dominate any compression metric. A segment belongs to the wing
-frame when both of its endpoints are wing nodes.
-"""
-function tether_bridle_segments(s)
-    points = s.sam.sys_struct.points
-    return [seg.idx for seg in s.sam.sys_struct.segments
-            if !(points[seg.point_idxs[1]].is_wing_node &&
-                 points[seg.point_idxs[2]].is_wing_node)]
-end
 
 """
     log_max_compression!(s, seg_idxs, peaks) -> (force, seg_idx)
@@ -142,8 +145,7 @@ end
 
 steps_done = 0
 F_compr_max, F_compr_seg, F_compr_t = 0.0, 0, 0.0
-compr_segs = tether_bridle_segments(s)
-compr_peaks = zeros(length(compr_segs))
+compr_peaks = zeros(length(line_segs))
 t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
@@ -151,7 +153,7 @@ t_loop = @elapsed try
               set_length = l0, vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
-        F_c, seg_idx = log_max_compression!(s, compr_segs, compr_peaks)
+        F_c, seg_idx = log_max_compression!(s, line_segs, compr_peaks)
         if F_c > F_compr_max
             global F_compr_max, F_compr_seg, F_compr_t = F_c, seg_idx, s.sys_state.time
         end
@@ -161,7 +163,9 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_parking"; colmeta=timestamp_colmeta())
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
+save_log(s.logger, "tmp_parking"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 
@@ -171,7 +175,7 @@ if F_compr_max > 0
 else
     @info "No compression: all tether and bridle segments stayed in tension."
 end
-print_compression_report(s, compr_segs, compr_peaks, COMPRESSION_LIMIT)
+print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
 
 # ==================== RIPPLE METRICS ===================== #
 

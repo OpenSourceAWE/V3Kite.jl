@@ -4,7 +4,8 @@
 """
 Plotting for simple_auto_parking.jl results.
 
-Loads the "tmp_auto_parking" log saved by simple_auto_parking.jl and reproduces the same
+Loads the "tmp_auto_parking" log saved by simple_auto_parking.jl in the
+`output` folder (`examples/../output`) and reproduces the same
 plot as auto_parking.jl, entirely from logged data — no re-simulation needed.
 v_reelout, winch_force, elevation, heading and AoA come straight from the
 syslog; the L/D ratios come from the SysState spare slots that `step!` fills
@@ -29,10 +30,11 @@ using V3Kite
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
-syslog = load_log("tmp_auto_parking")
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+syslog = load_log("tmp_auto_parking"; path=OUTPUT_DIR)
 sl = syslog.syslog
 
-created_at = log_created_at("tmp_auto_parking")
+created_at = log_created_at("tmp_auto_parking"; path=OUTPUT_DIR)
 fig_name = "V3 Kite Auto Parking"
 if !isnothing(created_at)
     fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")

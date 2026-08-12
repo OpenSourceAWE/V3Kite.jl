@@ -193,5 +193,8 @@ using KitePodModels: KCU
 
     include("test-turbulence-injection.jl")
 
+    # Slowest of the lot: a 600-step parking run (see the file header).
+    include("test_parking_ripple.jl")
+
 end
 nothing
