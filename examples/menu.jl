@@ -22,6 +22,7 @@ options = [
     "v3beam = include(\"v3beam.jl\")",
     "v3beam_replay = include(\"v3beam_replay.jl\")",
     "v3beam_geometry = include(\"v3beam_geometry.jl\")",
+    "v3beam_aero_geometry = include(\"v3beam_aero_geometry.jl\")",
     "relax_bridle = include(\"relax_bridle.jl\")",
     "reel_out_v3 = include(\"reel_out_v3.jl\")",
     "open_loop = include(\"open_loop.jl\")",

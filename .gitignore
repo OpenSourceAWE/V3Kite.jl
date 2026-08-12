@@ -11,6 +11,7 @@ ideas.txt
 *.arrow
 !data/reel_out_4p_torque_control.arrow
 !data/relaxed_*.arrow
+data/polars_neuralfoil_pressure/
 *.bin
 *.bin.xz
 *.tar.gz

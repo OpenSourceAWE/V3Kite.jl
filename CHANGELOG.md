@@ -38,11 +38,15 @@
   for the surface-traction transfer the beam is built for, the `KernelBackend`,
   and none of the wing-lattice corrections. Separate from `flight_replay.jl`
   rather than a switch inside it, almost nothing about the setup being shared.
-  Two prerequisites are still open, both outside this example: the V3
-  `aero_geometry.yaml` carries lift/drag/moment polars and `AeroPressure` needs
-  per-section contours with `Cp`/`cf` node tables, and
-  `update_sys_struct_from_data!` assigns the flight velocity point by point,
-  which leaves the beam's rigid bodies at rest.
+  It does not settle yet: `update_sys_struct_from_data!` assigns the flight
+  velocity point by point, which leaves the beam's rigid bodies at rest.
+- `examples/v3beam_aero_geometry.jl`, which slices `V3_25.obj` into the
+  surface-resolved aero geometry `AeroPressure` needs — airfoil contours, polars
+  and the per-node `Cp`/`cf` tables — where the stock `aero_geometry.yaml`
+  carries lift/drag/moment polars alone. It slices VortexStepMethod's copy of the
+  mesh, which is already rotated into slicer convention and raised by 7.3 m and
+  is what `aero_geometry.yaml` came from, because `obj_to_yaml` rotates but does
+  not translate. The output is not in git, being derived and regenerable.
 - `examples/v3beam_geometry.jl` emits the beam geometry and
   `examples/relax_bridle.jl` relaxes a geometry and logs the state. Both write
   files that are in git — `data/struc_geometry_beam.yaml` and

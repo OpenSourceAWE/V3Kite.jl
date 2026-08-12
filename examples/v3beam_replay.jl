@@ -20,6 +20,9 @@ The tip and trailing-edge reductions stay off. Both are lengths subtracted from
 numbered segments of the particle lattice, and the beam wing has no segments that
 mean the same thing — its shape comes from the beam bodies, not from wire lengths.
 
+`v3beam_aero_geometry.jl` writes the aero geometry this loads, and
+`v3beam_geometry.jl` the structural one; neither runs here.
+
 Settling starts from the relaxed state `relax_bridle.jl` writes, since the
 measured bridle lengths and the measured node coordinates disagree badly enough
 that no implicit solver takes a first step from the placed geometry.
@@ -46,7 +49,10 @@ using KiteUtils
 # =============================================================================
 
 STRUC_YAML = "struc_geometry_beam.yaml"
-AERO_YAML = "aero_geometry.yaml"
+# The surface-resolved geometry v3beam_aero_geometry.jl writes. The stock
+# aero_geometry.yaml carries lift/drag/moment polars only, which AeroPressure
+# cannot build a station-point map from.
+AERO_YAML = joinpath("polars_neuralfoil_pressure", "geometry.yaml")
 VSM_SETTINGS = "vsm_settings.yaml"
 
 AERO_MODE = AeroPressure()
