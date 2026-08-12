@@ -54,29 +54,13 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `BODY_DAMPING` only shapes the settling transient, decaying to the `min_damping`
-# floor of `init` (0.8 x this by default), which is the damping the parked run
-# actually FLIES with.
-BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
-# Structural damping of the tether and bridle lines, given as the ratio of the
-# damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
-# It overrides the `damping_per_stiffness` of the `dyneema` material in
-# `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
-# `init` applies it from the START of settling, with one floor: settling diverges
-# below `MIN_SETTLE_DAMPING_PER_STIFFNESS` = 0.0015, so this value settles at the
-# floor and is then set on the settled structure. The FLOORED value is the
-# settling cache key, so any ratio below the floor reuses one settled geometry.
-# 0.002 is the `dyneema` material value, which the bridles already carry by
-# default — the tether does not (its default damping is zero), so setting this
-# at all adds tether damping and shifts the settled elevation ~0.3 degrees.
-# NARROW BAND for settling: 0.0015 … 0.0028 survive, 0.0014 and below and 0.003
-# and above diverge (measured at the BODY_DAMPING above, 40 settling
-# steps). The bridle segments are short and nearly massless, so a higher ratio
-# puts them tens of times beyond critical damping, and a damping force stays at
-# FULL strength on a line gone slack, whose stiffness has nearly vanished
-# (`compression_frac` = 0.01); too little lets the settling transient run away.
-# Flown values are less constrained — 0.001 flies fine — but not unconstrained:
-# 0.01 and 0.053 abort the solver, the latter ~1.2 s in.
+# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
+# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with.
+INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
+FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+# Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
+# default in `data/struc_geometry.yaml`. `init` floors it during settling
+# (see `stabilization.jl`) then applies the raw value to the settled structure.
 DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
 
@@ -84,8 +68,8 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    damping_per_stiffness = DAMPING_PER_STIFFNESS,
+s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
+    min_damping = FLOWN_BODY_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 

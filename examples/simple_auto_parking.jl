@@ -68,28 +68,23 @@ V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 MAX_STEERING     = 0.175    # Steering command limit [-]
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `BODY_DAMPING` only shapes the settling transient, decaying to the `min_damping`
-# floor of `init` (0.8 x this by default), which is the damping the parked run
-# actually FLIES with — and which the heading gains above were tuned at. Both are
-# part of the settling cache key, so changing this re-settles instead of reusing
-# the cached geometry.
-BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
-# Structural damping of the tether and bridle lines, given as the ratio of the
-# damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
-# It overrides the `damping_per_stiffness` of the `dyneema` material in
-# `data/struc_geometry.yaml`; the wing frame keeps the damping hardcoded there.
-# `init` applies it from the START of settling, floored at 0.0015 for the
-# settling run only (below that settling diverges) and set unfloored on the
-# settled structure. 0.002 is the material value the bridles already carry; the
-# tether carries none by default. See simple_parking.jl for the details.
+# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
+# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with — and
+# which the heading gains above were tuned at. Both are part of the settling
+# cache key, so changing either re-settles instead of reusing the cached geometry.
+INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
+FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+# Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
+# default in `data/struc_geometry.yaml`. `init` floors it during settling
+# (see `stabilization.jl`) then applies the raw value to the settled structure.
 DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
-    damping_per_stiffness = DAMPING_PER_STIFFNESS,
+s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
+    min_damping = FLOWN_BODY_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
