@@ -31,12 +31,22 @@
   applied, so the relaxed bridle shape rides along into the target pose; that
   makes a geometry whose bridle rest lengths disagree with its node positions
   settleable at all, and one that agrees settle faster.
+- `V3SettleConfig.backend`, so a settling can run on the `KernelBackend`. Settling
+  built its model without one, and the monolithic build is the dominant cost on a
+  beam wing. `build_replay_sys_struct` takes one for the same reason.
 - `examples/v3beam_geometry.jl` emits the beam geometry and
   `examples/relax_bridle.jl` relaxes a geometry and logs the state. Both write
   files that are in git — `data/struc_geometry_beam.yaml` and
   `data/relaxed_*.arrow` — so no other example regenerates or relaxes anything,
   and a beam run costs nothing but the run. `relax_bridle.jl` is
   geometry-agnostic and gives the particle model a relaxed start too.
+
+### Fixed
+- `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a
+  beam wing, as its docstring always said it would. Both address segments by
+  index into the particle lattice, and the beam is the larger structure, so the
+  in-range check they were guarded by passed and the corrections landed on canopy
+  membranes — 0.2 m off a 1.31 m `spanwise_2_9` and its neighbours.
 
 ### Changed
 - The settled state is cached as a one-row `Float64` log rather than a rewritten

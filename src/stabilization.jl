@@ -83,6 +83,10 @@ Base.@kwdef mutable struct V3SettleConfig
     # Model options
     aero_mode::SymbolicAWEModels.AbstractAeroModel =
         SymbolicAWEModels.AeroDirect()
+    # KernelBackend for a beam wing, whose bodies and joints make the monolithic
+    # build the dominant cost.
+    backend::SymbolicAWEModels.ModelBackend =
+        SymbolicAWEModels.MonolithBackend()
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
@@ -633,7 +637,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     if !isnothing(sys)
         sys.set = set
-        sam = SymbolicAWEModel(set, sys)
+        sam = SymbolicAWEModel(set, sys; backend = config.backend)
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
@@ -654,7 +658,7 @@ function settle_wing(config::V3SettleConfig, init_row;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
             aero_mode=config.aero_mode)
-        sam = SymbolicAWEModel(set, sys)
+        sam = SymbolicAWEModel(set, sys; backend = config.backend)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=false, ignore_l0=false,
@@ -727,7 +731,7 @@ function setup_settling_model(config::V3SettleConfig;
     sys, set = build_settling_struct(config;
         data_path, source_struc, source_aero)
 
-    sam = SymbolicAWEModel(set, sys)
+    sam = SymbolicAWEModel(set, sys; backend = config.backend)
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do

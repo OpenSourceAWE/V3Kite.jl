@@ -39,12 +39,21 @@ Apply wing geometry adjustments to a `SystemStructure`:
 tip leading-edge reduction and trailing-edge wire shortening.
 
 Both were fitted against the particle lattice and address segments by position, so
-they are skipped with a warning on a structure that has no segment at those indices
-— the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) has a different segment
-layout and must not inherit a correction fitted for another structure.
+they are skipped with a warning on a structure whose segments are laid out
+differently — the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) must not
+inherit a correction fitted for another structure. A beam wing is recognised by its
+`TimoshenkoJoint`s; being the larger structure, it has a segment at every one of
+these indices, so an in-range check alone would let the corrections land on canopy
+membranes instead.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
+    if !isempty(sys.timoshenko_joints) &&
+            (config.reduce_tip || config.reduce_te)
+        @warn "Skipping the tip/TE reductions on a beam wing: they are indices " *
+              "into the particle lattice, whose wing segments this has none of"
+        return nothing
+    end
     if config.reduce_tip
         if in_range(config.tip_segments)
             for idx in config.tip_segments

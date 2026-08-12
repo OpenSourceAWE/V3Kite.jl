@@ -46,6 +46,15 @@ SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
 AERO_MODE = ContinuousAero()
+# Beam wing or particle lattice. The beam wants the KernelBackend, its bodies and
+# joints making the monolithic build the dominant cost, and a relaxed state to
+# settle from, which relax_bridle.jl writes. It does not settle yet:
+# `update_sys_struct_from_data!` assigns the flight velocity point by point and
+# leaves the beam's rigid bodies at rest, which the BODY_STATIC wing nodes
+# contradict.
+STRUC_YAML = "struc_geometry.yaml"
+BACKEND = MonolithBackend()
+RELAXED_STATE = nothing
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
 STEERING_MULTIPLIER = 1.0
@@ -268,6 +277,9 @@ function run_physics_replay(h5_path;
     row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
     settle_config = V3SettleConfig(
+        source_struc_path=STRUC_YAML,
+        init_state_path=RELAXED_STATE,
+        backend=BACKEND,
         world_damping=0.0,
         body_damping=[0.0, 0.0, 40.0],
         decay_steps=50,
@@ -334,7 +346,7 @@ function run_physics_replay(h5_path;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
             aero_mode=AERO_MODE)
-        sam = SymbolicAWEModel(set, sys)
+        sam = SymbolicAWEModel(set, sys; backend=BACKEND)
         apply_geom_adjustments!(sys, gc)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -353,7 +365,7 @@ function run_physics_replay(h5_path;
     # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
     data_struct = load_settled_struct(
         settle_config, row1; set)
-    data_sam = SymbolicAWEModel(set, data_struct)
+    data_sam = SymbolicAWEModel(set, data_struct; backend=BACKEND)
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam; remake=false, remake_vsm=true,
         reinit_sys=false)
@@ -887,18 +899,17 @@ if LOAD_FROM_DISK
     set = Settings("system.yaml")
     set.g_earth = 9.81
     set.profile_law = 0
-    source_struc = joinpath(data_path,
-        "struc_geometry.yaml")
+    source_struc = joinpath(data_path, STRUC_YAML)
     source_aero = joinpath(data_path,
         "aero_geometry.yaml")
     vsm_path = joinpath(data_path, "vsm_settings.yaml")
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
-    sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
-    data_sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
+    sam, _ = build_replay_sys_struct(set, geom_config, source_struc,
+        vsm_set; aero_mode=AERO_MODE, backend=BACKEND)
+    data_sam, _ = build_replay_sys_struct(set, geom_config, source_struc,
+        vsm_set; aero_mode=AERO_MODE, backend=BACKEND)
 else
     sam, syslog, data_sam, datalog, data,
         settle_config, settle_log, dt,
