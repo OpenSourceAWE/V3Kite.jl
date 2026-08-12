@@ -76,7 +76,6 @@ circular-flight target.
 function run_circles(;
     sim_time_circles=0.0, fps_circles=1,
     body_damping=[0.0, 0.0, 20.0],
-    point_37_38_damping=[0.0, 0.0, 20.0],
     up=0.4,
     ramp_time_us=25.0,
     us=0.1,
@@ -131,8 +130,7 @@ function run_circles(;
         "v_wind=$v_wind, lt=$tether_length")
     sys = something(sam).sys_struct
 
-    set_v3_body_damping!(sys, body_damping,
-                         point_37_38_damping)
+    SymbolicAWEModels.set_body_frame_damping(sys, body_damping)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -320,7 +318,6 @@ ramp_time_us = 2
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 0.0, 20.0]
 AERO_MODE = ContinuousAero()
 
 combos = generate_run_combos(defaults, sweeps, combine_all)
@@ -337,7 +334,7 @@ for (run_id, p) in enumerate(combos)
             up=p.up, tether_length=p.lt,
             elevation=p.elevation, g_earth=p.g_earth,
             kcu_mass=p.kcu_mass,
-            body_damping, point_37_38_damping,
+            body_damping,
             sim_time_circles, fps_circles,
             ramp_time_us, us=p.us,
             save_subdir=batch_tag,

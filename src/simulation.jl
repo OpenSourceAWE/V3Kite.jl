@@ -12,7 +12,7 @@ const V3_RIGID_DYNAMICS_MODEL_NAME = "v3_rigid_dynamics"
 """
 Aero-mode tag left out of the settled-geometry cache key, so files written
 before the key knew about aerodynamics keep being found. See
-[`settled_struct_path`](@ref).
+[`settled_state_path`](@ref).
 """
 const DEFAULT_AERO_TAG = SymbolicAWEModels.aero_mode_tag(
     SymbolicAWEModels.AeroDirect())
@@ -61,11 +61,13 @@ Base.@kwdef mutable struct V3SimConfig
 
     # Damping parameters
     damping_pattern::Vector{Float64} = [0.0, 0.0, 20.0]
+    world_damping_pattern::Vector{Float64} = [0.0, 0.0, 0.0]
 
     # Model options
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
     # `nothing` resolves by wing_type: AeroDirect for particle, default for rigid
     aero_mode::Union{Nothing, SymbolicAWEModels.AbstractAeroModel} = nothing
+    backend::SymbolicAWEModels.ModelBackend = SymbolicAWEModels.MonolithBackend()
     remake_cache::Bool = false
 
     # Winch control
@@ -127,9 +129,10 @@ function create_v3_model(config::V3SimConfig; data_path=nothing)
         vsm_set, aero_mode)
 
     # Initialize damping
-    set_body_frame_damping!(sys, config.damping_pattern)
+    SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern)
+    SymbolicAWEModels.set_world_frame_damping(sys, config.world_damping_pattern)
 
-    sam = SymbolicAWEModel(set, sys)
+    sam = SymbolicAWEModel(set, sys; backend = config.backend)
 
     if !isempty(sys.tethers)
         sys.tethers[1].init_stretched_len = config.tether_length

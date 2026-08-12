@@ -16,7 +16,8 @@ end
 
 using V3Kite
 using VortexStepMethod
-using SymbolicAWEModels: FBDF, update_from_sysstate!
+using SymbolicAWEModels: FBDF, update_from_sysstate!,
+    set_body_frame_damping
 using GLMakie
 using GLMakie: save
 using CairoMakie
@@ -62,7 +63,6 @@ BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
-POINT_37_38_DAMPING = [0.0, 0.0, 20.0]
 SAVE_FIGS = true
 FIGURES_DIR = joinpath(@__DIR__, "..", "output")
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
@@ -365,7 +365,7 @@ function run_physics_replay(h5_path;
     last_report_time = replay_start
     last_report_sim = 0.0
     sys = sam.sys_struct
-    set_v3_body_damping!(sys, BODY_DAMPING, POINT_37_38_DAMPING)
+    set_body_frame_damping(sys, BODY_DAMPING)
     distribute_wing_mass!(sys, 11.0; dist=0.5)
     distribute_wing_drag!(sys,
         sys.wings[1].vsm_aero.projected_area,

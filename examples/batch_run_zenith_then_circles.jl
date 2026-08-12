@@ -42,7 +42,6 @@ function run_zenith_circles(;
         sim_time_zenith = 10.0, fps_zenith = 1,
         sim_time_circles = 0.0, fps_circles = 1,
         body_damping = [0.0, 0.0, 20.0],
-        point_37_38_damping = [0.0, 0.0, 20.0],
         up = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
@@ -103,10 +102,7 @@ function run_zenith_circles(;
     )
     sys = sam.sys_struct
 
-    set_v3_body_damping!(
-        sys, body_damping,
-        point_37_38_damping
-    )
+    SymbolicAWEModels.set_body_frame_damping(sys, body_damping)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -305,7 +301,6 @@ fps_zenith = 20
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 0.0, 20.0]
 AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]
@@ -325,7 +320,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             elevation = elev, g_earth = g,
             kcu_mass = kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            body_damping, point_37_38_damping,
+            body_damping,
             max_us_zenith, target_azimuth = 0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us = us,

@@ -99,34 +99,28 @@ function settle_damping_per_stiffness(config::V3SettleConfig)
 end
 
 """
-    settled_struct_path(config, init_row; data_path=nothing,
-                        cache_path=nothing) -> String
+    settled_state_path(config, init_row; data_path=nothing,
+                       cache_path=nothing) -> String
 
-Path of the serialized settled `SystemStructure` for `config` and
-`init_row`. Deterministic from the geometry adjustments,
-depower/steering, wind speed, tether length, damping, the elevation
-implied by `init_row` and gravity, so the same flight state always
-maps to the same file. Settings are read from `data_path`; the file
-lives under `cache_path` (default
-[`default_cache_path`](@ref)`(data_path)`).
+Path of the settled-state log for `config` and `init_row`.
+Deterministic from the geometry adjustments, depower/steering, wind
+speed, tether length, damping, the elevation implied by `init_row`
+and gravity, so the same flight state always maps to the same file.
+Settings are read from `data_path`; the file lives under
+`cache_path` (default [`default_cache_path`](@ref)`(data_path)`).
 
 The tether/bridle damping enters the name as well (as `_dps`, in
 units of 1e-3 s), because it is applied from the start of settling
-and so shapes the transient the settled geometry converges along.
+and so shapes the transient the settled state converges along.
 What enters is [`settle_damping_per_stiffness`](@ref), the floored
 value settling ran at, so every flown ratio below the floor shares
-one settled geometry. The default `nothing` adds nothing, which
-keeps every cache file written before it existed in use.
+one settled state.
 
-The aerodynamics enter the name too, because a settled
-`SystemStructure` carries the wing's aero object and a cache hit
-would otherwise hand back the mode it was settled with, silently
-ignoring `config.aero_mode`. The default `AeroDirect()` adds
-nothing, which keeps every cache file written before this existed
-in use; every other mode gets an `_aero<tag>` of its own.
+The aerodynamics enter the name because a structure settled under one
+mode is not equilibrium under another.
 """
-function settled_struct_path(config::V3SettleConfig, init_row;
-                             data_path=nothing, cache_path=nothing)
+function settled_state_path(config::V3SettleConfig, init_row;
+                            data_path=nothing, cache_path=nothing)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -163,9 +157,6 @@ function settled_struct_path(config::V3SettleConfig, init_row;
         suffix *= "_kcu$(Int(round(resolved_kcu_mass * 10)))"
     end
     suffix *= "_bd$(num_tag(config.body_damping))"
-    for (rng, damp) in config.body_damping_overrides
-        suffix *= "_bd$(first(rng))t$(last(rng))-$(num_tag(damp))"
-    end
     if !all(iszero, config.world_damping) || !all(iszero, config.min_damping)
         suffix *= "_wd$(num_tag(config.world_damping))" *
                   "_md$(num_tag(config.min_damping))"
@@ -178,8 +169,61 @@ function settled_struct_path(config::V3SettleConfig, init_row;
     end
     aero_tag = SymbolicAWEModels.aero_mode_tag(config.aero_mode)
     aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
-    return joinpath(cache_path,
-        "settled_$(settled_cache_tag())_$(suffix).bin")
+    return joinpath(cache_path, "settled_$(suffix).arrow")
+end
+
+"""
+    save_settled_state(sam, path)
+
+Write `sam`'s state to `path` as a one-row `Float64` log — everything the
+integrator needs to restart, and nothing else. `Float64` because a `Float32`
+state does not reproduce `integrator.u` on a bridle this stiff.
+"""
+function save_settled_state(sam, path)
+    logger = Logger(sam, 1; precision=Float64)
+    log!(logger, SysState(sam; precision=Float64))
+    name, dir = basename(path), dirname(path)
+    save_log(logger, splitext(name)[1], false; path=dir)
+    return path
+end
+
+"""
+    apply_settled_damping!(sys, config)
+
+Re-apply the damping the settling loop ended on: world-frame damping decays to
+zero over `config.decay_steps` and body-frame damping down to
+`config.min_damping`. Both follow from `config`, so they are recomputed rather
+than stored with the state.
+"""
+function apply_settled_damping!(sys, config::V3SettleConfig)
+    decay = max(0.0, 1.0 - config.num_steps / config.decay_steps)
+    SymbolicAWEModels.set_world_frame_damping(
+        sys, config.world_damping .* decay)
+    SymbolicAWEModels.set_body_frame_damping(
+        sys, max.(config.body_damping .* decay, config.min_damping))
+    return sys
+end
+
+"""
+    apply_settled_state!(sys, config, path) -> Bool
+
+Restore the settled state at `path` into `sys` and re-apply the settled
+damping. Returns `false` when the file is missing or unreadable, so the caller
+can fall back to the source geometry rather than crash.
+"""
+function apply_settled_state!(sys, config::V3SettleConfig, path)
+    isfile(path) || return false
+    log = try
+        load_log(path)
+    catch err
+        err isa InterruptException && rethrow()
+        @warn "Settled state unreadable, using source geometry" path err
+        return false
+    end
+    isempty(log.syslog) && return false
+    update_from_sysstate!(sys, log.syslog[1])
+    apply_settled_damping!(sys, config)
+    return true
 end
 
 """
@@ -187,19 +231,23 @@ end
                         data_path=nothing, cache_path=nothing,
                         set=nothing)
 
-Deserialize the settled `SystemStructure` for `config`/`init_row`
-(see [`settled_struct_path`](@ref)), assigning `set` to it when
-given. Errors when the file is missing; run [`settle_wing`](@ref)
-first to create it.
+Rebuild the settling `SystemStructure` from the source YAML and restore the
+settled state logged for `config`/`init_row` (see
+[`settled_state_path`](@ref)) onto it, assigning `set` when given. Errors when
+the state is missing; run [`settle_wing`](@ref) first to create it.
 """
 function load_settled_struct(config::V3SettleConfig, init_row;
                              data_path=nothing, cache_path=nothing,
                              set=nothing)
-    path = settled_struct_path(config, init_row; data_path, cache_path)
-    isfile(path) ||
-        error("No settled struct at $path; run settle_wing first")
-    sys = deserialize(path)
-    isnothing(set) || (sys.set = set)
+    isnothing(data_path) && (data_path = v3_data_path())
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
+    path = settled_state_path(config, init_row; data_path, cache_path)
+    sys, yaml_set = build_settling_struct(config; data_path,
+        source_struc = joinpath(data_path, config.source_struc_path),
+        source_aero = joinpath(data_path, config.source_aero_path))
+    apply_settled_state!(sys, config, path) ||
+        error("No settled state at $path; run settle_wing first")
+    sys.set = isnothing(set) ? yaml_set : set
     return sys
 end
 
@@ -240,7 +288,7 @@ rejected and re-derived from the source YAML.
 
 `data_path` is where the source geometry/settings YAMLs are read
 from (default [`v3_data_path`](@ref)); `cache_path` is where
-everything generated is written — the `settled_*.bin` cache, the
+everything generated is written — the `settled_*.arrow` state, the
 settling log, and the serialized model binary. It defaults to
 [`default_cache_path`](@ref)`(data_path)`, which is `data_path`
 for a development checkout and a depot scratch directory for an
@@ -258,6 +306,138 @@ function settle_wing(config::V3SettleConfig;
         steering=steering, depower=depower,
         wind_vec=wind_vec)
     return settle_wing(config, init_row; kwargs...)
+end
+
+"""
+    V3RelaxConfig
+
+Settings for [`relax_bridle!`](@ref). The defaults reach full stiffness on the
+beam geometry in under a hundred steps.
+"""
+Base.@kwdef mutable struct V3RelaxConfig
+    start_scale::Float64 = 1.0e-4
+    growth::Float64 = 1.35
+    settled_tol::Float64 = 50.0
+    world_damping::Float64 = 200.0
+    dt::Float64 = 0.02
+    max_steps::Int = 600
+    "Steps held at full stiffness while the damping decays back to its own value."
+    hold_steps::Int = 200
+    "VSM solve interval during the hold phase; 0 keeps the aero frozen."
+    hold_vsm_interval::Int = 1
+end
+
+"""
+    segment_stiffness_baseline(sys) -> (unit_stiffness, unit_damping)
+
+Every segment's stiffness and damping, captured before a relaxation scales them.
+Errors on a callable force law, which has no scalar to scale.
+"""
+function segment_stiffness_baseline(sys)
+    stiffness = [segment.unit_stiffness for segment in sys.segments]
+    all(value -> value isa Real, stiffness) || error(
+        "relax_bridle!: a segment carries a callable unit_stiffness, which " *
+        "cannot be scaled; relax the geometry with linear springs instead.")
+    return stiffness, [segment.unit_damping for segment in sys.segments]
+end
+
+"""
+    scale_segment_stiffness!(sys, baseline, scale)
+
+Set every segment's stiffness and damping to `scale` times its baseline.
+"""
+function scale_segment_stiffness!(sys, baseline, scale)
+    stiffness, damping = baseline
+    for (idx, segment) in enumerate(sys.segments)
+        segment.unit_stiffness = stiffness[idx] * scale
+        segment.unit_damping = damping[idx] * scale
+    end
+    return nothing
+end
+
+"""
+    relax_residual(sam) -> Float64
+
+The largest absolute entry of the right-hand side at the current state, i.e. how
+far the structure is from equilibrium in m/s² (and rad/s²).
+"""
+function relax_residual(sam)
+    integ = sam.integrator
+    du = similar(integ.u)
+    integ.f(du, integ.u, integ.p, integ.t)
+    return maximum(abs, du)
+end
+
+"""
+    relax_bridle!(sam, sys, config=V3RelaxConfig(); prn=true)
+        -> (reached_scale, steps, residual)
+
+Settle a geometry whose bridle rest lengths disagree with its node positions,
+by integrating it with every segment stiffness scaled down to
+`config.start_scale` of nominal and handed back only as the structure settles.
+
+The measured V3 bridle lengths and the measured node coordinates come from
+different sources and are not consistent: several lines start at more than 100 %
+strain, which puts the initial accelerations near 5·10⁷ m/s² and leaves the
+implicit solver unable to complete even one step. Softening the springs brings
+that into a range it can integrate; the ramp is gated on the residual falling
+below `config.settled_tol` rather than run on a fixed schedule, because raising
+the stiffness before the knots have moved just puts the strain energy back.
+`config.world_damping` is applied to every point for the duration so the knots
+settle instead of ringing, and is removed again before returning.
+
+Call after `init!`. Returns the scale actually reached (1.0 on success), the
+number of steps taken and the final residual.
+"""
+function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
+                       prn::Bool=true)
+    baseline = segment_stiffness_baseline(sys)
+    saved_damping = [copy(point.world_frame_damping) for point in sys.points]
+    SymbolicAWEModels.set_world_frame_damping(
+        sys, fill(config.world_damping, 3))
+
+    scale = config.start_scale
+    scale_segment_stiffness!(sys, baseline, scale)
+    steps = 0
+    residual = NaN
+    while scale < 1.0 && steps < config.max_steps
+        steps += 1
+        try
+            next_step!(sam; dt=config.dt, vsm_interval=0)
+        catch exception
+            prn && @warn "relax_bridle! stopped" steps scale exception
+            break
+        end
+        residual = relax_residual(sam)
+        residual < config.settled_tol || continue
+        scale = min(1.0, scale * config.growth)
+        scale_segment_stiffness!(sys, baseline, scale)
+    end
+
+    scale_segment_stiffness!(sys, baseline, 1.0)
+    if scale >= 1.0
+        for hold in 1:config.hold_steps
+            decay = 1.0 - hold / config.hold_steps
+            for (idx, point) in enumerate(sys.points)
+                point.world_frame_damping .=
+                    max.(saved_damping[idx], config.world_damping * decay)
+            end
+            try
+                next_step!(sam; dt=config.dt,
+                    vsm_interval=config.hold_vsm_interval)
+            catch exception
+                prn && @warn "relax_bridle! hold phase stopped" hold exception
+                break
+            end
+            steps += 1
+        end
+    end
+    for (idx, point) in enumerate(sys.points)
+        point.world_frame_damping .= saved_damping[idx]
+    end
+    residual = relax_residual(sam)
+    prn && @info "Bridle relaxed" scale steps residual
+    return scale, steps, residual
 end
 
 """
@@ -281,7 +461,7 @@ A package directory under `DEPOT_PATH/packages` is not ours to write to: it is
 usually read-only, and `Pkg.gc` deletes the whole tree once no environment
 references that version. A `scratchspaces` directory keyed by our UUID survives
 reinstalling. A development checkout keeps caching in place, so `] dev` behaves
-as before and existing `data/settled_*.bin` files stay in use.
+as before and existing `data/settled_*.arrow` states stay in use.
 """
 function default_cache_path(data_path)
     abs_data = abspath(data_path)
@@ -318,47 +498,6 @@ function with_model_cache(f, cache_path)
     end
 end
 
-"""
-    settled_cache_tag()
-
-Version stamp for the settled-geometry cache file name.
-
-A settled `.bin` is a `Serialization` dump of a `SystemStructure`, which carries
-types from three packages: `SymbolicAWEModels` (the structure itself), plus the
-`AtmosphericModel` and the `Settings` hanging off it. `deserialize` reads each
-struct with the *current* `fieldcount` and no field list is stored in the stream,
-so adding a field to any of them makes the reader run off the end of the file
-(`EOFError`) — a cache written by other versions is not just stale, it is
-unreadable. Stamping the versions into the name turns that into a cache miss.
-
-The Julia minor version is included because the serialization format itself is
-only guaranteed compatible within one minor release.
-"""
-function settled_cache_tag()
-    "saw$(pkgversion(SymbolicAWEModels))" *
-    "_am$(pkgversion(AtmosphericModels))" *
-    "_ku$(pkgversion(KiteUtils))" *
-    "_jl$(VERSION.major).$(VERSION.minor)"
-end
-
-"""
-    aero_mode_matches(sys, mode) -> Bool
-
-Whether every wing of `sys` carries aerodynamics of `mode`'s kind, compared by
-`aero_mode_tag` — the same name the model binary is keyed on. Wings without
-aerodynamics (`RIGID_DYNAMICS`) never disagree.
-
-A settled `SystemStructure` is deserialized with the aero object it was settled
-with, so this is what stops a cache hit from overriding a requested aero mode.
-"""
-function aero_mode_matches(sys, mode)
-    tag = SymbolicAWEModels.aero_mode_tag(mode)
-    return all(sys.wings) do wing
-        isnothing(wing.aero) ||
-            SymbolicAWEModels.aero_mode_tag(wing.aero) == tag
-    end
-end
-
 function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      cache_path=nothing,
@@ -373,7 +512,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     gc.tether_length = config.tether_length
 
     cache_path != data_path && mkpath(cache_path)
-    dest_struc = settled_struct_path(
+    dest_struc = settled_state_path(
         config, init_row; data_path, cache_path)
     source_struc = joinpath(
         data_path, config.source_struc_path)
@@ -409,7 +548,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         end
     end
 
-    # Load model from serialized sys_struct, or source
+    # Load model from the settled state, or source
     # YAML if settling failed
     set = Settings(joinpath(data_path, config.system_yaml))
     set.v_wind = config.v_wind
@@ -418,34 +557,24 @@ function settle_wing(config::V3SettleConfig, init_row;
     # profile_law is taken from settings.yaml (loaded via Settings above).
     set.wind_vec = KiteUtils.MVec3(init_row.wind_vec)
 
-    # `nothing` until a cached geometry has actually been read back: the file
-    # existing is not enough, see `settled_cache_tag`.
+    # `nothing` until a cached state has actually been read back: the file
+    # existing is not enough.
     sys = nothing
     if !settle_failed && isfile(dest_struc)
-        @info "Loading settled geometry" dest_struc
-        try
-            sys = deserialize(dest_struc)
-        catch err
-            err isa InterruptException && rethrow()
-            # Reachable for caches written before the version tag entered the
-            # name, or by a package that changed a serialized struct without a
-            # version bump. Re-deriving from the source YAML is always correct,
-            # just slower, so warn and fall through rather than crash.
-            @warn "Cached settled geometry unreadable, using source geometry" dest_struc err
-            sys = nothing
-        end
-        if !isnothing(sys) && !aero_mode_matches(sys, config.aero_mode)
-            # A file written before the aero tag entered the key, or renamed by
-            # hand: its aero object would override config.aero_mode in silence.
-            @warn "Cached settled geometry was settled with another aero mode, \
-                   using source geometry" dest_struc requested=config.aero_mode
-            sys = nothing
-        end
+        @info "Loading settled state" dest_struc
+        candidate, _ = build_settling_struct(config;
+            data_path, source_struc, source_aero)
+        apply_settled_state!(candidate, config, dest_struc) &&
+            (sys = candidate)
     end
 
     if !isnothing(sys)
         sys.set = set
         sam = SymbolicAWEModel(set, sys)
+        # Tape rest lengths are parameters, not state, so the log does not carry
+        # them; the rebuilt structure needs them applied as settling did.
+        apply_geom_adjustments!(sys, gc)
+        sys.tethers[1].init_stretched_len = gc.tether_length
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=false, remake_vsm=true,
@@ -474,13 +603,15 @@ function settle_wing(config::V3SettleConfig, init_row;
 end
 
 """
-Set up a settling model: settings, VSM, sys struct, damping,
-SAM creation, geometry adjustments, init, and lock tether.
-Returns `(sam, sys, gc)`.
+    build_settling_struct(config; data_path, source_struc, source_aero)
+
+Build the settling `SystemStructure` from the source YAML: settings, VSM, the
+structure itself, the resolved KCU mass and the starting damping. Returns
+`(sys, set)`. Shared by [`setup_settling_model`](@ref) and the settled-state
+cache, which rebuilds the same structure before restoring a state onto it.
 """
-function setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero, cache_path=data_path)
-    gc = config.geom
+function build_settling_struct(config::V3SettleConfig;
+        data_path, source_struc, source_aero)
     set = Settings(joinpath(data_path, config.system_yaml))
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
@@ -518,6 +649,20 @@ function setup_settling_model(config::V3SettleConfig;
         set_damping_per_stiffness!(sys, tether_bridle_segments(sys),
                                    settle_dps)
     end
+    SymbolicAWEModels.set_body_frame_damping(sys, config.body_damping)
+    return sys, set
+end
+
+"""
+Set up a settling model: settings, VSM, sys struct, damping,
+SAM creation, geometry adjustments, init, and lock tether.
+Returns `(sam, sys, gc)`.
+"""
+function setup_settling_model(config::V3SettleConfig;
+        data_path, source_struc, source_aero, cache_path=data_path)
+    gc = config.geom
+    sys, set = build_settling_struct(config;
+        data_path, source_struc, source_aero)
 
     sam = SymbolicAWEModel(set, sys)
     apply_geom_adjustments!(sys, gc)
@@ -592,11 +737,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
             damping = decayed(config.body_damping)
             SymbolicAWEModels.set_world_frame_damping(
                 sys, config.world_damping .* decay)
-            set_body_frame_damping!(sys, damping)
-            for (rng, damp) in config.body_damping_overrides
-                SymbolicAWEModels.set_body_frame_damping(
-                    sys, decayed(damp), rng)
-            end
+            SymbolicAWEModels.set_body_frame_damping(sys, damping)
 
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)
@@ -684,26 +825,13 @@ function run_power_zone_settling!(config::V3SettleConfig;
     # reused on every later run until someone deletes the file by hand.
     # `settle_wing` turns this into `settle_failed = true`.
     failed && error("Settling diverged before completing " *
-                    "$(config.num_steps) steps; geometry not serialized")
+                    "$(config.num_steps) steps; state not saved")
 
     # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
     SymbolicAWEModels.reposition!(sys.transforms, sys)
 
-    # Copy settled world positions into CAD slots so
-    # that copy_cad_to_world! during init! restores
-    # the settled state exactly.
-    for point in sys.points
-        point.pos_cad .= point.pos_w
-    end
-    for wing in sys.wings
-        wing.pos_cad .= wing.pos_w
-        wing.R_b_to_c .=
-            SymbolicAWEModels.quaternion_to_rotation_matrix(
-                wing.Q_b_to_w)
-    end
-
-    @info "Serializing settled sys_struct..."
-    serialize(dest_struc, sys)
+    @info "Saving settled state..."
+    save_settled_state(sam, dest_struc)
 
     syslog = save_and_load_log(
         logger, "settle_particle_dynamics_wing"; path=log_path)

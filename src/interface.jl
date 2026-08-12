@@ -402,7 +402,7 @@ settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
 is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 [s] size the logger and step count, falling back to `1/set.sample_freq` and
 `set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
-re-settling (ignoring the `data/settled_*.bin` cache). There is no winch-gain
+re-settling (ignoring the `data/settled_*.arrow` state). There is no winch-gain
 argument: V3Kite owns no winch controller (see [`step!`](@ref)).
 `system_yaml` names the system-YAML file (default `"system.yaml"`) that points
 at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
@@ -412,7 +412,7 @@ and the returned model (default `AeroDirect()`).
 `data_path` is the directory the geometry/settings YAMLs are READ from,
 defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
 everything generated is WRITTEN — the settled-geometry cache
-(`settled_*.bin`), the settling log, and the serialized model binary
+(`settled_*.arrow`), the settling log, and the serialized model binary
 (`model_*.bin`).
 
 Redirecting `data_path` as well means that directory must hold the source
@@ -436,7 +436,8 @@ the wing*, so it damps bridle vibration without slowing the kite's global motion
 `decay_steps` it decays linearly to the `min_damping` floor, and that floor is
 what the returned model runs with. It is baked into the settled geometry and
 carries over into the returned model, so it also forms part of the settling
-cache key — changing it produces a different `data/settled_*.bin` rather than silently
+cache key —
+changing it produces a different `data/settled_*.arrow` rather than silently
 reusing the old one.
 
 The default damps only normal to the wing surface. The in-plane (x, y) terms

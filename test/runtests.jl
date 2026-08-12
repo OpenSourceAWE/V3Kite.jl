@@ -118,22 +118,12 @@ using KitePodModels: KCU
         cfg_dir = V3Kite.V3SettleConfig()
         cfg_cont = V3Kite.V3SettleConfig(
             aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero())
-        path_dir = V3Kite.settled_struct_path(cfg_dir, init_row)
-        path_cont = V3Kite.settled_struct_path(cfg_cont, init_row)
+        path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
+        path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
         @test path_dir != path_cont
         @test occursin("_aerocont", path_cont)
-        # The default adds nothing, so caches predating the aero tag stay in use.
         @test !occursin("_aero", path_dir)
-
-        # Guards a file written before the tag existed, or renamed by hand.
-        cont_wing = (aero=V3Kite.SymbolicAWEModels.ContinuousAero(),)
-        @test V3Kite.aero_mode_matches((wings=[cont_wing],),
-            V3Kite.SymbolicAWEModels.ContinuousAero())
-        @test !V3Kite.aero_mode_matches((wings=[cont_wing],),
-            V3Kite.SymbolicAWEModels.AeroDirect())
-        # A wing without aerodynamics cannot disagree.
-        @test V3Kite.aero_mode_matches((wings=[(aero=nothing,)],),
-            V3Kite.SymbolicAWEModels.AeroDirect())
+        @test endswith(path_dir, ".arrow")
     end
 
     @testset "Default Cache Path" begin

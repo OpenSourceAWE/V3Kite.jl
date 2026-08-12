@@ -53,15 +53,19 @@ include("simulation.jl")
 include("turbulence_config.jl")
 include("stabilization.jl")
 include("interface.jl")
+include("surfplan_adapter/SurfplanAdapter.jl")
+using .SurfplanAdapter
 
 # Calibration exports
 # Base values (official KCU measurements)
 export V3_STEERING_L0_BASE, V3_DEPOWER_L0_BASE
 # Gains
 export V3_STEERING_GAIN, V3_DEPOWER_GAIN
-# Segment indices
+# Segment indices and names
 export V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 export V3_DEPOWER_IDX
+export V3_STEERING_LEFT_NAME, V3_STEERING_RIGHT_NAME
+export V3_DEPOWER_NAME, tape_segment
 # Conversion functions
 export steering_percentage_to_lengths
 export depower_percentage_to_length
@@ -136,10 +140,16 @@ export kite_ref_frame, calc_orient_quat, orient_euler
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
-export settled_struct_path, load_settled_struct
+export settled_state_path, load_settled_struct
+export V3RelaxConfig, relax_bridle!
 
 # Photogrammetry exports
 export load_extra_points
+
+# Beam-wing converter exports (V3Kite.SurfplanAdapter)
+export SurfplanAdapter, V3BeamTopology, V3_ADAPTER_FRAME_OFFSET
+export surfplan_to_struc, read_adapter_geometry, AdapterGeometry
+export apply_comer_bending!, apply_bridle_material!, beam_joint_radii
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
 export plot_body_frame_local, plot_twist_dist

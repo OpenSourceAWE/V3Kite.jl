@@ -36,18 +36,31 @@ end
     apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 
 Apply wing geometry adjustments to a `SystemStructure`:
-tip leading-edge reduction, trailing-edge wire shortening,
-and tether length repositioning.
+tip leading-edge reduction and trailing-edge wire shortening.
+
+Both were fitted against the particle lattice and address segments by position, so
+they are skipped with a warning on a structure that has no segment at those indices
+— the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) has a different segment
+layout and must not inherit a correction fitted for another structure.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
+    in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
     if config.reduce_tip
-        for idx in config.tip_segments
-            sys.segments[idx].l0 -= config.tip_reduction
+        if in_range(config.tip_segments)
+            for idx in config.tip_segments
+                sys.segments[idx].l0 -= config.tip_reduction
+            end
+        else
+            @warn "Skipping tip reduction: no segments at those indices" config.tip_segments
         end
     end
     if config.reduce_te
-        for idx in config.te_segments
-            sys.segments[idx].l0 *= config.te_frac
+        if in_range(config.te_segments)
+            for idx in config.te_segments
+                sys.segments[idx].l0 *= config.te_frac
+            end
+        else
+            @warn "Skipping TE reduction: no segments at those indices" config.te_segments
         end
     end
     return nothing
@@ -101,12 +114,15 @@ end
 """
     tether_point_idxs(sys) -> Vector{Int}
 
-Sorted indices of every point belonging to a tether: the endpoints
-of all segments referenced by the system's tethers.
+Sorted indices of every point on a winched tether: the endpoints
+of all segments those tethers reference. A winch-less tether is a
+bridle line that was split into segments, not part of the tether.
 """
 function tether_point_idxs(sys)
     idxs = Set{Int}()
+    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
     for tether in sys.tethers, segment_idx in tether.segment_idxs
+        tether.idx in winched || continue
         i, j = sys.segments[segment_idx].point_idxs
         push!(idxs, i, j)
     end

@@ -1,5 +1,55 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `V3Kite.SurfplanAdapter`, which turns a SurfplanAdapter export of the V3 into a
+  Timoshenko-beam `struc_geometry.yaml`: the leading edge and the struts become
+  `Body` chains joined by `TimoshenkoJoint`s, and every bridle branch end rides
+  the nearest node body as a `BODY_STATIC` point. The bridle itself comes from
+  the measured 2025 line system in `data/bridle_geometry_full_fem.yaml`, not from
+  the export, so the KCU, the pulleys, the M-line and the three tapes are the
+  flown ones. `V3BeamTopology` carries everything the emission depends on,
+  `surfplan_to_struc` writes the file, `apply_comer_bending!` swaps the constant
+  Breukels bending YAML can hold for the curvature-softening Comer-Levy law, and
+  `apply_bridle_material!` sets the compression and damping knobs on a loaded
+  structure so they can be swept without re-emitting. The emitted wing is a
+  `PARTICLE_DYNAMICS` wing following `BODY_STATIC` points, which makes
+  `data/struc_geometry_beam.yaml` a drop-in replacement for the particle
+  `struc_geometry.yaml`.
+- `relax_bridle!` and `V3RelaxConfig`. The measured bridle lengths and the
+  measured node coordinates come from different upstream files and disagree, so
+  several lines start above 100 % strain and no implicit solver can take a first
+  step. Relaxation integrates the structure with every segment stiffness scaled
+  down and hands it back as the residual falls, then holds at full stiffness
+  while the settling damping decays away.
+
+### Changed
+- The settled state is cached as a one-row `Float64` log rather than a rewritten
+  geometry YAML: `settled_struct_path` became `settled_state_path` and the
+  structure is rebuilt from the source YAML with that state restored onto it. A
+  `Float32` state does not reproduce `integrator.u` on a bridle this stiff.
+- `KiteUtils` 0.12, whose `SysState` carries a complete differential state — the
+  point velocities, body turn rates and pulley lengths a single logged row needs
+  to restart a simulation.
+- Structural YAMLs carry a `variables` block instead of a `materials` table,
+  which SymbolicAWEModels removed. `dyneema` is now a multi-variable filling
+  `youngs_modulus`, `damping_per_stiffness` and `density` wherever it is
+  written, so the segment and tether tables name those three columns instead
+  of `material`. The hardcoded wing stiffnesses of `struc_geometry.yaml` moved
+  to `wing_tube` and `wing_wire` variables, which give the same `unit_stiffness`
+  (`youngs_modulus * area`, at the 1 mm diameter every wing row uses) and the
+  same damping as the numbers they replace.
+- Pulley rows carry an `efficiency`, SymbolicAWEModels having replaced the fixed
+  pulley damping with a sheave friction that scales with line tension rather than
+  with rope speed. Every V3 pulley is written at `0.95`, a sealed ball-bearing
+  sheave, none of them having been measured; the artificial `damping` that sits
+  next to it is a debugging aid and stays zero.
+- Body- and world-frame damping are applied to every point. The tether-skipping
+  `set_body_frame_damping!`, the `set_v3_body_damping!` two-region pattern and
+  `V3SettleConfig.body_damping_overrides` are gone, along with the override
+  suffix in the settled-geometry cache key; `V3SimConfig` gained
+  `world_damping_pattern` next to `damping_pattern`.
 ## V3Kite v1.2.0 17-08-2026
 
 ### Changed
