@@ -124,6 +124,13 @@ using KitePodModels: KCU
         @test occursin("_aerocont", path_cont)
         @test !occursin("_aero", path_dir)
         @test endswith(path_dir, ".arrow")
+
+        # A state logged for one geometry has the wrong point count for another.
+        cfg_beam = V3Kite.V3SettleConfig(
+            source_struc_path="struc_geometry_beam.yaml")
+        path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
+        @test path_beam != path_dir
+        @test occursin("_struc_geometry_beam", path_beam)
     end
 
     @testset "Default Cache Path" begin

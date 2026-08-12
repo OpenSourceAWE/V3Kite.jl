@@ -18,6 +18,12 @@ const DEFAULT_AERO_TAG = SymbolicAWEModels.aero_mode_tag(
     SymbolicAWEModels.AeroDirect())
 
 """
+Source-geometry tag left out of the settled-state cache key, for the same reason
+[`DEFAULT_AERO_TAG`](@ref) is. See [`settled_state_path`](@ref).
+"""
+const DEFAULT_STRUC_TAG = "struc_geometry"
+
+"""
     v3_data_path()
 
 Return the path to the V3 data directory bundled with V3Kite.jl.

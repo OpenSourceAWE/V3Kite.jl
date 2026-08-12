@@ -29,6 +29,9 @@ Base.@kwdef mutable struct V3SettleConfig
     vsm_settings_path::String = "vsm_settings.yaml"
     # System YAML pointing at the active settings file (loaded via `Settings`)
     system_yaml::String = "system.yaml"
+    # Relaxed state to start the settling from, relative to `data_path`; see
+    # `relaxed_state_name`. `nothing` settles from the placed geometry.
+    init_state_path::Union{Nothing, String} = nothing
 
     # Simulation parameters
     num_steps::Int = 1600
@@ -117,7 +120,10 @@ value settling ran at, so every flown ratio below the floor shares
 one settled state.
 
 The aerodynamics enter the name because a structure settled under one
-mode is not equilibrium under another.
+mode is not equilibrium under another, and the source geometry enters it
+because a state logged for one has the wrong number of points for
+another. Both are left out at their default so that files written before
+the key knew about them keep being found.
 """
 function settled_state_path(config::V3SettleConfig, init_row;
                             data_path=nothing, cache_path=nothing)
@@ -169,23 +175,79 @@ function settled_state_path(config::V3SettleConfig, init_row;
     end
     aero_tag = SymbolicAWEModels.aero_mode_tag(config.aero_mode)
     aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
+    struc_tag = splitext(basename(config.source_struc_path))[1]
+    struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
     return joinpath(cache_path, "settled_$(suffix).arrow")
 end
 
 """
-    save_settled_state(sam, path)
+    save_state_log(sam, path)
 
 Write `sam`'s state to `path` as a one-row `Float64` log — everything the
 integrator needs to restart, and nothing else. `Float64` because a `Float32`
 state does not reproduce `integrator.u` on a bridle this stiff.
 """
-function save_settled_state(sam, path)
+function save_state_log(sam, path)
     logger = Logger(sam, 1; precision=Float64)
     log!(logger, SysState(sam; precision=Float64))
     name, dir = basename(path), dirname(path)
     save_log(logger, splitext(name)[1], false; path=dir)
     return path
 end
+
+"""
+    read_state_log(path) -> Union{Nothing, SysState}
+
+The single state written by [`save_state_log`](@ref), or `nothing` when `path` is
+missing, unreadable or empty, so a caller can fall back to the placed geometry
+rather than crash.
+"""
+function read_state_log(path)
+    isfile(path) || return nothing
+    log = try
+        load_log(path)
+    catch err
+        err isa InterruptException && rethrow()
+        @warn "State log unreadable, using the placed geometry" path err
+        return nothing
+    end
+    return isempty(log.syslog) ? nothing : log.syslog[1]
+end
+
+"""
+    start_from_state!(sam, sys, path) -> Bool
+
+Restore the state logged at `path` onto `sys` and push it onto `sam`'s
+integrator, so a run starts where that log left off. Returns `false` when the log
+is missing or unreadable.
+
+Call after `init!`, not before: the log carries positions and velocities, and the
+rest lengths they belong with are the ones `init!` computes, so restoring first
+and skipping the recompute would pair a relaxed geometry with the rest lengths of
+the YAML instead.
+"""
+function start_from_state!(sam, sys, path)
+    state = read_state_log(path)
+    isnothing(state) && return false
+    update_from_sysstate!(sys, state)
+    SymbolicAWEModels.reinit!(sam, sam.prob, SymbolicAWEModels.FBDF())
+    return true
+end
+
+"""
+    relaxed_state_name(struc_yaml, depower) -> String
+
+Log name, without extension, of the relaxed state of `struc_yaml` at `depower`
+(a fraction): `relaxed_struc_geometry_beam_dp20`. The relaxation example writes
+it and `V3SettleConfig.init_state_path` reads it, so the name lives here rather
+than in both.
+
+Only the depower is in the name because it alone changes the shape the bridle
+relaxes into. The state is world-frame, so it is saved at the elevation and
+tether length the relaxation ran at, and settling repositions it from there.
+"""
+relaxed_state_name(struc_yaml, depower) =
+    "relaxed_$(splitext(basename(struc_yaml))[1])_dp$(num_tag(depower * 100))"
 
 """
     apply_settled_damping!(sys, config)
@@ -212,16 +274,9 @@ damping. Returns `false` when the file is missing or unreadable, so the caller
 can fall back to the source geometry rather than crash.
 """
 function apply_settled_state!(sys, config::V3SettleConfig, path)
-    isfile(path) || return false
-    log = try
-        load_log(path)
-    catch err
-        err isa InterruptException && rethrow()
-        @warn "Settled state unreadable, using source geometry" path err
-        return false
-    end
-    isempty(log.syslog) && return false
-    update_from_sysstate!(sys, log.syslog[1])
+    state = read_state_log(path)
+    isnothing(state) && return false
+    update_from_sysstate!(sys, state)
     apply_settled_damping!(sys, config)
     return true
 end
@@ -285,6 +340,14 @@ the elevation implied by the initial position and a non-default
 aerodynamics get their own file instead of sharing one. A cached
 geometry whose aerodynamics disagree with `config.aero_mode` is
 rejected and re-derived from the source YAML.
+
+`config.init_state_path` starts the settling from a relaxed state
+instead of from the placed geometry (see
+[`relaxed_state_name`](@ref)), which is what makes a geometry whose
+bridle rest lengths disagree with its node positions settleable at
+all, and what makes one that agrees settle faster. The state is
+restored before the flight state is applied, so the relaxed bridle
+shape rides along into the target pose.
 
 `data_path` is where the source geometry/settings YAMLs are read
 from (default [`v3_data_path`](@ref)); `cache_path` is where
@@ -690,6 +753,14 @@ function run_power_zone_settling!(config::V3SettleConfig;
     sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero, cache_path)
 
+    if !isnothing(config.init_state_path)
+        state_path = joinpath(data_path, config.init_state_path)
+        start_from_state!(sam, sys, state_path) ||
+            error("No relaxed state at $state_path; run the relaxation " *
+                  "example for $(basename(source_struc)) first")
+        @info "Settling from a relaxed state" state_path
+    end
+
     update_sys_struct_from_data!(sys, init_row; config=gc)
 
     data_pos = [init_row.x, init_row.y, init_row.z]
@@ -831,7 +902,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     SymbolicAWEModels.reposition!(sys.transforms, sys)
 
     @info "Saving settled state..."
-    save_settled_state(sam, dest_struc)
+    save_state_log(sam, dest_struc)
 
     syslog = save_and_load_log(
         logger, "settle_particle_dynamics_wing"; path=log_path)

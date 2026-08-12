@@ -23,12 +23,29 @@
   step. Relaxation integrates the structure with every segment stiffness scaled
   down and hands it back as the residual falls, then holds at full stiffness
   while the settling damping decays away.
+- `save_state_log`, `read_state_log` and `start_from_state!`, which write and
+  restore the one-row state log the settled-state cache already used, and
+  `relaxed_state_name`, which names the relaxed state of a geometry at a depower.
+- `V3SettleConfig.init_state_path` starts a settling from a relaxed state instead
+  of from the placed geometry. The state is restored before the flight state is
+  applied, so the relaxed bridle shape rides along into the target pose; that
+  makes a geometry whose bridle rest lengths disagree with its node positions
+  settleable at all, and one that agrees settle faster.
+- `examples/v3beam_geometry.jl` emits the beam geometry and
+  `examples/relax_bridle.jl` relaxes a geometry and logs the state. Both write
+  files that are in git — `data/struc_geometry_beam.yaml` and
+  `data/relaxed_*.arrow` — so no other example regenerates or relaxes anything,
+  and a beam run costs nothing but the run. `relax_bridle.jl` is
+  geometry-agnostic and gives the particle model a relaxed start too.
 
 ### Changed
 - The settled state is cached as a one-row `Float64` log rather than a rewritten
   geometry YAML: `settled_struct_path` became `settled_state_path` and the
   structure is rebuilt from the source YAML with that state restored onto it. A
   `Float32` state does not reproduce `integrator.u` on a bridle this stiff.
+- The source geometry enters the settled-state cache key, a state logged for one
+  having the wrong number of points for another. Left out at the default
+  `struc_geometry.yaml`, so existing cache files keep being found.
 - `KiteUtils` 0.12, whose `SysState` carries a complete differential state — the
   point velocities, body turn rates and pulley lengths a single logged row needs
   to restart a simulation.

@@ -10,6 +10,7 @@ ideas.txt
 .helix
 *.arrow
 !data/reel_out_4p_torque_control.arrow
+!data/relaxed_*.arrow
 *.bin
 *.bin.xz
 *.tar.gz

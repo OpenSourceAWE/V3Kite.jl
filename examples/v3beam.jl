@@ -13,9 +13,7 @@ by name instead of by index, so `STRUC_YAML` is the only line that differs.
 (see `V3_ADAPTER_FRAME_OFFSET`), so the VSM sections still sit on the wing.
 
 The bridle is the measured 2025 line system, not the export's design bridle, so the
-KCU, the pulleys, the M-line and the three tapes are the flown ones. Its `power_tape`
-rest length is 2.2 m, which is `DEPOWER = 0.40`, so the emitted geometry already sits
-at this example's setting.
+KCU, the pulleys, the M-line and the three tapes are the flown ones.
 
 Built on the `KernelBackend`, which assembles one kernel per component instead of
 compiling a single monolithic ODE — the 22 beam bodies and 21 joints make the
@@ -28,25 +26,26 @@ nothing and only the bridle-carrying world-frame term acts. The wing itself is
 damped by the Timoshenko joints and the canopy segments, whose damping lives in
 the YAML.
 
-`BRIDLE_SEGMENTS` splits every bridle line into that many spring-damper segments, a
-pulley's two legs included; only the three KCU tapes stay single, their length being
-driven directly. It is the one knob that changes how many segments exist, so it only
-takes effect through `REGENERATE_STRUC_YAML`, which rewrites `STRUC_YAML` from the
-export before the run, and it recompiles the kernels on its first run at a new value.
+`STRUC_YAML` and the relaxed state it starts from are both in git and both come
+from their own example: `v3beam_geometry.jl` emits the geometry from the
+SurfplanAdapter export, `relax_bridle.jl` relaxes it and logs the state. Neither
+runs here — this example only flies what they wrote, so a run costs nothing but
+the run.
 
-The other three decide what a line does as it goes slack and are set on the loaded
-structure by [`apply_bridle_material!`](@ref), so sweeping them needs neither a
-rewrite nor a recompile. `COMPRESSION_DAMPING_FRAC = COMPRESSION_FRAC` leaves the
-bridle with a single damping ratio instead of one that jumps the moment a line
-unloads, and both at `0` make a slack line carry no force at all. The two compression
-fractions reach the canopy membrane segments as well as the bridle, since fabric is
-tension-only for the same reason a line is, while `BRIDLE_DAMPING_PER_STIFFNESS`
-reaches only the lines and tapes.
+The three knobs below decide what a bridle line does as it goes slack and are set
+on the loaded structure by [`apply_bridle_material!`](@ref), so sweeping them
+needs neither a rewrite nor a recompile. `COMPRESSION_DAMPING_FRAC =
+COMPRESSION_FRAC` leaves the bridle with a single damping ratio instead of one
+that jumps the moment a line unloads, and both at `0` make a slack line carry no
+force at all. The two compression fractions reach the canopy membrane segments as
+well as the bridle, since fabric is tension-only for the same reason a line is,
+while `BRIDLE_DAMPING_PER_STIFFNESS` reaches only the lines and tapes. The
+segment count is not among them: that one changes how many segments exist, so it
+lives in `v3beam_geometry.jl`.
 
 The YAML carries constant Breukels bending per joint because it cannot hold a
 callable. Pointing `ADAPTER_DIR` at the export swaps in the curvature-softening
 Comer-Levy law, which is what lets a tube keep bending past its collapse moment.
-That needs the tube laws from an unreleased SymbolicAWEModels, so it is off here.
 """
 
 using Pkg
@@ -68,22 +67,12 @@ STRUC_YAML = "struc_geometry_beam.yaml"
 AERO_YAML = "aero_geometry.yaml"
 VSM_SETTINGS = "vsm_settings.yaml"
 
-SURFPLAN_DIR = joinpath(homedir(), "Code", "Kite", "SurfplanAdapter",
-    "processed_data", "TUDELFT_V3_KITE")
-
-# Rewrite STRUC_YAML from the SurfplanAdapter export in SURFPLAN_DIR before
-# running. Only needed for BRIDLE_SEGMENTS; the other three knobs are applied to
-# the loaded structure below.
-REGENERATE_STRUC_YAML = true
-
-BRIDLE_SEGMENTS = 1                 # spring-damper segments per bridle line
 BRIDLE_DAMPING_PER_STIFFNESS = 0.001 # bridle unit_damping / unit_stiffness [s]
 COMPRESSION_FRAC = 0.01              # stiffness left under compression
 COMPRESSION_DAMPING_FRAC = 1.0      # damping left under compression
 
 # Export the beam was built from; `nothing` keeps the linear Breukels bending,
-# SURFPLAN_DIR swaps in the curvature-softening Comer-Levy law. That needs the
-# tube laws, which are not in a released SymbolicAWEModels yet.
+# the export directory swaps in the curvature-softening Comer-Levy law.
 ADAPTER_DIR = nothing
 
 # BODY_DAMPING reaches nothing on a beam wing, see the docstring above.
@@ -95,7 +84,7 @@ FPS = 20
 V_WIND = 15.4
 TETHER_LENGTH = 250.0
 ELEVATION = 70.0      # degrees
-DEPOWER = 0.20        # fraction [0, 1]; the emitted power tape is 2.2 m = 0.40
+DEPOWER = 0.20        # fraction [0, 1]; has to match relax_bridle.jl
 STEERING = 0.0        # fraction [-1, 1]
 RAMP_TIME = 5.0       # seconds to ramp the controls in over
 VSM_INTERVAL = 1      # steps between VSM aero solves
@@ -107,20 +96,10 @@ VSM_INTERVAL = 1      # steps between VSM aero solves
 @info "V3 beam-wing example" STRUC_YAML AERO_YAML
 
 beam_topology = V3BeamTopology(
-    bridle_segments = BRIDLE_SEGMENTS,
     bridle_rel_damping = BRIDLE_DAMPING_PER_STIFFNESS,
     compression_frac = COMPRESSION_FRAC,
     compression_damping_frac = COMPRESSION_DAMPING_FRAC,
-    tether_length = TETHER_LENGTH,
-    elevation_deg = ELEVATION,
 )
-
-if REGENERATE_STRUC_YAML
-    counts = surfplan_to_struc(SURFPLAN_DIR,
-        joinpath(v3_data_path(), STRUC_YAML);
-        topo = beam_topology, wing_only = false)
-    @info "Regenerated geometry" STRUC_YAML counts
-end
 
 sam, sys = create_v3_model(V3SimConfig(
     struc_yaml_path = STRUC_YAML,
@@ -155,11 +134,11 @@ set_steering!(sys, STEERING, geom)
 init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
 sys.winches[1].brake = true
 
-# The measured bridle lengths and the measured node coordinates come from two
-# different upstream files and disagree — several lines start above 100 % strain,
-# which no implicit solver can take a first step from. Relax before simulating.
-scale, relax_steps, residual = relax_bridle!(sam, sys)
-scale < 1.0 && @error "Bridle relaxation did not reach full stiffness" scale residual
+state_path = joinpath(v3_data_path(),
+    relaxed_state_name(STRUC_YAML, DEPOWER) * ".arrow")
+start_from_state!(sam, sys, state_path) ||
+    error("No relaxed state at $state_path; run relax_bridle.jl first")
+@info "Started from the relaxed state" state_path
 
 # =============================================================================
 # Simulation loop
@@ -176,8 +155,8 @@ for step in 1:n_steps
     t = step * dt
     ramp = ramp_factor(t, 0.0, RAMP_TIME)
 
-    # Depower is not ramped: the emitted bridle already sits at DEPOWER and the
-    # relaxation settled it there, so ramping from zero would yank the power tape.
+    # Depower is not ramped: the relaxed state sits at DEPOWER already, so
+    # ramping from zero would yank the power tape.
     set_depower!(sys, DEPOWER, ramp * STEERING, geom)
     set_steering!(sys, ramp * STEERING, geom)
 

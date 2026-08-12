@@ -142,6 +142,7 @@ export kite_ref_frame, calc_orient_quat, orient_euler
 export V3SettleConfig, settle_wing
 export settled_state_path, load_settled_struct
 export V3RelaxConfig, relax_bridle!
+export save_state_log, read_state_log, start_from_state!, relaxed_state_name
 
 # Photogrammetry exports
 export load_extra_points
