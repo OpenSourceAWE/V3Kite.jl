@@ -12,8 +12,9 @@ settled at a fixed depower setting (DEPOWER_SETPOINT) and parked at a
 constant tether length (`step!` runs in POSITION MODE via `set_length`),
 while a `create_heading_pid` controller drives `rel_steering` each step.
 
-Logs the run to "tmp_sinus" (kept separate from simple_parking.jl's
-"tmp_run"). For verification, run `include("examples/simple_sinus.jl")`, then
+Logs the run to "tmp_sinus" in the `output` folder (`examples/../output`,
+created if missing; kept separate from simple_parking.jl's "tmp_parking").
+For verification, run `include("examples/simple_sinus.jl")`, then
 `include("examples/simple_sinus_plots.jl")`, and check the printed heading
 tracking RMS error.
 
@@ -132,10 +133,12 @@ catch e
 end
 
 @info "Save the log"
-save_log(s.logger, "tmp_sinus"; colmeta=timestamp_colmeta())
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+mkpath(OUTPUT_DIR)
+save_log(s.logger, "tmp_sinus"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 # Tracking error over the settled part (skip the first period).
-syslog = load_log("tmp_sinus")
+syslog = load_log("tmp_sinus"; path=OUTPUT_DIR)
 sl = syslog.syslog
 settled = findall(t -> t >= HEADING_PERIOD, sl.time)
 if !isempty(settled)

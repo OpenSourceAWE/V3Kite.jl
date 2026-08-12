@@ -4,7 +4,8 @@
 """
 Plotting for simple_sinus.jl results.
 
-Loads the "tmp_sinus" log saved by simple_sinus.jl. The heading setpoint is
+Loads the "tmp_sinus" log saved by simple_sinus.jl in the `output` folder
+(`examples/../output`). The heading setpoint is
 read back from the logged `bearing` field (set each step in simple_sinus.jl).
 The steering panel shows both values `step!` logs: the command
 (`set_steering`) and the KCU's actual, tape-rate-limited value (`steering`).
@@ -32,10 +33,11 @@ DEPOWER_SETPOINT = 0.26
 
 @info "Loading simulation results..."
 set_data_path(v3_data_path())
-syslog = load_log("tmp_sinus")
+OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
+syslog = load_log("tmp_sinus"; path=OUTPUT_DIR)
 sl = syslog.syslog
 
-created_at = log_created_at("tmp_sinus")
+created_at = log_created_at("tmp_sinus"; path=OUTPUT_DIR)
 fig_name = "V3 Kite Sinusoidal Heading Tracking"
 if !isnothing(created_at)
     fig_name *= " – " * replace(first(split(created_at, '.')), "T" => "_")
