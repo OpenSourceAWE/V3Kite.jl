@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.1.1 13-08-2026
 
 ### Changed
 - The `min_damping` default of `init` is now computed from `body_damping` as
@@ -10,6 +10,19 @@
   `body_damping` now raises the flown damping with it, and an in-plane `body_damping` keeps
   its in-plane terms in flight. Callers that pass `min_damping` explicitly are unaffected;
   callers relying on the old default get a different settling cache key and re-settle.
+- The `@compile_workload` in `src/precompile.jl` now mirrors `examples/simple_parking.jl`
+  — `system_reelout.yaml` at `aero_mode = ContinuousAero()`, `dt = 0.05/3` and
+  `damping_per_stiffness = 0.001` — instead of `system_cabauw.yaml` at the `AeroDirect()`
+  default. The aero mode picks which model binary the cached SciML specializations are
+  compiled against, so the old workload warmed a path none of the examples fly. Every
+  keyword is passed explicitly now, including those equal to the current default, so the
+  workload cannot drift from the example it mirrors. The first precompilation after this
+  change has no cache for the new combination and rebuilds the model and settled geometry
+  into `data/`, which takes minutes; `V3KITE_SKIP_PRECOMPILE_WORKLOAD=1` skips the workload
+  instead.
+- The examples write their logs to `examples/../output/` (created if missing) rather than
+  the data path, and the matching `*_plots.jl` scripts read them from there:
+  `simple_parking`, `simple_auto_parking`, `simple_sinus` and `steering_test_v3`.
 
 ### Added
 - `damping_per_stiffness` [s], a new `init` keyword and `V3SettleConfig` field, sets the
@@ -27,6 +40,14 @@
   underlying helpers `tether_bridle_segments` and `set_damping_per_stiffness!` (both in
   `src/model_setup.jl`, taking the `SystemStructure`) are exported too, and the examples
   expose the ratio as `DAMPING_PER_STIFFNESS`.
+
+### Fixed
+- `span_mean_aoa(sys)` returned `NaN` for every aero mode. It probed
+  `hasproperty(wing, :vsm_solver)`, but the VSM engine hangs off `wing.aero` and reaches
+  the wing through a `getproperty` forward that `propertynames` does not advertise, so the
+  probe was always false. It now resolves the engine with
+  `SymbolicAWEModels.vsm_engine(wing.aero)` and returns `NaN` only when the wing genuinely
+  carries none. Covered by a new `span_mean_aoa` testset in `test/test-interface.jl`.
 
 ## V3Kite v1.1.0 10-08-2026
 
