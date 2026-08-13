@@ -12,7 +12,13 @@ using PrecompileTools: @compile_workload
 # `sim_step!` *directly* — it never calls `init` or `step!(::V3KITE, ...)`. So
 # the whole high-level interface path (V3KITE wrapper, KCU actuator dynamics,
 # winch_position_torque!, update_sys_state!) is otherwise not precompiled at
-# all. Mirrors examples/simple_sinus.jl minus the control law and logging.
+# all. Mirrors examples/simple_parking.jl minus the compression logging, the
+# ripple report and the saved log.
+#
+# Every `init`/`step!` keyword below is passed explicitly, even where it equals
+# the current default: `aero_mode` and `system_yaml` select which model binary
+# the SciML specializations are compiled against, so a workload that drifts from
+# the example it mirrors warms a code path no example flies.
 #
 # `remake=false` (the `init` default) means the serialized settled geometry and
 # model in data/ are consumed, not rebuilt. Wrapped in try/catch: a workload
@@ -27,14 +33,21 @@ using PrecompileTools: @compile_workload
 if get(ENV, "V3KITE_SKIP_PRECOMPILE_WORKLOAD", "0") != "1"
     @compile_workload begin
         try
-            # sim_time only sizes the logger; keep it small.
-            s = init(10.0, 150.0;
-                depower_setpoint = 0.25, sim_time = 1.0,
-                system_yaml = "system_cabauw.yaml")
+            body_damping = [0.0, 0.0, 40.0]
+            # sim_time only sizes the logger; keep it below the example's 10 s.
+            s = init(9.51, 150.0;
+                depower_setpoint = 0.25, sim_time = 1.0, dt = 0.05/3,
+                system_yaml = "system_reelout.yaml",
+                aero_mode = ContinuousAero(),
+                body_damping, min_damping = 0.8 .* body_damping,
+                damping_per_stiffness = 0.001)
+
+            s.sys.winches[1].brake = true
 
             l0 = s.sys_state.l_tether[1]
             for _ in 1:3
-                step!(s; rel_depower = 0.25, rel_steering = 0.0, set_length = l0)
+                step!(s; rel_depower = 0.25, rel_steering = 0.0040,
+                      set_length = l0, vsm_interval = 1)
             end
 
             # Query functions used by the examples.
