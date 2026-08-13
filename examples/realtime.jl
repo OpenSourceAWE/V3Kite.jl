@@ -48,6 +48,7 @@ MAX_TIME = 1000.0
 FPS = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 DISPLAY_FPS = 10
+PROJECT = "system.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 vector_scale = 1.0
 
@@ -76,7 +77,11 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
+kite = load_kite(PROJECT)
+kite.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
+    project = PROJECT,
+    kite = kite,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,
@@ -87,10 +92,8 @@ settle_config = V3SettleConfig(
     start_depower = UP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
-    geom = V3GeomAdjustConfig(),
-    aero_mode = AERO_MODE,
 )
-gc = settle_config.geom
+gc = settle_config.kite.geom
 
 @info "Settling V3 model..."
 sam, _settle_log, settle_failed = settle_wing(settle_config;

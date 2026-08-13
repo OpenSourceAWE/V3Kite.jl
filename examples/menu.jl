@@ -19,7 +19,6 @@ using REPL.TerminalMenus
 
 options = [
     "v3kite = include(\"v3kite.jl\")",
-    "v3beam = include(\"v3beam.jl\")",
     "v3beam_replay = include(\"v3beam_replay.jl\")",
     "v3beam_geometry = include(\"v3beam_geometry.jl\")",
     "v3beam_aero_geometry = include(\"v3beam_aero_geometry.jl\")",

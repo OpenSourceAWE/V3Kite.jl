@@ -83,12 +83,7 @@ leading-edge sections are split into; the tube bends sharply there, so the defau
 `2` adds one intermediate node in each while interior sections keep a single
 element.
 
-`compression_frac` is the fraction of tensile stiffness every emitted segment
-(canopy membranes and bridle lines) retains under compression, so they are nearly
-tension-only. `compression_damping_frac` does the same for the damping term; the
-default `1.0` leaves damping unaffected by compression, so a line's damping ratio
-jumps as it goes slack, and setting it to `compression_frac` keeps one ratio on
-both branches.
+`bridle` holds the line and membrane material, see [`V3BridleConfig`](@ref).
 
 `bridle_segments` is the number of spring-damper segments each bridle line is split
 into. The lines are emitted as winch-less SymbolicAWEModels tethers, which generate
@@ -99,12 +94,6 @@ well, with the sheave placed on the generated segment touching it on either side
 where the rope actually pays in and out. Only the three KCU tapes stay plain
 segments, because [`set_depower!`](@ref) and [`set_steering!`](@ref) drive their `l0`
 directly.
-
-`pulley_efficiency` is the fraction of line tension every emitted bridle sheave
-passes on, the rest opposing rope travel; the default is SymbolicAWEModels' own, a
-sealed ball-bearing sheave. No V3 pulley has been measured. The emitted rows leave
-the artificial `damping` at zero, it being a debugging aid rather than a sheave
-property.
 
 `frame_offset` moves the export into the CAD frame of the other V3 data files, see
 [`V3_ADAPTER_FRAME_OFFSET`](@ref).
@@ -117,6 +106,7 @@ VSM solve, not as a placement error. Particle geometries are unaffected because
 their wing points are `DYNAMIC`.
 """
 Base.@kwdef struct V3BeamTopology
+    bridle::V3BridleConfig = V3BridleConfig()
     bridle_file::String = joinpath(v3_data_path(), "bridle_geometry_full_fem.yaml")
     bridle_rotation_deg::Float64 = V3_ADAPTER_CHORD_ALIGN_DEG
     bridle_lift::Float64 = V3_BRIDLE_FILE_LIFT
@@ -124,8 +114,6 @@ Base.@kwdef struct V3BeamTopology
     frame_offset::Vector{Float64} = V3_ADAPTER_FRAME_OFFSET
     chord_control_fractions::Vector{Float64} = collect(0.0:0.1:1.0)
     le_tip_joints::Int = 2
-    compression_frac::Float64 = 0.01
-    compression_damping_frac::Float64 = 1.0
     bridle_segments::Int = 1
     pressure_bar::Float64 = 4.5 * 0.0689476
     membrane_stiffness::Union{Symbol, Float64} = :from_breukels
@@ -135,8 +123,6 @@ Base.@kwdef struct V3BeamTopology
     min_tube_radius::Float64 = 0.03
     max_tube_radius::Float64 = 0.15
     damping_ratio::Float64 = 1.0
-    bridle_rel_damping::Float64 = 0.01
-    pulley_efficiency::Float64 = 0.95
     kcu_mass::Float64 = 23.25
     kcu_area::Float64 = 0.48
     kcu_drag_coeff::Float64 = 0.83

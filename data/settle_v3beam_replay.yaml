@@ -1,0 +1,16 @@
+# Settling schedule of v3beam_replay.jl. Longer and more heavily damped than
+# settle_v3kite.yaml because it settles onto a recorded flight state rather than
+# onto rest: the wing arrives with the row's velocity and pose, and the bridle
+# has to catch up to it.
+settle_settings:
+  num_steps: 69
+  num_substeps: 1
+  dt: 0.05
+
+  body_damping: [0.0, 0.0, 40.0]
+  min_damping: [0.0, 0.0, 20.0]
+  world_damping: [0.0, 0.0, 0.0]
+  decay_steps: 50
+
+  course_correction_gain: 0.05
+  course_correction_mode: course

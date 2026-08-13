@@ -116,8 +116,8 @@ using KitePodModels: KCU
                     heading=0.0, steering=0.0, depower=0.25,
                     wind_vec=[10.0, 0.0, 0.0])
         cfg_dir = V3Kite.V3SettleConfig()
-        cfg_cont = V3Kite.V3SettleConfig(
-            aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero())
+        cfg_cont = V3Kite.V3SettleConfig(kite=V3KiteConfig(
+            aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero()))
         path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
         path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
         @test path_dir != path_cont
@@ -126,8 +126,7 @@ using KitePodModels: KCU
         @test endswith(path_dir, ".arrow")
 
         # A state logged for one geometry has the wrong point count for another.
-        cfg_beam = V3Kite.V3SettleConfig(
-            source_struc_path="struc_geometry_beam.yaml")
+        cfg_beam = V3Kite.V3SettleConfig(project="system_v3kite_beam.yaml")
         path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
         @test path_beam != path_dir
         @test occursin("_struc_geometry_beam", path_beam)
@@ -169,15 +168,39 @@ using KitePodModels: KCU
         @test isfile(joinpath(path, "system.yaml"))
     end
 
-    @testset "V3SimConfig Defaults" begin
-        config = V3SimConfig()
-        @test config.sim_time == 60.0
-        @test config.fps == 60
-        @test config.v_wind == 10.0
-        @test config.up == 40.0
-        @test config.us == 0.0
-        @test config.tether_length == 250.0
-        @test config.brake == true
+    @testset "Project Settings Files" begin
+        # Every project file has to name what a run needs, and every settings
+        # file it names has to parse into its struct: a key renamed on one side
+        # only surfaces here rather than mid-run.
+        set_data_path(v3_data_path())
+        for project in ("system.yaml", "system_reelout.yaml",
+                        "system_cabauw.yaml", "system_v3kite_psm.yaml",
+                        "system_v3kite_beam.yaml", "system_v3beam_replay.yaml")
+            kite = load_kite(project)
+            @test kite isa V3KiteConfig
+            @test kite.init_mode in (:settle, :relaxed_state)
+            @test isfile(struc_geometry_path(project))
+            settle = load_settle(project; kite)
+            @test settle.project == project
+            @test settle.num_steps > 0
+        end
+
+        # The beam is flown from a state relaxed at one depower, so the
+        # project's depower is not free to disagree with it.
+        beam_set = Settings("system_v3kite_beam.yaml")
+        @test occursin("dp$(Int(beam_set.depower))",
+            load_kite("system_v3kite_beam.yaml").init_state)
+
+        beam = load_kite("system_v3kite_beam.yaml")
+        @test beam.backend isa KernelBackend
+        @test !beam.geom.reduce_tip && !beam.geom.reduce_te
+        @test beam.bridle.compression_frac == 0.01
+        @test beam.init_mode == :relaxed_state
+
+        # A typo in a settings file is caught when it loads, not silently
+        # defaulted.
+        @test_throws ErrorException V3Kite.fill_struct(
+            V3BridleConfig, Dict("compresion_frac" => 0.5))
     end
 
     include("test_ripple_metrics.jl")

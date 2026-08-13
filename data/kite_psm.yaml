@@ -1,0 +1,22 @@
+# The V3 as a particle lattice: the wing is a net of DYNAMIC point masses joined
+# by springs, which is the model every V3Kite example flew before the beam wing
+# existed. Loaded into a `V3KiteConfig` via the `kite_settings:` key of a project
+# file. Any key omitted here falls back to the struct default, so this file is
+# also the list of what is tunable.
+kite_settings:
+  wing_type: particle_dynamics
+  aero_mode: continuous  # direct | continuous | pressure
+  backend: monolith      # monolith | kernel
+  vsm_interval: 1        # steps between VSM aero solves; tuned with aero_mode
+
+  # Body-frame damping damps a node against its wing frame. The lattice wing is
+  # DYNAMIC points, so unlike the beam it is what this reaches.
+  body_damping: [0.0, 0.0, 20.0]
+  world_damping: [0.0, 0.0, 0.0]
+
+  init_mode: settle      # power-zone settling from the placed geometry
+
+  # Corrections fitted against this lattice, addressing its segments by index.
+  geom:
+    reduce_tip: false
+    reduce_te: false

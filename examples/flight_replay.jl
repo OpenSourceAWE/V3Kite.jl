@@ -45,6 +45,7 @@ VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
+PROJECT = "system.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 DEPOWER_OFFSET_2019 = 7.0
 DEPOWER_OFFSET_2025 = -7.0
@@ -267,7 +268,18 @@ function run_physics_replay(h5_path;
     # Settle wing with first CSV conditions
     row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
+    kite = load_kite(PROJECT)
+    kite.aero_mode = AERO_MODE
+    kite.geom = V3GeomAdjustConfig(
+        reduce_tip=REDUCE_TIP, reduce_te=true,
+        reduce_depower=false,
+        reduce_steering=REDUCE_STEERING,
+        steering_reduction=STEERING_REDUCTION,
+        tip_reduction=TIP_REDUCTION,
+        depower_offset=depower_offset_pct / 100.0)
     settle_config = V3SettleConfig(
+        project=PROJECT,
+        kite=kite,
         world_damping=0.0,
         body_damping=[0.0, 0.0, 40.0],
         decay_steps=50,
@@ -279,15 +291,7 @@ function run_physics_replay(h5_path;
         num_substeps=1,
         start_depower=row1.depower * 100.0 + 10.0,
         course_correction_gain=0.05,
-        geom=V3GeomAdjustConfig(
-            reduce_tip=REDUCE_TIP, reduce_te=true,
-            reduce_depower=false,
-            reduce_steering=REDUCE_STEERING,
-            steering_reduction=STEERING_REDUCTION,
-            tip_reduction=TIP_REDUCTION,
-            depower_offset=depower_offset_pct / 100.0),
-        fix_sphere_idxs=[],
-        aero_mode=AERO_MODE)
+        fix_sphere_idxs=[])
     settle_log = nothing
     sam = nothing
     data_sam = nothing
@@ -299,14 +303,10 @@ function run_physics_replay(h5_path;
     try
 
     data_path = v3_data_path()
-    source_struc = joinpath(
-        data_path, settle_config.source_struc_path)
-    source_aero = joinpath(
-        data_path, settle_config.source_aero_path)
-    vsm_path = joinpath(
-        data_path, settle_config.vsm_settings_path)
+    source_struc = struc_geometry_path(PROJECT; data_path)
+    source_aero = aero_geometry_path(PROJECT; data_path)
     vsm_set = VortexStepMethod.VSMSettings(
-        vsm_path; data_prefix=false)
+        vsm_settings_path(PROJECT; data_path); data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
 
     if SETTLE
@@ -317,7 +317,7 @@ function run_physics_replay(h5_path;
             base_name = build_replay_name(h5_path,
                 start_utc, end_utc,
                 row1.depower, row1.steering,
-                settle_config.geom)
+                settle_config.kite.geom)
             return sam, nothing, nothing, nothing, data,
                 settle_config, settle_log, dt, base_name
         end
@@ -329,7 +329,7 @@ function run_physics_replay(h5_path;
         set.l_tether = tether_len
         set.profile_law = 0
 
-        gc = settle_config.geom
+        gc = settle_config.kite.geom
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
@@ -470,7 +470,7 @@ function run_physics_replay(h5_path;
         eff_steer, eff_dep =
             update_vel_from_csv!(
                 sam.sys_struct, phys_row,
-                settle_config.geom;
+                settle_config.kite.geom;
                 heading_correction=
                     heading_correction +
                     lateral_correction +
@@ -575,7 +575,7 @@ function run_physics_replay(h5_path;
 
     base_name = build_replay_name(h5_path, start_utc,
         end_utc, row1.depower, row1.steering,
-        settle_config.geom)
+        settle_config.kite.geom)
     if !isnothing(logger) && logger.index > 1
         save_log(logger, base_name * "_sim")
         syslog = load_log(base_name * "_sim")

@@ -1,0 +1,40 @@
+# The V3 as a Timoshenko-beam wing: the inflatable tubes are beam bodies joined
+# by rotational joints, the canopy is membrane segments, and the bridle is the
+# measured 2025 line system. Loaded into a `V3KiteConfig` via the
+# `kite_settings:` key of a project file. Any key omitted here falls back to the
+# struct default, so this file is also the list of what is tunable.
+#
+# `v3beam_geometry.jl` emits the structural geometry and `relax_bridle.jl` the
+# relaxed state below; both are in git and neither runs during a flight.
+kite_settings:
+  wing_type: particle_dynamics  # the wing nodes are BODY_STATIC points on bodies
+  aero_mode: continuous         # direct | continuous | pressure
+  backend: kernel               # one kernel per component: 23 bodies and 21
+                                # joints make the monolithic build dominate
+  vsm_interval: 1
+
+  # Reaches nothing here: body-frame damping needs DYNAMIC points, and this
+  # wing's nodes are BODY_STATIC. Only the world-frame term acts on the bridle;
+  # the wing is damped by its joints and canopy segments, from the geometry YAML.
+  body_damping: [0.0, 0.0, 20.0]
+  world_damping: [0.0, 0.0, 0.0]
+
+  # The measured bridle lengths and node coordinates disagree badly enough that
+  # no implicit solver takes a first step from the placed geometry.
+  init_mode: relaxed_state
+  init_state: relaxed_struc_geometry_beam_dp20.arrow
+
+  # Export the beam was built from; a directory swaps the linear Breukels
+  # bending for the curvature-softening Comer-Levy law.
+  adapter_dir: null
+
+  # Both reductions are lengths subtracted from numbered segments of the particle
+  # lattice; this wing has no segments that mean the same thing.
+  geom:
+    reduce_tip: false
+    reduce_te: false
+
+  bridle:
+    compression_frac: 0.01         # stiffness left under compression
+    compression_damping_frac: 1.0  # damping left under compression
+    bridle_rel_damping: 0.001      # unit_damping / unit_stiffness [s]

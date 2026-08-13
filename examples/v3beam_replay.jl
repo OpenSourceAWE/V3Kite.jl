@@ -20,8 +20,9 @@ The tip and trailing-edge reductions stay off. Both are lengths subtracted from
 numbered segments of the particle lattice, and the beam wing has no segments that
 mean the same thing — its shape comes from the beam bodies, not from wire lengths.
 
-`v3beam_aero_geometry.jl` writes the aero geometry this loads, and
-`v3beam_geometry.jl` the structural one; neither runs here.
+`system_v3beam_replay.yaml` names everything this loads.
+`v3beam_aero_geometry.jl` writes the aero geometry and `v3beam_geometry.jl` the
+structural one; neither runs here.
 
 Settling starts from the relaxed state `relax_bridle.jl` writes, since the
 measured bridle lengths and the measured node coordinates disagree badly enough
@@ -48,31 +49,15 @@ using KiteUtils
 # Configuration
 # =============================================================================
 
-STRUC_YAML = "struc_geometry_beam.yaml"
-# The surface-resolved geometry v3beam_aero_geometry.jl writes. The stock
-# aero_geometry.yaml carries lift/drag/moment polars only, which AeroPressure
-# cannot build a station-point map from.
-AERO_YAML = joinpath("polars_neuralfoil_pressure", "geometry.yaml")
-VSM_SETTINGS = "vsm_settings.yaml"
-
-AERO_MODE = AeroPressure()
-BACKEND = KernelBackend()
-
-# Depower the relaxed state was written at, see relax_bridle.jl.
-RELAXED_DEPOWER = 0.20
-RELAXED_STATE = relaxed_state_name(STRUC_YAML, RELAXED_DEPOWER) * ".arrow"
+PROJECT = "system_v3beam_replay.yaml"
 
 SECTION = "straight_right_2025"
 START_UTC = "15:36:29.0"
 END_UTC = "15:36:38.0"
 N_SUBSTEPS = 2     # data is 10 Hz; 2 substeps gives dt = 0.05 s
-VSM_INTERVAL = 1   # steps between VSM aero solves
 
 DEPOWER_OFFSET = -0.07  # added to the recorded depower
 STEERING_MULTIPLIER = 1.0
-BODY_DAMPING = [0.0, 0.0, 20.0]
-SETTLE_BODY_DAMPING = [0.0, 0.0, 40.0]
-SETTLE_STEPS = 69
 WIND_SOURCE_SPEED = :ekf   # :ekf or :lidar
 WIND_SOURCE_DIR = :lidar   # :ekf or :lidar
 
@@ -126,30 +111,15 @@ dt = (data.time[2] - data.time[1])
 # Settling
 # =============================================================================
 
-geom = V3GeomAdjustConfig(
-    reduce_tip = false, reduce_te = false,
-    reduce_depower = false, reduce_steering = false,
-    depower_offset = DEPOWER_OFFSET)
+set_data_path(v3_data_path())
+kite = load_kite(PROJECT)
+kite.geom.depower_offset = DEPOWER_OFFSET
+geom = kite.geom
 
-settle_config = V3SettleConfig(
-    source_struc_path = STRUC_YAML,
-    source_aero_path = AERO_YAML,
-    vsm_settings_path = VSM_SETTINGS,
-    init_state_path = RELAXED_STATE,
-    backend = BACKEND,
-    aero_mode = AERO_MODE,
-    world_damping = 0.0,
-    body_damping = SETTLE_BODY_DAMPING,
-    min_damping = BODY_DAMPING,
-    decay_steps = 50,
-    v_wind = row1.v_app,
-    tether_length = Float64(row1.tether_len),
-    dt = 0.05,
-    num_steps = SETTLE_STEPS,
-    num_substeps = 1,
-    start_depower = row1.depower * 100.0 + 10.0,
-    course_correction_gain = 0.05,
-    geom = geom)
+settle_config = load_settle(PROJECT; kite)
+settle_config.v_wind = row1.v_app
+settle_config.tether_length = Float64(row1.tether_len)
+settle_config.start_depower = row1.depower * 100.0 + 10.0
 
 sam, settle_log, settle_failed = settle_wing(settle_config, row1; remake = true)
 settle_failed && error("Settling failed; the beam replay has nothing to fly")
@@ -178,7 +148,7 @@ for step in 1:n_steps
     sys.tethers[1].len = row.tether_len
     sys.tethers[1].stretched_len = row.tether_len
 
-    if !sim_step!(sam; dt, vsm_interval = VSM_INTERVAL)
+    if !sim_step!(sam; dt, vsm_interval = kite.vsm_interval)
         @error "Replay failed" step t=row.time
         break
     end

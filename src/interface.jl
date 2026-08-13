@@ -387,9 +387,9 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), body_damping=[0.0, 0.0, 40.0],
+         gc=nothing, body_damping=[0.0, 0.0, 40.0],
          min_damping=0.8 .* body_damping, damping_per_stiffness=nothing,
-         aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
+         aero_mode=nothing, data_path=v3_data_path(), cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_torque=nothing,
          remake=false) -> V3KITE
 
@@ -404,10 +404,11 @@ is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 `set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
 re-settling (ignoring the `data/settled_*.arrow` state). There is no winch-gain
 argument: V3Kite owns no winch controller (see [`step!`](@ref)).
-`system_yaml` names the system-YAML file (default `"system.yaml"`) that points
-at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
-alternate config. `aero_mode` selects the aerodynamics model used for settling
-and the returned model (default `AeroDirect()`).
+`system_yaml` names the project file (default `"system.yaml"`) that points at
+the settings, geometry and kite-settings files; pass e.g.
+`"system_beam.yaml"` to fly another kite. `aero_mode` and `gc` override
+the aerodynamics and the geometry adjustments of that project's
+`kite_settings:` file; `nothing` (the default) takes both from it.
 
 `data_path` is the directory the geometry/settings YAMLs are READ from,
 defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
@@ -471,12 +472,12 @@ function init(v_wind_gnd, l_tether;
               depower_setpoint = 0.25,
               dt = nothing,
               sim_time = nothing,
-              gc = V3GeomAdjustConfig(),
+              gc = nothing,
               system_yaml = "system.yaml",
               body_damping = [0.0, 0.0, 40.0],
               min_damping = 0.8 .* body_damping,
               damping_per_stiffness = nothing,
-              aero_mode = SymbolicAWEModels.AeroDirect(),
+              aero_mode = nothing,
               data_path = v3_data_path(),
               cache_path = nothing,
               use_turbulence = nothing,
@@ -491,7 +492,12 @@ function init(v_wind_gnd, l_tether;
     wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)
 
     position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
+    kite = load_kite(system_yaml; data_path)
+    isnothing(aero_mode) || (kite.aero_mode = aero_mode)
+    isnothing(gc) || (kite.geom = gc)
     settle_config = V3SettleConfig(
+        project = system_yaml,
+        kite = kite,
         v_wind = v_wind_gnd,
         tether_length = l_tether,
         dt = 0.05,
@@ -504,9 +510,6 @@ function init(v_wind_gnd, l_tether;
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
-        geom = gc,
-        system_yaml = system_yaml,
-        aero_mode = aero_mode,
     )
     @info "init: settling V3 model at rel_depower = $depower_setpoint..."
     sam, _, settle_failed = settle_wing(settle_config;
@@ -552,7 +555,7 @@ function init(v_wind_gnd, l_tether;
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
 
-    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
+    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = kite.geom, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
         wind_vec_mean = wind_vec)
 

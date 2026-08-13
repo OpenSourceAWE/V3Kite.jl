@@ -4,8 +4,13 @@
 """
 V3 Kite Simulation Example
 
-Power-zone settling, then heading PID with a sinusoidal setpoint,
-winch PID for constant tether length, and 3D visualization.
+Heading PID tracking a sinusoidal setpoint on a settled, depowered wing, with the
+winch braked at a constant tether length.
+
+Which kite this flies and at what flight condition is the project file's, not the
+script's: `system_v3kite_psm.yaml` is the particle lattice and
+`system_v3kite_beam.yaml` the Timoshenko-beam wing, and the two differ only in
+the structural geometry and the kite settings they point at.
 """
 
 using Pkg
@@ -18,80 +23,40 @@ using V3Kite
 using GLMakie
 using MakieControlPlots
 using SymbolicAWEModels
-using LinearAlgebra
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
-SIM_TIME = 60.0
-FPS = 20
-AERO_MODE = ContinuousAero()
-VSM_INTERVAL = 1   # steps between VSM aero solves
-MAX_HEADING = 40.0    # degrees
-PERIOD = 30.0         # seconds
-V_WIND = 15.4
-TETHER_LENGTH = 250.0
-ELEVATION = 70.0      # degrees
-DEPOWER = 0.30        # fraction [0, 1]
+PROJECT = "system_v3kite_psm.yaml"  # or system_v3kite_beam.yaml
 
-# PID gains
-HEADING_P = 1.0
-HEADING_I = false
-HEADING_D = 0.0
+# The maneuver. The gains that track it are the project's heading settings.
+MAX_HEADING = 40.0    # setpoint amplitude [deg]
+PERIOD = 30.0         # setpoint period [s]
 
 # =============================================================================
-# Settling
+# Model
 # =============================================================================
 
-@info "V3 Kite Simulation Example"
+@info "V3 Kite Simulation Example" PROJECT
 @info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
 
-el_rad = deg2rad(ELEVATION)
-position = [cos(el_rad) * TETHER_LENGTH, 0.0,
-            sin(el_rad) * TETHER_LENGTH]
-wind_vec = [V_WIND, 0.0, 0.0]
+set_data_path(v3_data_path())
+kite = load_kite(PROJECT)
+heading = load_heading(PROJECT)
+set = Settings(PROJECT)
 
-settle_config = V3SettleConfig(
-    v_wind = V_WIND,
-    tether_length = TETHER_LENGTH,
-    dt = 0.05,
-    num_steps = 40,
-    num_substeps = 1,
-    decay_steps = 30,
-    body_damping = [0.0, 0.0, 40.0],
-    start_depower = DEPOWER * 100.0 + 10.0,
-    course_correction_mode = :heading,
-    course_correction_gain = 0.05,
-    geom = V3GeomAdjustConfig(),
-    aero_mode = AERO_MODE,
-)
-gc = settle_config.geom
+sam, sys = build_v3_model(PROJECT)
 
-@info "Settling V3 model..."
-sam, settle_log, settle_failed = settle_wing(settle_config;
-    position, velocity=[0.0, 0.0, 0.0], heading=0.0,
-    steering=0.0, depower=DEPOWER, wind_vec, remake=false)
-settle_failed && error("Settling failed")
-sys = sam.sys_struct
-sys.winches[1].brake = true
-
-n_steps = Int(round(FPS * SIM_TIME))
-dt = SIM_TIME / n_steps
+n_steps = Int(round(set.sample_freq * set.sim_time))
+dt = set.sim_time / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
-# Heading PID (outputs steering tape delta in m)
-nominal_steering = V3Kite.get_steering(sys, gc)
+nominal_steering = V3Kite.get_steering(sys, kite.geom)
 max_heading_rad = deg2rad(MAX_HEADING)
 angular_freq = 2pi / PERIOD
-max_steering = 0.15
 
-heading_pid = create_heading_pid(;
-    K = HEADING_P,
-    Ti = HEADING_I,
-    Td = HEADING_D,
-    dt, umin=-abs(max_steering),
-    umax=abs(max_steering))
+pid = heading_pid(heading, dt)
 
 # =============================================================================
 # Simulation loop
@@ -104,13 +69,14 @@ for step in 1:n_steps
     t = step * dt
 
     target_rad = max_heading_rad * sin(angular_freq * t)
-    current = sam.sys_struct.wings[1].heading
-    steer_ctrl = heading_pid(target_rad, current, 0.0)
+    measured = sys.wings[1].heading
+    schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
+    steer_ctrl = pid(target_rad, measured, 0.0)
     sys_state.bearing = target_rad
 
-    set_steering!(sys, nominal_steering + steer_ctrl, gc)
+    set_steering!(sys, nominal_steering + steer_ctrl, kite.geom)
 
-    if !sim_step!(sam; dt, vsm_interval = VSM_INTERVAL)
+    if !sim_step!(sam; dt, vsm_interval = kite.vsm_interval)
         @error "Simulation failed" step
         break
     end
@@ -122,10 +88,11 @@ for step in 1:n_steps
     end
 end
 
-report_performance(SIM_TIME, time() - sim_start)
+report_performance(set.sim_time, time() - sim_start)
 
-save_log(logger, "v3kite_example")
-syslog = load_log("v3kite_example")
+log_name = "v3kite_$(splitext(PROJECT)[1])"
+save_log(logger, log_name)
+syslog = load_log(log_name)
 
 # =============================================================================
 # Visualization

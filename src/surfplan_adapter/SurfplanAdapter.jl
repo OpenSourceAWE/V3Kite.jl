@@ -38,7 +38,7 @@ import YAML
 using SymbolicAWEModels: TimoshenkoJoint, TUBE_SHEAR_COEFF, tube_torsion_law,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
-using ..V3Kite: v3_data_path
+using ..V3Kite: v3_data_path, V3BridleConfig
 
 include("topology.jl")
 include("read_adapter.jl")
@@ -121,12 +121,13 @@ apply_comer_bending!(sys, adapter_dir::AbstractString, topo::V3BeamTopology) =
     apply_comer_bending!(sys, beam_joint_radii(adapter_dir; topo), topo)
 
 """
+    apply_bridle_material!(sys, bridle::V3BridleConfig) -> sys
     apply_bridle_material!(sys, topo::V3BeamTopology) -> sys
 
-Set the line material `topo` carries onto an already-loaded structure, so
+Set the line material `bridle` carries onto an already-loaded structure, so
 `compression_frac`, `compression_damping_frac` and `bridle_rel_damping` can be swept
-without re-emitting the YAML. Of the four bridle knobs only `bridle_segments` still
-needs a rewrite, it being the one that changes how many segments exist.
+without re-emitting the YAML. `bridle_segments` still needs a rewrite, it being the
+one that changes how many segments exist and so living on the topology instead.
 
 Applies what [`surfplan_to_struc`](@ref) would have emitted: both compression
 fractions reach the bridle lines, the KCU tapes and the canopy membranes alike, while
@@ -134,7 +135,7 @@ fractions reach the bridle lines, the KCU tapes and the canopy membranes alike, 
 keeping the ratio it is emitted with. The winched tether is left untouched, its
 material being the dyneema it is flown on rather than a bridle knob.
 """
-function apply_bridle_material!(sys, topo::V3BeamTopology)
+function apply_bridle_material!(sys, bridle::V3BridleConfig)
     winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
     on_tether = Dict{Int, Bool}()
     for tether in sys.tethers, segment_idx in tether.segment_idxs
@@ -143,14 +144,17 @@ function apply_bridle_material!(sys, topo::V3BeamTopology)
     tape_names = Set(Symbol.(TAPE_SEGMENT_NAMES))
     for segment in sys.segments
         get(on_tether, segment.idx, false) && continue
-        segment.compression_frac = topo.compression_frac
-        segment.compression_damping_frac = topo.compression_damping_frac
+        segment.compression_frac = bridle.compression_frac
+        segment.compression_damping_frac = bridle.compression_damping_frac
         haskey(on_tether, segment.idx) || segment.name in tape_names || continue
         segment.unit_stiffness isa Real || continue
-        segment.unit_damping = topo.bridle_rel_damping * segment.unit_stiffness
+        segment.unit_damping = bridle.bridle_rel_damping * segment.unit_stiffness
     end
     return sys
 end
+
+apply_bridle_material!(sys, topo::V3BeamTopology) =
+    apply_bridle_material!(sys, topo.bridle)
 
 """
     beam_joint_radii(adapter_dir; topo=V3BeamTopology()) -> Dict{Symbol, Float64}

@@ -7,6 +7,36 @@ Functions for adjusting tether length, elevation, and other model parameters.
 """
 
 """
+    V3BridleConfig
+
+Material of the bridle lines and the canopy membranes, shared by the geometry
+generator that emits them ([`V3Kite.SurfplanAdapter.V3BeamTopology`](@ref)) and
+the run that loads them ([`apply_bridle_material!`](@ref)), so a sweep needs
+neither a re-export nor a recompile.
+"""
+Base.@kwdef struct V3BridleConfig
+    """
+    Fraction of tensile stiffness a segment keeps under compression, making
+    lines and fabric nearly tension-only. `0` carries no compressive force at all.
+    """
+    compression_frac::Float64 = 0.01
+    """
+    The same for the damping term. The default `1.0` leaves damping unaffected by
+    compression, so a line's damping ratio jumps the moment it goes slack; setting
+    this to `compression_frac` keeps one ratio on both branches.
+    """
+    compression_damping_frac::Float64 = 1.0
+    "`unit_damping` per `unit_stiffness` on the lines and tapes only, not the canopy [s]"
+    bridle_rel_damping::Float64 = 0.01
+    """
+    Fraction of line tension a bridle sheave passes on, the rest opposing rope
+    travel. The default is SymbolicAWEModels' own sealed ball-bearing sheave; no
+    V3 pulley has been measured.
+    """
+    pulley_efficiency::Float64 = 0.95
+end
+
+"""
     V3GeomAdjustConfig
 
 Configuration for wing geometry adjustments (tip reduction, trailing

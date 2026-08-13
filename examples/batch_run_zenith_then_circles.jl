@@ -67,25 +67,24 @@ function run_zenith_circles(;
         v_wind, deg2rad(-90.0), 0.0
     )
 
+    kite = load_kite(PROJECT)
+    kite.aero_mode = AERO_MODE
+    kite.geom = V3GeomAdjustConfig(
+        reduce_te = true, tether_length = tether_length)
     settle_config = V3SettleConfig(
-        source_struc_path = "struc_geometry.yaml",
-        source_aero_path = "aero_geometry.yaml",
-        vsm_settings_path = "vsm_settings.yaml",
+        project = PROJECT,
+        kite = kite,
         v_wind = v_wind,
         tether_length = tether_length,
         g_earth = g_earth,
         kcu_mass = kcu_mass,
         body_damping = [0.0, 0.0, 40.0],
         decay_steps = 30,
-        geom = V3GeomAdjustConfig(
-            reduce_te = true, tether_length = tether_length
-        ),
         num_steps = 40, num_substeps = 1, dt = 0.05,
         start_depower = 40.0,
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
         world_damping = 0.0, min_damping = [0.0, 0.0, 20.0],
-        aero_mode = AERO_MODE,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -301,6 +300,7 @@ fps_zenith = 20
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 body_damping = [0.0, 0.0, 20.0]
+PROJECT = "system.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]

@@ -1,0 +1,13 @@
+# v3beam_replay.jl: recorded flight data played through the beam wing on the
+# AeroPressure coupling. The aero geometry is the surface-resolved one
+# v3beam_aero_geometry.jl writes — generated rather than tracked, so a fresh
+# checkout has to run that example first and is told so when it does not.
+system:
+  sim_settings: "settings_v3kite.yaml"
+  structural_geometry: "struc_geometry_beam.yaml"
+  aero_geometry: "polars_neuralfoil_pressure/geometry.yaml"
+  vsm_settings: "vsm_settings.yaml"
+  wc_settings: "wc_settings.yaml"
+  kite_settings: "kite_beam_pressure.yaml"
+  settle_settings: "settle_v3beam_replay.yaml"
+  heading_settings: "heading_settings.yaml"

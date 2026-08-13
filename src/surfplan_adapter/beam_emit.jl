@@ -419,12 +419,12 @@ const TAPE_SEGMENT_NAMES = ("power_tape", "steering_left", "steering_right")
 """Canopy membrane segment row. `l0` is left `nothing` so the loader takes the rest
 length from the loaded geometry; `unit_stiffness` scales with `rest_length` so every
 canopy spring ends up at the same 1000 N/m rate, and `compression_frac` (from
-`topo.compression_frac`) leaves it mostly tension-only like fabric."""
+`topo.bridle.compression_frac`) leaves it mostly tension-only like fabric."""
 function canopy_seg_row(name, point_i, point_j, rest_length, topo)
     unit_stiffness = 1000.0 * rest_length
     return Any[name, point_i, point_j, nothing, 1.0, unit_stiffness,
-        0.01 * unit_stiffness, topo.compression_frac,
-        topo.compression_damping_frac]
+        0.01 * unit_stiffness, topo.bridle.compression_frac,
+        topo.bridle.compression_damping_frac]
 end
 
 """Point row with no mass, drag, body or joint anchor."""
@@ -502,8 +502,8 @@ function write_model(path, tables, geom, bridle, topo; full)
         tape_seg_row = function (name, point_i, point_j, l0, diameter)
             unit_stiffness = topo.youngs_modulus * π * (diameter / 2)^2
             return Any[name, point_i, point_j, l0, diameter * 1000,
-                unit_stiffness, topo.bridle_rel_damping * unit_stiffness,
-                topo.compression_frac, topo.compression_damping_frac]
+                unit_stiffness, topo.bridle.bridle_rel_damping * unit_stiffness,
+                topo.bridle.compression_frac, topo.bridle.compression_damping_frac]
         end
         push!(tether_rows, Any["tether", "kcu", "ground_anchor", "dyneema",
             topo.tether_diameter_mm, topo.tether_length, nothing])
@@ -533,7 +533,7 @@ function write_model(path, tables, geom, bridle, topo; full)
                     nodes[k + 1], line.l0 / 2, line.d))
             end
             push!(pulley_rows, [base, "$(halves[1])_seg_$(topo.bridle_segments)",
-                "$(halves[2])_seg_1", "DYNAMIC", topo.pulley_efficiency])
+                "$(halves[2])_seg_1", "DYNAMIC", topo.bridle.pulley_efficiency])
         end
     end
 
@@ -557,10 +557,10 @@ function write_model(path, tables, geom, bridle, topo; full)
              "bridle_line" => tether_material(
                  n_segments = topo.bridle_segments,
                  youngs_modulus = topo.youngs_modulus,
-                 damping_per_stiffness = topo.bridle_rel_damping,
+                 damping_per_stiffness = topo.bridle.bridle_rel_damping,
                  density = topo.line_density,
-                 compression_frac = topo.compression_frac,
-                 compression_damping_frac = topo.compression_damping_frac)])
+                 compression_frac = topo.bridle.compression_frac,
+                 compression_damping_frac = topo.bridle.compression_damping_frac)])
         emit_table(io, "bodies",
             ["name", "mass", "inertia_principal", "pos", "type", "Q_b_to_w",
              "transform_idx"], body_emit)

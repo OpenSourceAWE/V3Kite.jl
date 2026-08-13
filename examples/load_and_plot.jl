@@ -81,15 +81,10 @@ function load_log_and_system(; log_name)
     lt = parse(Int, m.captures[4])
     @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
 
-    config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
-        v_wind=Float64(v_wind),
-        tether_length=Float64(lt),
-        wing_type=PARTICLE_DYNAMICS,
-    )
-    sam, sys = create_v3_model(config)
+    settings = Settings("system.yaml")
+    settings.v_wind = Float64(v_wind)
+    settings.l_tether = Float64(lt)
+    sam, sys = create_v3_model("system.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
         reduce_te=true))
 

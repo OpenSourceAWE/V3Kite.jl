@@ -21,6 +21,7 @@ using UnPack
 using Rotations
 using Dates
 using DiscretePIDs
+using DiscretePIDs: set_K!, set_Td!
 using HDF5
 using Serialization
 using Parameters
@@ -53,6 +54,7 @@ include("sim_helpers.jl")
 include("simulation.jl")
 include("turbulence_config.jl")
 include("stabilization.jl")
+include("v3_settings.jl")
 include("interface.jl")
 include("surfplan_adapter/SurfplanAdapter.jl")
 using .SurfplanAdapter
@@ -77,7 +79,7 @@ export get_steering, set_steering!
 export get_depower, set_depower!
 
 # Model setup exports
-export V3GeomAdjustConfig, apply_geom_adjustments!
+export V3GeomAdjustConfig, V3BridleConfig, apply_geom_adjustments!
 export distribute_wing_drag!, distribute_wing_mass!
 export set_v3_body_damping!, set_body_frame_damping!, tether_point_idxs
 export tether_bridle_segments, set_damping_per_stiffness!
@@ -127,8 +129,20 @@ export build_replay_name
 export find_frame_syslog_idxs, build_replay_sys_struct
 
 # Simulation exports
-export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
+export V3KiteConfig, create_v3_model, build_v3_model, v3_data_path
+export apply_kite_material!
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
+export resolve_aero_mode, aero_geometry_path
+
+# Project settings exports
+export kite_settings, heading_settings, settle_settings
+export load_kite, load_settle, settings_block
+export struc_geometry_path, aero_geometry_path, vsm_settings_path
+export parse_backend, parse_aero_mode, parse_wing_type
+export fill_struct, convert_setting, project_entry
+
+# Heading-controller settings exports
+export HeadingSettings, load_heading, heading_pid, schedule_heading_pid!
 
 # Persistent turbulence preference (data/gui.yaml)
 export get_default_turbulence, set_default_turbulence

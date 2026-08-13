@@ -26,12 +26,12 @@
 - `save_state_log`, `read_state_log` and `start_from_state!`, which write and
   restore the one-row state log the settled-state cache already used, and
   `relaxed_state_name`, which names the relaxed state of a geometry at a depower.
-- `V3SettleConfig.init_state_path` starts a settling from a relaxed state instead
-  of from the placed geometry. The state is restored before the flight state is
+- `V3KiteConfig.init_state` starts a settling from a relaxed state instead of
+  from the placed geometry. The state is restored before the flight state is
   applied, so the relaxed bridle shape rides along into the target pose; that
   makes a geometry whose bridle rest lengths disagree with its node positions
   settleable at all, and one that agrees settle faster.
-- `V3SettleConfig.backend`, so a settling can run on the `KernelBackend`. Settling
+- `V3KiteConfig.backend`, so a settling can run on the `KernelBackend`. Settling
   built its model without one, and the monolithic build is the dominant cost on a
   beam wing. `build_replay_sys_struct` takes one for the same reason.
 - `examples/v3beam_replay.jl`, `flight_replay.jl` on the beam wing: `AeroPressure`
@@ -53,6 +53,54 @@
   `data/relaxed_*.arrow` — so no other example regenerates or relaxes anything,
   and a beam run costs nothing but the run. `relax_bridle.jl` is
   geometry-agnostic and gives the particle model a relaxed start too.
+
+- `HeadingSettings` and `data/heading_settings.yaml`, the sibling of
+  `WC_Settings` for the steering loop. The heading PID was retuned in every
+  example that closed it — K between 1.0 and 1.2, `Td` 0 or 0.15, `max_steering`
+  0.15 or 0.175 — with only `simple_sinus.jl` documenting its tuning, so the
+  numbers now live in a file where the divergence is visible. The struct also
+  carries the two things the examples did to the PID after building it, the
+  `1/v_app` gain schedule and the `Td` ramp, so `heading_pid` plus
+  `schedule_heading_pid!` covers all of them. The setpoint stays in the example,
+  being the maneuver rather than the controller.
+
+### Changed
+- A run now takes its kite and flight condition from a KiteUtils **project
+  file** — `data/system_*.yaml`, a `system:` section of pointers — instead of
+  from constants in the example script. Most of the mechanism already existed
+  and was going unused: `structural_geometry:`, `aero_geometry:` and
+  `vsm_settings:` are KiteUtils keys with KiteUtils accessors, and `Settings`
+  already carried `sim_time`, `sample_freq`, `l_tether`, `elevation`, `depower`
+  and `v_wind`. Two keys are new, `kite_settings:` and `settle_settings:`, and
+  each points at a file loaded into a struct the way `wc_settings.yaml` and
+  `ripple_settings.yaml` already were. Every key is choosable on its own, so
+  examples share the files they agree on and differ only where they must.
+- `V3KiteConfig` holds what KiteUtils has no concept of: the backend, the aero
+  mode, the VSM interval, the damping, the geometry adjustments, the bridle
+  material and how the model is brought up. `V3BridleConfig` splits the line and
+  membrane material out of `V3BeamTopology`, so the generator that emits a
+  bridle and the run that loads it share one definition.
+- `V3SettleConfig` keeps only the settling schedule and embeds the kite it
+  settles; its geometry paths, `system_yaml`, `aero_mode` and `backend` are gone,
+  having duplicated `V3SimConfig`'s. It gets its own project key because the
+  schedule is per-example while the kite is not.
+- `build_v3_model(project)` brings up either kite from a project file, covering
+  both the settling and the relaxed-state paths and applying the bridle material
+  and bending law that the examples applied by hand.
+- `create_v3_model` takes a project filename rather than a config struct. Pass
+  `settings` to override the project's own, which is what rebuilding a structure
+  to match a recorded log needs.
+- `init`'s `aero_mode` and `gc` now default to `nothing`, taking both from the
+  project's kite settings; pass either to override it.
+- `examples/v3kite.jl` takes a project filename and flies either kite with the
+  same heading PID. `examples/v3beam.jl` is gone: it differed only in settings
+  and in an open-loop steering ramp that was inert at its own `STEERING = 0.0`.
+
+### Removed
+- `V3SimConfig` and `run_v3_simulation`. Nothing called `run_v3_simulation`
+  outside its own kwargs forwarder, and everything `V3SimConfig` carried has a
+  home: the geometry paths are project-file keys, the flight condition is
+  `Settings`, and the model options are `V3KiteConfig`.
 
 ### Fixed
 - `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a

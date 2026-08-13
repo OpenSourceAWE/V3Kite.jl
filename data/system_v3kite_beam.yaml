@@ -1,0 +1,14 @@
+# v3kite.jl on the Timoshenko-beam wing. Differs from system_v3kite_psm.yaml in
+# the structural geometry, the kite settings and the flight condition — the last
+# because the depower is pinned to the 20 % the relaxed state was written at,
+# while the particle run flies 30 %. The settling schedule, the aerodynamics and
+# the heading gains are shared, which is the point of separate keys.
+system:
+  sim_settings: "settings_v3kite_beam.yaml"
+  structural_geometry: "struc_geometry_beam.yaml"
+  aero_geometry: "aero_geometry.yaml"
+  vsm_settings: "vsm_settings.yaml"
+  wc_settings: "wc_settings.yaml"
+  kite_settings: "kite_beam.yaml"
+  settle_settings: "settle_v3kite.yaml"
+  heading_settings: "heading_settings_v3kite.yaml"

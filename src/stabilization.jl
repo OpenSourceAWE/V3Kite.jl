@@ -20,28 +20,29 @@ const MIN_SETTLE_DAMPING_PER_STIFFNESS = 0.0015
 """
     V3SettleConfig
 
-Configuration for wing settling simulation.
+Schedule of a wing settling run: how long it integrates, how its damping decays,
+and how the depower ramps. What is settled and at what flight condition does not
+live here — the geometry comes from the project file, the flight condition from
+its `sim_settings:` and the model assembly from [`V3KiteConfig`](@ref) — because
+the schedule is per-example while those are per-kite.
+
+Loaded from the `settle_settings:` file of a project by
+[`V3SettleConfig(filename)`](@ref).
 """
 Base.@kwdef mutable struct V3SettleConfig
-    # Geometry paths
-    source_struc_path::String = "struc_geometry.yaml"
-    source_aero_path::String = "aero_geometry.yaml"
-    vsm_settings_path::String = "vsm_settings.yaml"
-    # System YAML pointing at the active settings file (loaded via `Settings`)
-    system_yaml::String = "system.yaml"
-    # Relaxed state to start the settling from, relative to `data_path`; see
-    # `relaxed_state_name`. `nothing` settles from the placed geometry.
-    init_state_path::Union{Nothing, String} = nothing
+    "Project file the geometry, settings and kite come from"
+    project::String = "system.yaml"
+    kite::V3KiteConfig = V3KiteConfig()
 
-    # Simulation parameters
     num_steps::Int = 1600
     num_substeps::Int = 1
     dt::Float64 = 0.05
 
-    # Damping
+    """
+    Body-frame damping decays linearly over `decay_steps`, floored elementwise at
+    `min_damping`; world-frame damping decays all the way to zero.
+    """
     world_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
-    # Body-frame damping decays linearly over `decay_steps`, floored elementwise
-    # at `min_damping`; world-frame damping decays all the way to zero
     min_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 20.0]
     decay_steps::Int = 400
     body_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 40.0]
@@ -59,34 +60,28 @@ Base.@kwdef mutable struct V3SettleConfig
     min_settle_damping_per_stiffness::Float64 =
         MIN_SETTLE_DAMPING_PER_STIFFNESS
 
-    # Flight condition
+    """
+    Flight condition to settle at. These stay runtime values rather than moving
+    to the settings YAML because a replay takes them from the row it settles
+    onto — `v_wind` is that row's apparent wind, not a configured wind speed.
+    """
     v_wind::Float64 = 10.72
     tether_length::Float64 = 240.0
     g_earth::Float64 = 9.81
+    "Overrides the `kcu_mass` of the settings YAML; `nothing` keeps it"
     kcu_mass::Union{Nothing,Float64} = nothing
 
-    # Geometry modifications
-    geom::V3GeomAdjustConfig = V3GeomAdjustConfig(
-        reduce_tip=true, reduce_te=true,
-        tether_length=240.0)
-
-    # Depower ramp
+    "Depower ramped over the settling steps; `nothing` holds the row's depower"
     start_depower::Union{Nothing,Float64} = nothing
     end_depower::Union{Nothing,Float64} = nothing
 
     course_correction_gain::Float64 = 0.3
-    # :course tracks flight-data course (needs nonzero velocity);
-    # :heading tracks the init_row's heading (use when settling
-    # from rest, e.g. zenith hold).
+    """
+    `:course` tracks the flight-data course and needs a nonzero velocity;
+    `:heading` tracks the row's heading, for settling from rest.
+    """
     course_correction_mode::Symbol = :course
 
-    # Model options
-    aero_mode::SymbolicAWEModels.AbstractAeroModel =
-        SymbolicAWEModels.AeroDirect()
-    # KernelBackend for a beam wing, whose bodies and joints make the monolithic
-    # build the dominant cost.
-    backend::SymbolicAWEModels.ModelBackend =
-        SymbolicAWEModels.MonolithBackend()
     fix_sphere_idxs::Vector{Int} = Int[]
 end
 
@@ -135,7 +130,7 @@ function settled_state_path(config::V3SettleConfig, init_row;
         data_path = v3_data_path()
     end
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
-    gc = config.geom
+    gc = config.kite.geom
     dp_reduction = gc.reduce_depower ?
         gc.depower_reduction : 0.0
     st_reduction = gc.reduce_steering ?
@@ -159,8 +154,8 @@ function settled_state_path(config::V3SettleConfig, init_row;
         "_lt$(Int(round(config.tether_length)))" *
         "_el$(num_tag(round(el_deg, digits=1)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
-        "_sys$(splitext(basename(config.system_yaml))[1])"
-    yaml_kcu_mass = Settings(joinpath(data_path, config.system_yaml)).kcu_mass
+        "_sys$(splitext(basename(config.project))[1])"
+    yaml_kcu_mass = Settings(joinpath(data_path, config.project)).kcu_mass
     resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
         (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
     if !isnothing(resolved_kcu_mass)
@@ -177,9 +172,10 @@ function settled_state_path(config::V3SettleConfig, init_row;
         # whole usable range of this ratio onto one or two tags.
         suffix *= "_dps$(num_tag(settle_dps * 1e3))"
     end
-    aero_tag = SymbolicAWEModels.aero_mode_tag(config.aero_mode)
+    aero_tag = SymbolicAWEModels.aero_mode_tag(config.kite.aero_mode)
     aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
-    struc_tag = splitext(basename(config.source_struc_path))[1]
+    struc_tag = splitext(basename(
+        project_entry(config.project, "structural_geometry"; data_path)))[1]
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
     return joinpath(cache_path, "settled_$(suffix).arrow")
 end
@@ -243,8 +239,8 @@ end
 
 Log name, without extension, of the relaxed state of `struc_yaml` at `depower`
 (a fraction): `relaxed_struc_geometry_beam_dp20`. The relaxation example writes
-it and `V3SettleConfig.init_state_path` reads it, so the name lives here rather
-than in both.
+it and `V3KiteConfig.init_state` reads it, so the name lives here rather than in
+both.
 
 Only the depower is in the name because it alone changes the shape the bridle
 relaxes into. The state is world-frame, so it is saved at the elevation and
@@ -302,8 +298,8 @@ function load_settled_struct(config::V3SettleConfig, init_row;
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     path = settled_state_path(config, init_row; data_path, cache_path)
     sys, yaml_set = build_settling_struct(config; data_path,
-        source_struc = joinpath(data_path, config.source_struc_path),
-        source_aero = joinpath(data_path, config.source_aero_path))
+        source_struc = struc_geometry_path(config.project; data_path),
+        source_aero = aero_geometry_path(config.project; data_path))
     apply_settled_state!(sys, config, path) ||
         error("No settled state at $path; run settle_wing first")
     sys.set = isnothing(set) ? yaml_set : set
@@ -342,11 +338,11 @@ file. The cache file name encodes the settling inputs, including
 the elevation implied by the initial position and a non-default
 `aero_mode`, so runs that only differ in elevation or in
 aerodynamics get their own file instead of sharing one. A cached
-geometry whose aerodynamics disagree with `config.aero_mode` is
+geometry whose aerodynamics disagree with `config.kite.aero_mode` is
 rejected and re-derived from the source YAML.
 
-`config.init_state_path` starts the settling from a relaxed state
-instead of from the placed geometry (see
+A kite whose `init_mode` is `:relaxed_state` starts the settling
+from its `init_state` instead of from the placed geometry (see
 [`relaxed_state_name`](@ref)), which is what makes a geometry whose
 bridle rest lengths disagree with its node positions settleable at
 all, and what makes one that agrees settle faster. The state is
@@ -575,16 +571,14 @@ function settle_wing(config::V3SettleConfig, init_row;
     end
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
 
-    gc = config.geom
+    gc = config.kite.geom
     gc.tether_length = config.tether_length
 
     cache_path != data_path && mkpath(cache_path)
     dest_struc = settled_state_path(
         config, init_row; data_path, cache_path)
-    source_struc = joinpath(
-        data_path, config.source_struc_path)
-    source_aero = joinpath(
-        data_path, config.source_aero_path)
+    source_struc = struc_geometry_path(config.project; data_path)
+    source_aero = aero_geometry_path(config.project; data_path)
 
     # Run settling simulation if needed
     syslog = nothing
@@ -617,7 +611,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     # Load model from the settled state, or source
     # YAML if settling failed
-    set = Settings(joinpath(data_path, config.system_yaml))
+    set = Settings(joinpath(data_path, config.project))
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
@@ -637,7 +631,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     if !isnothing(sys)
         sys.set = set
-        sam = SymbolicAWEModel(set, sys; backend = config.backend)
+        sam = SymbolicAWEModel(set, sys; backend = config.kite.backend)
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
@@ -649,16 +643,15 @@ function settle_wing(config::V3SettleConfig, init_row;
         end
     else
         @info "Loading source geometry" source_struc
-        vsm_path = joinpath(
-            data_path, config.vsm_settings_path)
+        vsm_path = vsm_settings_path(config.project; data_path)
         vsm_set = VortexStepMethod.VSMSettings(
             vsm_path; data_prefix=false)
         vsm_set.wings[1].geometry_file = source_aero
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
             dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-            aero_mode=config.aero_mode)
-        sam = SymbolicAWEModel(set, sys; backend = config.backend)
+            aero_mode=config.kite.aero_mode)
+        sam = SymbolicAWEModel(set, sys; backend = config.kite.backend)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=false, ignore_l0=false,
@@ -679,13 +672,13 @@ cache, which rebuilds the same structure before restoring a state onto it.
 """
 function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
-    set = Settings(joinpath(data_path, config.system_yaml))
+    set = Settings(joinpath(data_path, config.project))
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     # profile_law is taken from settings.yaml (loaded via Settings above).
 
-    vsm_path = joinpath(data_path, config.vsm_settings_path)
+    vsm_path = vsm_settings_path(config.project; data_path)
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_path; data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
@@ -693,7 +686,7 @@ function build_settling_struct(config::V3SettleConfig;
     sys = load_sys_struct_from_yaml(source_struc;
         system_name=V3_MODEL_NAME, set,
         dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-        aero_mode=config.aero_mode)
+        aero_mode=config.kite.aero_mode)
 
     # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
     # otherwise fall back to the `kcu_mass` field of the active settings YAML
@@ -727,11 +720,11 @@ Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero, cache_path=data_path)
-    gc = config.geom
+    gc = config.kite.geom
     sys, set = build_settling_struct(config;
         data_path, source_struc, source_aero)
 
-    sam = SymbolicAWEModel(set, sys; backend = config.backend)
+    sam = SymbolicAWEModel(set, sys; backend = config.kite.backend)
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do
@@ -757,8 +750,8 @@ function run_power_zone_settling!(config::V3SettleConfig;
     sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero, cache_path)
 
-    if !isnothing(config.init_state_path)
-        state_path = joinpath(data_path, config.init_state_path)
+    if !isnothing(config.kite.init_state)
+        state_path = joinpath(data_path, config.kite.init_state)
         start_from_state!(sam, sys, state_path) ||
             error("No relaxed state at $state_path; run the relaxation " *
                   "example for $(basename(source_struc)) first")

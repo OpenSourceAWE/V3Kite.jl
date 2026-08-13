@@ -16,14 +16,10 @@ isdefined(@__MODULE__, :hold_torque!) ||
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
-    config = V3SimConfig(
-        struc_yaml_path   = "struc_geometry.yaml",
-        aero_yaml_path    = "aero_geometry.yaml",
-        vsm_settings_path = "vsm_settings.yaml",
-        v_wind            = 10.0,
-        tether_length     = 150.0,
-    )
-    sam, sys = create_v3_model(config; data_path)
+    settings = Settings("system.yaml")
+    settings.v_wind = 10.0
+    settings.l_tether = 150.0
+    sam, sys = create_v3_model("system.yaml"; data_path, settings)
     sam.set.wind_vec = [10.0, 0.0, 0.0]
     init!(sam; remake=false, remake_vsm=true)
     sys.winches[1].brake = true
@@ -198,7 +194,8 @@ end
     SIM_TIME         = 1.0
 
     s = init(V_WIND, TETHER_LENGTH;
-        depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT)
+        depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT,
+        aero_mode = AeroDirect())
 
     @testset "init" begin
         @test s isa V3KITE

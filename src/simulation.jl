@@ -33,248 +33,206 @@ function v3_data_path()
 end
 
 """
-    V3SimConfig
+    V3KiteConfig
 
-Configuration structure for V3 kite simulations.
+Which kite a run flies and how its model is assembled — the part of a project
+file KiteUtils has no concept of. The geometry files come from the project
+file's `structural_geometry:`, `aero_geometry:` and `vsm_settings:` keys and the
+flight condition from its `sim_settings:`, so neither is repeated here.
+
+Loaded from the `kite_settings:` file of a project by
+[`V3KiteConfig(filename)`](@ref); see `data/kite_beam.yaml`.
 """
-Base.@kwdef mutable struct V3SimConfig
-    # Geometry paths (relative to data_path, or absolute)
-    struc_yaml_path::String = "struc_geometry_depower0.0_tip0.4_te0.95.yaml"
-    aero_yaml_path::String = "aero_geometry_depower0.0_tip0.4_te0.95.yaml"
-    vsm_settings_path::String = "vsm_settings_reduced_for_coupling.yaml"
-    # System YAML pointing at the active settings file (loaded via `Settings`)
-    system_yaml::String = "system.yaml"
-
-    # Simulation parameters
-    sim_time::Float64 = 60.0
-    fps::Int = 60
-
-    # Wind parameters
-    v_wind::Float64 = 10.0
-    upwind_dir::Float64 = -90.0
-
-    # Control parameters
-    up::Float64 = 40.0           # Depower percentage [0, 100]
-    us::Float64 = 0.0            # Steering percentage [-100, 100]
-    tether_length::Float64 = 250.0
-    elevation::Union{Nothing, Float64} = nothing
-
-    # Ramp parameters
-    ramp_start_time_up::Float64 = 0.0
-    ramp_end_time_up::Float64 = 5.0
-    ramp_start_time_us::Float64 = 0.0
-    ramp_end_time_us::Float64 = 5.0
-
-    # Damping parameters
-    damping_pattern::Vector{Float64} = [0.0, 0.0, 20.0]
-    world_damping_pattern::Vector{Float64} = [0.0, 0.0, 0.0]
-
-    # Model options
+Base.@kwdef mutable struct V3KiteConfig
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
-    # `nothing` resolves by wing_type: AeroDirect for particle, default for rigid
+    "`nothing` resolves by `wing_type`: `AeroDirect` for particle, default for rigid"
     aero_mode::Union{Nothing, SymbolicAWEModels.AbstractAeroModel} = nothing
+    """
+    `KernelBackend` assembles one kernel per component, which a beam wing wants —
+    its bodies and joints make the monolithic build the dominant cost.
+    """
     backend::SymbolicAWEModels.ModelBackend = SymbolicAWEModels.MonolithBackend()
-    remake_cache::Bool = false
+    "Steps between VSM aero solves; tuned together with `aero_mode`"
+    vsm_interval::Int = 1
 
-    # Winch control
+    """
+    Body-frame damping damps a node against its wing frame, which only `DYNAMIC`
+    points have — on a beam wing, whose wing nodes are `BODY_STATIC` points riding
+    bodies, it reaches nothing and only `world_damping` acts.
+    """
+    body_damping::Vector{Float64} = [0.0, 0.0, 20.0]
+    world_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+
+    geom::V3GeomAdjustConfig = V3GeomAdjustConfig()
+    bridle::V3BridleConfig = V3BridleConfig()
+
+    """
+    SurfplanAdapter export the beam was built from. `nothing` keeps the linear
+    Breukels bending the YAML carries; a directory swaps in the
+    curvature-softening Comer-Levy law.
+    """
+    adapter_dir::Union{Nothing, String} = nothing
+
+    """
+    `:settle` runs power-zone settling; `:relaxed_state` skips it and flies
+    `init_state` directly, which is what a geometry already relaxed at the
+    depower it is flown at needs.
+    """
+    init_mode::Symbol = :settle
+    """
+    Relaxed state to start from, see [`relaxed_state_name`](@ref). Settling
+    starts from it whenever it is set, which is what makes a geometry whose
+    bridle rest lengths disagree with its node positions settleable at all.
+    """
+    init_state::Union{Nothing, String} = nothing
+
+    remake_cache::Bool = false
     brake::Bool = true
 end
 
-export V3SimConfig
+export V3KiteConfig
+
 
 """
-    create_v3_model(config::V3SimConfig; data_path=nothing)
-    create_v3_model(; kwargs...)
+    resolve_aero_mode(kite::V3KiteConfig)
 
-Create a V3 kite SymbolicAWEModel with the given configuration.
-
-# Arguments
-- `config::V3SimConfig`: Configuration struct
-- `data_path`: Path to V3 data directory (default: V3Kite bundled data)
-
-# Returns
-- `(sam, sys)`: Tuple of SymbolicAWEModel and SystemStructure
+`kite.aero_mode` when set, otherwise the default for its wing type: `AeroDirect`
+for a particle wing, and the model's own for a rigid one.
 """
-function create_v3_model(config::V3SimConfig; data_path=nothing)
-    # Use bundled V3 data by default
-    if isnothing(data_path)
-        data_path = v3_data_path()
-    end
+function resolve_aero_mode(kite::V3KiteConfig)
+    isnothing(kite.aero_mode) || return kite.aero_mode
+    kite.wing_type == SymbolicAWEModels.RIGID_DYNAMICS && return nothing
+    return SymbolicAWEModels.AeroDirect()
+end
 
-    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "PARTICLE_DYNAMICS" : "RIGID_DYNAMICS"
-    @info "Creating V3 kite model" wing_type=wing_type_str data_path struc_yaml=config.struc_yaml_path
+"""
+    create_v3_model(project::String; data_path=nothing, kite=nothing)
+        -> (sam, sys)
 
-    # Load settings
+Build the `SymbolicAWEModel` a project file describes: its geometry from the
+`structural_geometry:`, `aero_geometry:` and `vsm_settings:` keys, its flight
+condition from `sim_settings:`, and how the model is assembled from
+`kite_settings:` (pass `kite` to override that file).
+
+`data_path` holds the data directory the project file and everything it points
+at are read from, and becomes the active data path. Pass `settings` to override
+the project's own, which is what rebuilding a structure to match a recorded log
+needs — the log's wind and tether length are not the project's.
+"""
+function create_v3_model(project::String; data_path=nothing, kite=nothing,
+                         settings=nothing)
+    isnothing(data_path) && (data_path = v3_data_path())
     set_data_path(data_path)
-    set = Settings(config.system_yaml)
-    set.v_wind = config.v_wind
-    set.upwind_dir = config.upwind_dir
-    set.l_tether = config.tether_length
+    isnothing(kite) && (kite = load_kite(project; data_path))
+
+    set = isnothing(settings) ? Settings(project) : settings
     set.v_reel_outs[1] = 0.0
 
-    # Load VSMSettings
-    vsm_set_path = joinpath(data_path, config.vsm_settings_path)
-    vsm_set = VortexStepMethod.VSMSettings(vsm_set_path; data_prefix=false)
-    vsm_set.wings[1].geometry_file = joinpath(data_path, config.aero_yaml_path)
+    struc_path = struc_geometry_path(project; data_path)
+    @info "Creating V3 kite model" project struc=basename(struc_path) wing_type=kite.wing_type
 
-    # Determine model name
-    model_name = config.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
+    vsm_set = VortexStepMethod.VSMSettings(
+        vsm_settings_path(project; data_path); data_prefix=false)
+    vsm_set.wings[1].geometry_file = aero_geometry_path(project; data_path)
+
+    model_name = kite.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
         V3_RIGID_DYNAMICS_MODEL_NAME : V3_MODEL_NAME
+    sys = load_sys_struct_from_yaml(struc_path;
+        system_name=model_name, set, dynamics_type=kite.wing_type,
+        vsm_set, aero_mode=resolve_aero_mode(kite))
 
-    # Load system structure (use absolute path)
-    struc_yaml_full = joinpath(data_path, config.struc_yaml_path)
-    aero_mode = if !isnothing(config.aero_mode)
-        config.aero_mode
-    elseif config.wing_type == SymbolicAWEModels.RIGID_DYNAMICS
-        nothing
-    else
-        SymbolicAWEModels.AeroDirect()
+    SymbolicAWEModels.set_body_frame_damping(sys, kite.body_damping)
+    SymbolicAWEModels.set_world_frame_damping(sys, kite.world_damping)
+
+    sam = SymbolicAWEModel(set, sys; backend = kite.backend)
+
+    # `l_tethers: [0]` is KiteUtils' "not set" sentinel; overriding with it would
+    # collapse the tether the geometry was placed with.
+    if !isempty(sys.tethers) && set.l_tether > 0
+        sys.tethers[1].init_stretched_len = set.l_tether
     end
-    sys = load_sys_struct_from_yaml(struc_yaml_full;
-        system_name=model_name, set, dynamics_type=config.wing_type,
-        vsm_set, aero_mode)
-
-    # Initialize damping
-    SymbolicAWEModels.set_body_frame_damping(sys, config.damping_pattern)
-    SymbolicAWEModels.set_world_frame_damping(sys, config.world_damping_pattern)
-
-    sam = SymbolicAWEModel(set, sys; backend = config.backend)
-
-    if !isempty(sys.tethers)
-        sys.tethers[1].init_stretched_len = config.tether_length
-    end
-
-    if config.elevation !== nothing && !isempty(sys.transforms)
-        sys.transforms[1].elevation = deg2rad(config.elevation)
-    end
+    isempty(sys.transforms) ||
+        (sys.transforms[1].elevation = deg2rad(set.elevation))
 
     return sam, sys
 end
 
-function create_v3_model(; kwargs...)
-    config = V3SimConfig(; kwargs...)
-    return create_v3_model(config)
+"""
+    apply_kite_material!(sys, kite::V3KiteConfig) -> sys
+
+Set the bridle material a kite carries onto a loaded structure, and swap the
+YAML's linear Breukels bending for the curvature-softening Comer-Levy law when
+`kite.adapter_dir` names the export the beam was built from. Both are no-ops on
+a geometry that has neither bridle tethers nor beam joints.
+"""
+function apply_kite_material!(sys, kite::V3KiteConfig)
+    if !isnothing(kite.adapter_dir) && isdir(kite.adapter_dir)
+        SurfplanAdapter.apply_comer_bending!(sys, kite.adapter_dir,
+            SurfplanAdapter.V3BeamTopology(bridle = kite.bridle))
+        @info "Comer-Levy bending applied" joints=length(sys.timoshenko_joints)
+    end
+    SurfplanAdapter.apply_bridle_material!(sys, kite.bridle)
+    return sys
 end
 
 """
-    run_v3_simulation(config::V3SimConfig; show_progress=true)
-    run_v3_simulation(; kwargs...)
+    build_v3_model(project; data_path=nothing, remake=false, kite=nothing,
+                   settle=nothing) -> (sam, sys)
 
-Run a V3 kite simulation with the given configuration.
+Bring up the model a project file describes, ready to step.
 
-# Arguments
-- `config::V3SimConfig`: Configuration struct
-- `show_progress`: Show progress updates (default: true)
-
-# Returns
-- `(sam, syslog, tape_data)`: Tuple of model, log, and tape length data
+`init_mode: settle` runs power-zone settling at the flight condition of the
+project's `sim_settings:`, starting from the kite's `init_state` when it has one.
+`init_mode: relaxed_state` skips settling and restores that state onto the loaded
+geometry instead, for a kite already relaxed at the depower it is flown at —
+restoring after `init!` rather than before, so the rest lengths stay the ones the
+state was relaxed against.
 """
-function run_v3_simulation(config::V3SimConfig; show_progress=true)
-    # Create model
-    sam, sys = create_v3_model(config)
+function build_v3_model(project; data_path=nothing, remake=false,
+                        kite=nothing, settle=nothing)
+    isnothing(data_path) && (data_path = v3_data_path())
+    set_data_path(data_path)
+    isnothing(kite) && (kite = load_kite(project; data_path))
+    set = Settings(project)
 
-    # Initialize model
-    wing_type_str = config.wing_type == SymbolicAWEModels.PARTICLE_DYNAMICS ? "PARTICLE_DYNAMICS" : "RIGID_DYNAMICS"
-    @info "Initializing $wing_type_str model..."
-    SymbolicAWEModels.init!(sam; remake=config.remake_cache, ignore_l0=false, remake_vsm=true)
+    kite.init_mode in (:settle, :relaxed_state) ||
+        error("init_mode must be :settle or :relaxed_state, got " *
+              "$(kite.init_mode) in the kite_settings of $project")
 
-    # Set winch brake
-    sam.sys_struct.winches[1].brake = config.brake
+    if kite.init_mode === :relaxed_state
+        isnothing(kite.init_state) &&
+            error("init_mode is :relaxed_state but no init_state is set in " *
+                  "the kite_settings of $project")
+        sam, sys = create_v3_model(project; data_path, kite)
+        apply_kite_material!(sys, kite)
+        set_depower!(sys, set.depower / 100.0, 0.0, kite.geom)
+        set_steering!(sys, 0.0, kite.geom)
+        SymbolicAWEModels.init!(sam; remake, ignore_l0=false, remake_vsm=true)
+        sys.winches[1].brake = kite.brake
 
-    # Create logger
-    n_steps = Int(round(config.fps * config.sim_time))
-    dt = config.sim_time / n_steps
-    logger = Logger(sam, n_steps + 1)
-    sys_state = SysState(sam)
-    sys_state.time = 0.0
-    log!(logger, sys_state)
-
-    gc = V3GeomAdjustConfig()
-
-    # Storage for tape lengths
-    tape_times = Float64[]
-    tape_steering_pct = Float64[]
-    tape_depower_pct = Float64[]
-
-    @info "Starting simulation" n_steps dt wing_type=wing_type_str
-    sim_start_time = time()
-
-    for step in 1:n_steps
-        t = step * dt
-
-        # Calculate ramp factors
-        if t <= config.ramp_start_time_up
-            power_ramp = 0.0
-        elseif t >= config.ramp_end_time_up
-            power_ramp = 1.0
-        else
-            power_ramp = (t - config.ramp_start_time_up) /
-                         (config.ramp_end_time_up - config.ramp_start_time_up)
-        end
-
-        if t <= config.ramp_start_time_us
-            steering_ramp = 0.0
-        elseif t >= config.ramp_end_time_us
-            steering_ramp = 1.0
-        else
-            steering_ramp = (t - config.ramp_start_time_us) /
-                            (config.ramp_end_time_us - config.ramp_start_time_us)
-        end
-
-        # Apply ramped control inputs
-        set_steering!(sys,
-            steering_ramp * config.us / 100.0, gc)
-        set_depower!(sys,
-            power_ramp * config.up / 100.0, 0.0, gc)
-
-        # Log tape percentages
-        push!(tape_times, t)
-        push!(tape_steering_pct, steering_ramp * config.us)
-        push!(tape_depower_pct, power_ramp * config.up)
-
-        # Advance simulation
-        try
-            next_step!(sam; set_values=[0.0], dt=dt, vsm_interval=1)
-        catch err
-            if err isa AssertionError
-                @error "Simulation failed at step $step"
-                break
-            end
-            rethrow(err)
-        end
-
-        # Log state
-        log_state!(logger, sys_state, sam, t)
-
-        # Progress updates
-        if show_progress && should_report(step, n_steps)
-            elapsed = time() - sim_start_time
-            times_realtime = t / elapsed
-            @info "  Step $step/$n_steps (t = $(round(t, digits=2)) s)" times_realtime=round(times_realtime, digits=2)
-        end
+        state_path = joinpath(data_path, kite.init_state)
+        start_from_state!(sam, sys, state_path) ||
+            error("No relaxed state at $state_path; run " *
+                  "examples/relax_bridle.jl for this geometry first")
+        @info "Started from the relaxed state" state_path
+        return sam, sys
     end
 
-    # Report performance
-    total_wall_time = time() - sim_start_time
-    final_times_realtime = config.sim_time / total_wall_time
-    @info "Simulation completed" wall_time=round(total_wall_time, digits=2) times_realtime=round(final_times_realtime, digits=2)
+    isnothing(settle) && (settle = load_settle(project; data_path, kite))
+    settle.v_wind = set.v_wind
+    settle.tether_length = set.l_tether
+    settle.g_earth = set.g_earth
+    settle.start_depower = set.depower + 10.0
 
-    # Save and load log
-    log_name = "v3_sim_$(lowercase(wing_type_str))_$(Dates.format(Dates.now(), "yyyy_mm_dd_HH_MM_SS"))"
-    save_log(logger, log_name)
-    syslog = load_log(log_name)
-
-    # Create tape data
-    tape_data = (
-        time = tape_times,
-        steering = tape_steering_pct,
-        depower = tape_depower_pct
-    )
-
-    return sam, syslog, tape_data
-end
-
-function run_v3_simulation(; kwargs...)
-    config = V3SimConfig(; kwargs...)
-    return run_v3_simulation(config)
+    el_rad = deg2rad(set.elevation)
+    position = [cos(el_rad) * set.l_tether, 0.0, sin(el_rad) * set.l_tether]
+    sam, _, failed = settle_wing(settle;
+        position, velocity=[0.0, 0.0, 0.0], heading=0.0, steering=0.0,
+        depower=set.depower / 100.0, wind_vec=[set.v_wind, 0.0, 0.0],
+        data_path, remake)
+    failed && error("Settling failed for $project")
+    sys = sam.sys_struct
+    apply_kite_material!(sys, kite)
+    sys.winches[1].brake = kite.brake
+    return sam, sys
 end

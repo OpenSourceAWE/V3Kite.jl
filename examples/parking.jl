@@ -61,8 +61,11 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
+kite = load_kite(PROJECT)
+kite.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
-    system_yaml = PROJECT,
+    project = PROJECT,
+    kite = kite,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,
@@ -73,8 +76,6 @@ settle_config = V3SettleConfig(
     start_depower = REL_DEPOWER * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
-    geom = V3GeomAdjustConfig(),
-    aero_mode = AERO_MODE,
 )
 
 @info "Settling V3 model at rel_depower = $REL_DEPOWER..."

@@ -56,9 +56,10 @@ isdir(SURFPLAN_DIR) || error("No SurfplanAdapter export at $SURFPLAN_DIR")
 
 beam_topology = V3BeamTopology(
     bridle_segments = BRIDLE_SEGMENTS,
-    bridle_rel_damping = BRIDLE_DAMPING_PER_STIFFNESS,
-    compression_frac = COMPRESSION_FRAC,
-    compression_damping_frac = COMPRESSION_DAMPING_FRAC,
+    bridle = V3BridleConfig(
+        bridle_rel_damping = BRIDLE_DAMPING_PER_STIFFNESS,
+        compression_frac = COMPRESSION_FRAC,
+        compression_damping_frac = COMPRESSION_DAMPING_FRAC),
     tether_length = TETHER_LENGTH,
     elevation_deg = ELEVATION,
 )

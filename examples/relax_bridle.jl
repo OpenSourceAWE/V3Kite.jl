@@ -4,10 +4,11 @@
 """
 Relax a Bridle and Save the State
 
-Writes the relaxed state of `STRUC_YAML` at `DEPOWER` to `data/`, where every
-other example picks it up: `v3beam.jl` restores it directly, and `settle_wing`
-starts from it through `V3SettleConfig.init_state_path`. The file is in git, so
-this only has to run when the geometry or the depower changes.
+Writes the relaxed state of a project's structural geometry at `DEPOWER` to
+`data/`, where the runs pick it up through the `init_state` of their kite
+settings — `init_mode: relaxed_state` flies it directly, and settling starts
+from it. The file is in git, so this only has to run when the geometry or the
+depower changes.
 
 Relaxation exists because the measured bridle lengths and the measured node
 coordinates come from different upstream files and disagree — on the beam
@@ -16,14 +17,14 @@ accelerations near 5e7 m/s² and leaves the implicit solver unable to complete a
 single step. `relax_bridle!` integrates with every segment stiffness scaled down
 and hands it back as the structure settles.
 
-Geometry-agnostic on purpose: point it at `struc_geometry.yaml` with the
-particle backend below and it saves a relaxed start for the particle model too,
-which is a shorter and better-conditioned settle than starting from the placed
-geometry.
+Geometry-agnostic on purpose: point `PROJECT` at the particle project and it
+saves a relaxed start for that model too, which is a shorter and
+better-conditioned settle than starting from the placed geometry.
 
-The state is world-frame, so it is saved at the `ELEVATION` and `TETHER_LENGTH`
-set here. `settle_wing` repositions it onto its own flight state, `v3beam.jl`
-does not, so keep these matching the run they feed.
+The state is world-frame, so it is saved at the elevation and tether length of
+the project's settings. Settling repositions it onto its own flight state,
+`init_mode: relaxed_state` does not, so keep the project matching the run it
+feeds.
 """
 
 using Pkg
@@ -39,21 +40,8 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
-STRUC_YAML = "struc_geometry_beam.yaml"
-AERO_YAML = "aero_geometry.yaml"
-VSM_SETTINGS = "vsm_settings.yaml"
+PROJECT = "system_v3kite_beam.yaml"
 
-# ContinuousAero + KernelBackend for the beam wing, AeroDirect + MonolithBackend
-# for the particle one.
-AERO_MODE = ContinuousAero()
-BACKEND = KernelBackend()
-
-BODY_DAMPING = [0.0, 0.0, 20.0]
-WORLD_DAMPING = [0.0, 0.0, 0.0]
-
-V_WIND = 15.4
-TETHER_LENGTH = 250.0
-ELEVATION = 70.0      # degrees
 DEPOWER = 0.20        # fraction [0, 1]
 STEERING = 0.0        # fraction [-1, 1]
 
@@ -61,22 +49,15 @@ STEERING = 0.0        # fraction [-1, 1]
 # Relaxation
 # =============================================================================
 
-sam, sys = create_v3_model(V3SimConfig(
-    struc_yaml_path = STRUC_YAML,
-    aero_yaml_path = AERO_YAML,
-    vsm_settings_path = VSM_SETTINGS,
-    aero_mode = AERO_MODE,
-    backend = BACKEND,
-    v_wind = V_WIND,
-    tether_length = TETHER_LENGTH,
-    elevation = ELEVATION,
-    damping_pattern = BODY_DAMPING,
-    world_damping_pattern = WORLD_DAMPING,
-))
+set_data_path(v3_data_path())
+kite = load_kite(PROJECT)
+struc_yaml = basename(struc_geometry_path(PROJECT))
 
-geom = V3GeomAdjustConfig()
-set_depower!(sys, DEPOWER, STEERING, geom)
-set_steering!(sys, STEERING, geom)
+sam, sys = create_v3_model(PROJECT; kite)
+apply_kite_material!(sys, kite)
+
+set_depower!(sys, DEPOWER, STEERING, kite.geom)
+set_steering!(sys, STEERING, kite.geom)
 
 init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
 sys.winches[1].brake = true
@@ -86,7 +67,7 @@ scale < 1.0 && error("Bridle relaxation did not reach full stiffness " *
                      "(scale=$scale, residual=$residual)")
 
 state_path = joinpath(v3_data_path(),
-    relaxed_state_name(STRUC_YAML, DEPOWER) * ".arrow")
+    relaxed_state_name(struc_yaml, DEPOWER) * ".arrow")
 save_state_log(sam, state_path)
 
 @info "Saved the relaxed state" state_path steps residual
