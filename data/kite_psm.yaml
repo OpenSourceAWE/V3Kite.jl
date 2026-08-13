@@ -11,7 +11,7 @@ kite_settings:
 
   # Body-frame damping damps a node against its wing frame. The lattice wing is
   # DYNAMIC points, so unlike the beam it is what this reaches.
-  body_damping: [0.0, 0.0, 20.0]
+  body_damping: [0.0, 0.0, 0.0]
   world_damping: [0.0, 0.0, 0.0]
 
   init_mode: settle      # power-zone settling from the placed geometry
