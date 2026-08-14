@@ -317,6 +317,68 @@ end
         @test norm(s.wind_vec_mean) ≈ 12.0
     end
 
+    @testset "winch_position_torque! speed feed-forward" begin
+        ctrl = s.winch_ctrl
+        v_sp_saved = ctrl.v_sp_prev
+        # The model is not stepped in here, so the length error is exactly what
+        # each call is given, and `v_sp_prev` reads back the resulting setpoint.
+        l_now = unstretched_length(s)
+        # A huge acceleration_limit keeps the rate limiter out of the way; it is
+        # `v_sp_prev = 0` before each call that makes the readback meaningful.
+        acc = 1e6
+
+        # Default: pure feedback, identical to before the kwarg existed.
+        ctrl.v_sp_prev = 0.0
+        V3Kite.winch_position_torque!(s, l_now, 8.0, acc)
+        @test ctrl.v_sp_prev ≈ 0.0 atol = 1e-12
+
+        # No length error: the setpoint IS the feed-forward.
+        ctrl.v_sp_prev = 0.0
+        V3Kite.winch_position_torque!(s, l_now, 8.0, acc; v_ff = 1.5)
+        @test ctrl.v_sp_prev ≈ 1.5
+
+        # The outer P loop ADDS to the feed-forward, it does not replace it.
+        ctrl.v_sp_prev = 0.0
+        V3Kite.winch_position_torque!(s, l_now + 2.0, 8.0, acc; v_ff = 1.5)
+        @test ctrl.v_sp_prev ≈ 1.5 + ctrl.kp_pos * 2.0
+
+        # speed_limit clamps the TOTAL setpoint, feed-forward included.
+        ctrl.v_sp_prev = 0.0
+        V3Kite.winch_position_torque!(s, l_now, 1.0, acc; v_ff = 5.0)
+        @test ctrl.v_sp_prev ≈ 1.0
+
+        ctrl.v_sp_prev = v_sp_saved
+    end
+
+    @testset "acceleration limit from the settings" begin
+        ctrl = s.winch_ctrl
+        v_sp_saved = ctrl.v_sp_prev
+        l_now = unstretched_length(s)
+
+        # `winch: max_acc:` of data/settings.yaml, taken as given when positive.
+        @test s.set.max_acc > 0.0
+        @test V3Kite.winch_acc_limit(s.set) == s.set.max_acc
+        # A settings file that names no limit means unlimited, not a dead winch.
+        set_no_acc = deepcopy(s.set)
+        set_no_acc.max_acc = 0.0
+        @test V3Kite.winch_acc_limit(set_no_acc) == Inf
+
+        # `step!` uses it by default: a 100 m length error would ask for
+        # `kp_pos * 100` m/s, and the rate limiter allows `max_acc * dt` per step.
+        ctrl.v_sp_prev = 0.0
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l_now + 100.0)
+        @test ctrl.v_sp_prev ≈ s.set.max_acc * s.dt
+
+        # Passing `Inf` opts out (checked without stepping: uncapped here is
+        # `kp_pos * 100` m/s, which is not a torque worth putting into the DAE).
+        ctrl.v_sp_prev = 0.0
+        # Re-read the length: the step above moved it.
+        V3Kite.winch_position_torque!(s, unstretched_length(s) + 100.0, Inf, Inf)
+        @test ctrl.v_sp_prev ≈ ctrl.kp_pos * 100.0
+
+        ctrl.v_sp_prev = v_sp_saved
+    end
+
     @testset "init damping_per_stiffness" begin
         # Deliberately below MIN_SETTLE_DAMPING_PER_STIFFNESS: settling runs at
         # the floor and `init` applies the flown ratio to the settled structure

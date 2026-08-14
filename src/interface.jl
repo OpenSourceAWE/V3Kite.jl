@@ -9,9 +9,10 @@ using Printf
 Runtime state of the cascaded winch length controller: an outer
 proportional loop on the tether length error produces a speed setpoint
 (saturated by `speed_limit` and rate-limited by `acceleration_limit` in
-`step!`), and an inner PI loop (`speed_pid`) on the speed error produces a
-winch-torque correction added to a force feed-forward. `v_sp_prev` carries
-the rate-limited speed setpoint between steps.
+`step!`), added to the optional speed feed-forward `v_ff`, and an inner PI loop
+(`speed_pid`) on the speed error produces a winch-torque correction added to a
+force feed-forward. `v_sp_prev` carries the rate-limited speed setpoint between
+steps.
 
 Gains come from a `WC_Settings` struct loaded from `data/wc_settings.yaml`
 (`src/wc_settings.jl`); the KCU tape rate limits (`v_depower`/`v_steering`)
@@ -423,25 +424,50 @@ end
 # ============================ High-level interface ============================ #
 
 """
+    winch_acc_limit(set::Settings) -> Float64
+
+The winch acceleration limit [m/s²] of the settings (`winch: max_acc:` in
+`data/settings.yaml`, 4.0 for the V3), in the form the rate limiter of
+[`winch_position_torque!`](@ref) wants. A non-positive `max_acc` — which is what
+a settings file that never names one inherits from `KiteUtils.Settings` — means
+*unlimited*, not a frozen drum, and maps to `Inf`; taking it literally would pin
+the speed setpoint at `v_sp_prev` forever and kill the winch silently.
+"""
+winch_acc_limit(set::Settings) = set.max_acc > 0 ? Float64(set.max_acc) : Inf
+
+"""
     winch_position_torque!(s::V3KITE, set_length, speed_limit,
-                            acceleration_limit) -> torque
+                            acceleration_limit; v_ff=0.0) -> torque
 
 Cascaded winch length controller. Outer proportional loop on the tether
 length error (`set_length - unstretched_length(s)`) yields a reel-out speed
-setpoint, clamped to `±speed_limit` [m/s] and rate-limited by
-`acceleration_limit` [m/s²]. The inner PI loop (`s.winch_ctrl.speed_pid`) on
-the speed error yields a winch-torque correction, added to the force
-feed-forward `force_to_torque(winch_force(s), s.sys; ff_scale)` — the holding
-torque for the measured winch force, whose load term `winch_ff_scale` scales
-(see [`WC_Settings`](@ref)). Returns the winch set torque [N·m], applied
-directly as in `examples/reel_out_v3.jl`: at parking equilibrium with
-`ff_scale = 1` the correction vanishes and the output is the holding torque.
+setpoint, added to the speed feed-forward `v_ff` [m/s], then clamped to
+`±speed_limit` [m/s] and rate-limited by `acceleration_limit` [m/s²]. The inner
+PI loop (`s.winch_ctrl.speed_pid`) on the speed error yields a winch-torque
+correction, added to the force feed-forward
+`force_to_torque(winch_force(s), s.sys; ff_scale)` — the holding torque for the
+measured winch force, whose load term `winch_ff_scale` scales (see
+[`WC_Settings`](@ref)). Returns the winch set torque [N·m], applied directly as
+in `examples/reel_out_v3.jl`: at parking equilibrium with `ff_scale = 1` the
+correction vanishes and the output is the holding torque.
+
+`v_ff` is the speed the caller is *commanding*, not a measured one, and it
+belongs here whenever `set_length` is the running integral of a speed setpoint
+(reel-out). Without it the outer P loop has to rediscover that speed from a
+length error, and integrator-then-P is a first-order lag of `1/kp_pos` — 2 s at
+the default `winch_pos_kp = 0.5`, which halves the amplitude of a 6 s reel-out
+oscillation and delays it by over a second, on top of a standing length error of
+`v/kp_pos`. Passing `v_ff = v_set` leaves the outer loop only the length
+*error* to correct and removes both. The default `0.0` reproduces the
+pure-feedback behaviour exactly, so a caller holding a constant length is
+unaffected.
 """
 function winch_position_torque!(s::V3KITE, set_length, speed_limit,
-                                 acceleration_limit)
+                                 acceleration_limit; v_ff = 0.0)
     ctrl = s.winch_ctrl
-    # Outer P loop: length error → speed setpoint.
-    v_sp = ctrl.kp_pos * (set_length - unstretched_length(s))
+    # Outer P loop: length error → speed setpoint, on top of the commanded speed.
+    v_sp = v_ff + ctrl.kp_pos * (set_length - unstretched_length(s))
+    # Both limits act on the TOTAL setpoint: they are the drum's, not the loop's.
     v_sp = clamp(v_sp, -speed_limit, speed_limit)
     dv_max = acceleration_limit * s.dt
     v_sp = clamp(v_sp, ctrl.v_sp_prev - dv_max, ctrl.v_sp_prev + dv_max)
@@ -706,8 +732,9 @@ end
 """
     step!(s::V3KITE; rel_depower=0.0, rel_steering=0.0,
           v_wind_gnd=nothing, upwind_dir=nothing,
-          set_torque=nothing, set_length=nothing,
-          speed_limit=Inf, acceleration_limit=Inf, vsm_interval=1, prn=false)
+          set_torque=nothing, set_length=nothing, v_ff=0.0,
+          speed_limit=Inf, acceleration_limit=winch_acc_limit(s.set),
+          vsm_interval=1, prn=false)
 
 Advance the simulation by `s.dt`, update `s.sys_state` (including
 `heading_rate`), and log it.
@@ -732,6 +759,20 @@ given, the cascaded position controller (`speed_limit` [m/s],
 holding torque is applied. `prn` logs per-step lift/drag diagnostics; progress
 is reported every 200 steps.
 
+`acceleration_limit` defaults to the drum's own limit from the settings,
+`winch: max_acc:` (4.0 m/s² for the V3, via [`winch_acc_limit`](@ref)), so the
+commanded speed cannot slew faster than the real winch can — the setting was
+already in `settings.yaml` and every caller was overriding it with `Inf`. Pass
+`Inf` explicitly to opt out. `speed_limit` still defaults to `Inf` rather than
+to `v_ro_max`, because it is one number where the settings give a signed pair
+(`v_ro_max`/`v_ro_min`); a caller that wants it should pass it.
+
+`v_ff` [m/s] is the speed feed-forward of the position controller and is only
+read when `set_length` is given. A caller that integrates a speed setpoint into
+`set_length` should pass that same speed here — see
+[`winch_position_torque!`](@ref) for why leaving it at `0.0` costs a `1/kp_pos`
+lag on everything the winch is asked to follow.
+
 `vsm_interval` is forwarded to `sim_step!`: the VSM aero load is recomputed
 every `vsm_interval` steps and held frozen inside the DAE in between (`0`
 disables the VSM update entirely). The default `1` is the tightest coupling
@@ -753,9 +794,9 @@ is unloaded, i.e. below [`drag_floor`](@ref).
 """
 function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
                v_wind_gnd = nothing, upwind_dir = nothing,
-               set_torque = nothing, set_length = nothing,
-               speed_limit = Inf, acceleration_limit = Inf, vsm_interval = 1,
-               prn = false)
+               set_torque = nothing, set_length = nothing, v_ff = 0.0,
+               speed_limit = Inf, acceleration_limit = winch_acc_limit(s.set),
+               vsm_interval = 1, prn = false)
     dt = s.dt
     t = s.sys_state.time + dt
 
@@ -776,7 +817,7 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
 
     # Winch: exactly one of position / torque / hold.
     torque = if set_length !== nothing
-        winch_position_torque!(s, set_length, speed_limit, acceleration_limit)
+        winch_position_torque!(s, set_length, speed_limit, acceleration_limit; v_ff)
     elseif set_torque !== nothing
         set_torque
     else

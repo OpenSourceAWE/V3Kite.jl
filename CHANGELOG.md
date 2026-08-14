@@ -1,5 +1,32 @@
 # Changelog
 
+## V3Kite (unreleased)
+
+### Changed
+- `step!` now defaults `acceleration_limit` to the winch limit of the settings,
+  `winch: max_acc:` (4.0 m/s² for the V3), instead of `Inf`. The setting was already in
+  `settings.yaml` and every caller was overriding it with `Inf`, so the commanded speed
+  could slew arbitrarily fast — after a big length error, faster than the real drum. The
+  new helper `V3Kite.winch_acc_limit(set)` reads it and maps a non-positive `max_acc` (the
+  `KiteUtils.Settings` default, i.e. a settings file that never names one) to `Inf`, since
+  taking it literally would pin the speed setpoint forever. Pass `acceleration_limit = Inf`
+  explicitly to opt out. `speed_limit` still defaults to `Inf`: it is one number where the
+  settings give the signed pair `v_ro_max`/`v_ro_min`.
+
+### Added
+- `step!` and `winch_position_torque!` take a `v_ff` keyword [m/s], the speed feed-forward
+  of the position-mode winch: `v_sp = v_ff + winch_pos_kp * (set_length - l)`. It matters
+  for any caller that builds `set_length` by integrating a speed setpoint, as a reel-out
+  run does — without it the outer P loop has to rediscover that speed from a length error,
+  and integrator-then-P is a first-order lag of `1/winch_pos_kp`, i.e. 2 s at the default
+  `winch_pos_kp = 0.5`. Measured on a 200 s reel-out run in SimpleKiteControllers.jl, that
+  lag attenuated the 5.7 s reel-out oscillation to 0.49 of its commanded amplitude and
+  delayed it by 1.16 s, on top of a standing length error of `v_ro/winch_pos_kp` (~5 m at
+  2.5 m/s). Passing `v_ff = v_set` removes both and needs no retuning; `speed_limit` and
+  `acceleration_limit` still act on the total setpoint, feed-forward included. The default
+  `v_ff = 0.0` reproduces the previous behaviour exactly, so callers holding a constant
+  length are unaffected.
+
 ## V3Kite v1.1.1 13-08-2026
 
 ### Changed
