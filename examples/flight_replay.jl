@@ -16,8 +16,7 @@ end
 
 using V3Kite
 using VortexStepMethod
-using SymbolicAWEModels: FBDF, update_from_sysstate!,
-    set_body_frame_damping
+using SymbolicAWEModels: FBDF, update_from_sysstate!
 using GLMakie
 using GLMakie: save
 using CairoMakie
@@ -41,26 +40,20 @@ generate_drag_adjusted_polars(1.0)
 
 LOAD_FROM_DISK = false   # toggle to skip sim and just plot
 N_SUBSTEPS = 2     # data is 10 Hz; 2 substeps gives dt = 0.05 s
-VSM_INTERVAL = 1   # steps between VSM aero solves
 SECTION = "straight_right"
 YEAR = 2025
 SETTLE = true
-PROJECT = "system.yaml"   # project file: geometry, settings and kite
-AERO_MODE = ContinuousAero()
-DEPOWER_OFFSET_2019 = 7.0
-DEPOWER_OFFSET_2025 = -7.0
+PROJECT = select_project(
+    ["particle lattice" => "system_v3kite_replay.yaml",
+     "Timoshenko-beam wing" => "system_v3beam_replay.yaml"];
+    prompt = "Which wing model should the flight data be replayed on?")
+DEPOWER_OFFSET_2019 = 0.07  # the 2025 one is the project's; see below
 STEERING_MULTIPLIER = 1.0
-EXTRA_WING_DRAG_COEFF = 0.07
 HEADING_KP = 0.0
 HEADING_TI = 0.0
 LATERAL_KP = 0.0
 STEERING_OFFSET = 1.5
 DISTANCE_BASED_STEERING = false
-REDUCE_STEERING = true
-STEERING_REDUCTION = 0.2
-REDUCE_TIP = true
-TIP_REDUCTION = 0.2
-BODY_DAMPING = [0.0, 0.0, 20.0]
 # Photogrammetry linear AoA offset model:
 AOA_OFFSET_A = -0.6831
 AOA_OFFSET_B = 28.74
@@ -76,8 +69,6 @@ if YEAR == 2025
 else
     h5_path = joinpath(datadir, "ekf_awe_2019-10-08.h5")
 end
-depower_offset_pct = YEAR == 2019 ?
-    DEPOWER_OFFSET_2019 : DEPOWER_OFFSET_2025
 SECTION = "$(SECTION)_$(YEAR)"
 if SECTION == "straight_right_2025"
     start_utc = "15:36:29.0"
@@ -119,6 +110,11 @@ else
     frame_csvs = Tuple{String, Int}[]
 end
 
+set_data_path(v3_data_path())
+kite = load_kite(PROJECT)
+YEAR == 2019 && (kite.geom.depower_offset = DEPOWER_OFFSET_2019)
+depower_offset_pct = kite.geom.depower_offset * 100.0
+
 # =============================================================================
 # Replay helper functions
 # =============================================================================
@@ -157,7 +153,7 @@ end
 
 function run_physics_replay(h5_path;
         start_utc=start_utc, end_utc=end_utc,
-        n_substeps=N_SUBSTEPS, vsm_interval=VSM_INTERVAL)
+        n_substeps=N_SUBSTEPS, vsm_interval=kite.vsm_interval)
 
     full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
@@ -268,30 +264,10 @@ function run_physics_replay(h5_path;
     # Settle wing with first CSV conditions
     row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
-    kite = load_kite(PROJECT)
-    kite.aero_mode = AERO_MODE
-    kite.geom = V3GeomAdjustConfig(
-        reduce_tip=REDUCE_TIP, reduce_te=true,
-        reduce_depower=false,
-        reduce_steering=REDUCE_STEERING,
-        steering_reduction=STEERING_REDUCTION,
-        tip_reduction=TIP_REDUCTION,
-        depower_offset=depower_offset_pct / 100.0)
-    settle_config = V3SettleConfig(
-        project=PROJECT,
-        kite=kite,
-        world_damping=0.0,
-        body_damping=[0.0, 0.0, 40.0],
-        decay_steps=50,
-        min_damping = [0.0, 0.0, 20.0],
-        v_wind=row1.v_app,
-        tether_length=tether_len,
-        dt=0.05,
-        num_steps=69,
-        num_substeps=1,
-        start_depower=row1.depower * 100.0 + 10.0,
-        course_correction_gain=0.05,
-        fix_sphere_idxs=[])
+    settle_config = load_settle(PROJECT; kite)
+    settle_config.v_wind = row1.v_app
+    settle_config.tether_length = tether_len
+    settle_config.start_depower = row1.depower * 100.0 + 10.0
     settle_log = nothing
     sam = nothing
     data_sam = nothing
@@ -304,7 +280,8 @@ function run_physics_replay(h5_path;
 
     data_path = v3_data_path()
     source_struc = struc_geometry_path(PROJECT; data_path)
-    source_aero = aero_geometry_path(PROJECT; data_path)
+    source_aero = aero_geometry_path(PROJECT; data_path,
+        aero_mode = resolve_aero_mode(kite))
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_settings_path(PROJECT; data_path); data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
@@ -323,17 +300,17 @@ function run_physics_replay(h5_path;
         end
     else
         set_data_path(data_path)
-        set = Settings("system.yaml")
+        set = Settings(PROJECT)
         set.g_earth = 9.81
         set.v_wind = row1.v_app
         set.l_tether = tether_len
         set.profile_law = 0
 
-        gc = settle_config.kite.geom
+        gc = kite.geom
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-            aero_mode=AERO_MODE)
+            dynamics_type=kite.wing_type, vsm_set,
+            aero_mode=resolve_aero_mode(kite))
         sam = SymbolicAWEModel(set, sys)
         apply_geom_adjustments!(sys, gc)
         SymbolicAWEModels.init!(sam;
@@ -365,11 +342,15 @@ function run_physics_replay(h5_path;
     last_report_time = replay_start
     last_report_sim = 0.0
     sys = sam.sys_struct
-    set_body_frame_damping(sys, BODY_DAMPING)
-    distribute_wing_mass!(sys, 11.0; dist=0.5)
-    distribute_wing_drag!(sys,
-        sys.wings[1].vsm_aero.projected_area,
-        EXTRA_WING_DRAG_COEFF)
+    if kite.wing_mass > 0
+        distribute_wing_mass!(sys, kite.wing_mass;
+            dist=kite.wing_mass_le_frac)
+    end
+    if kite.wing_drag_coeff > 0
+        distribute_wing_drag!(sys,
+            sys.wings[1].vsm_aero.projected_area,
+            kite.wing_drag_coeff)
+    end
 
     heading_pid = create_heading_pid(;
         K=HEADING_KP, Ti=HEADING_TI, dt)
@@ -858,14 +839,6 @@ end
 # Main execution
 # =============================================================================
 
-geom_config = V3GeomAdjustConfig(
-    reduce_tip=REDUCE_TIP, reduce_te=true,
-    reduce_depower=false,
-    reduce_steering=REDUCE_STEERING,
-    steering_reduction=STEERING_REDUCTION,
-    tip_reduction=TIP_REDUCTION,
-    depower_offset=depower_offset_pct / 100.0)
-
 if LOAD_FROM_DISK
     full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
@@ -878,27 +851,26 @@ if LOAD_FROM_DISK
     row1_steering = limited_data.kcu_actual_steering[1] /
         100.0
     base_name = build_replay_name(h5_path, start_utc,
-        end_utc, row1_depower, row1_steering, geom_config)
+        end_utc, row1_depower, row1_steering, kite.geom)
     syslog  = load_log(base_name * "_sim")
     datalog = load_log(base_name * "_data")
 
     data_path = v3_data_path()
     set_data_path(data_path)
-    set = Settings("system.yaml")
+    set = Settings(PROJECT)
     set.g_earth = 9.81
     set.profile_law = 0
-    source_struc = joinpath(data_path,
-        "struc_geometry.yaml")
-    source_aero = joinpath(data_path,
-        "aero_geometry.yaml")
-    vsm_path = joinpath(data_path, "vsm_settings.yaml")
+    source_struc = struc_geometry_path(PROJECT; data_path)
+    source_aero = aero_geometry_path(PROJECT; data_path,
+        aero_mode = resolve_aero_mode(kite))
     vsm_set = VortexStepMethod.VSMSettings(
-        vsm_path; data_prefix=false)
+        vsm_settings_path(PROJECT; data_path); data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
+    aero_mode = resolve_aero_mode(kite)
     sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
+        set, kite.geom, source_struc, vsm_set; aero_mode)
     data_sam, _ = build_replay_sys_struct(
-        set, geom_config, source_struc, vsm_set; aero_mode=AERO_MODE)
+        set, kite.geom, source_struc, vsm_set; aero_mode)
 else
     sam, syslog, data_sam, datalog, data,
         settle_config, settle_log, dt,
@@ -910,7 +882,7 @@ if !isnothing(syslog)
         sys_struct=sam.sys_struct,
         data_sys_struct=data_sam.sys_struct,
         syslog, datalog,
-        frame_csvs, geom=geom_config,
+        frame_csvs, geom=kite.geom,
         section=SECTION,
         distance_based_steering=DISTANCE_BASED_STEERING,
         depower_offset_pct=depower_offset_pct,

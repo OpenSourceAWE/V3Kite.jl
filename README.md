@@ -31,7 +31,7 @@ Pick an example from the menu. An example takes its kite and flight condition
 from a project file — `data/system_*.yaml`, a section of pointers to the
 settings, geometry and kite files it uses — so `v3kite.jl` flies the particle
 lattice or the beam wing depending on which project it names. See
-`data/kite_beam.yaml` for what a kite file holds and `V3KiteConfig` in
+`data/kite_settings_beam.yaml` for what a kite file holds and `V3KiteConfig` in
 `src/simulation.jl` for the options; bundled geometry and flight data live at
 `v3_data_path()`.
 

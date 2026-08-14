@@ -17,7 +17,7 @@ accelerations near 5e7 m/s² and leaves the implicit solver unable to complete a
 single step. `relax_bridle!` integrates with every segment stiffness scaled down
 and hands it back as the structure settles.
 
-Geometry-agnostic on purpose: point `PROJECT` at the particle project and it
+Geometry-agnostic on purpose: pick the particle project from the menu and it
 saves a relaxed start for that model too, which is a shorter and
 better-conditioned settle than starting from the placed geometry.
 
@@ -40,7 +40,10 @@ using SymbolicAWEModels
 # Configuration
 # =============================================================================
 
-PROJECT = "system_v3kite_beam.yaml"
+PROJECT = select_project(
+    ["Timoshenko-beam wing" => "system_v3kite_beam.yaml",
+     "particle lattice" => "system_v3kite_psm.yaml"];
+    prompt = "Which wing model should be relaxed?")
 
 DEPOWER = 0.20        # fraction [0, 1]
 STEERING = 0.0        # fraction [-1, 1]

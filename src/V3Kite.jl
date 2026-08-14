@@ -119,6 +119,8 @@ export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
 export compute_kite_aoa, compute_bridle_euler, span_mean_aoa
 export compute_wing_incidence
+export wing_station_chords, wing_twist_dist
+export differential_twist, aero_moment_z
 export compute_bridle_pitch_angle
 export chord_ref_mid
 export mean_te_segment_force
@@ -135,7 +137,7 @@ export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 export resolve_aero_mode, aero_geometry_path
 
 # Project settings exports
-export kite_settings, heading_settings, settle_settings
+export kite_settings, heading_settings, settle_settings, select_project
 export load_kite, load_settle, settings_block
 export struc_geometry_path, aero_geometry_path, vsm_settings_path
 export parse_backend, parse_aero_mode, parse_wing_type

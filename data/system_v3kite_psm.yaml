@@ -3,11 +3,11 @@
 # agree on and differ only where they have to. The beam variant of this run is
 # system_v3kite_beam.yaml, which differs in two lines.
 system:
-  sim_settings: "settings_v3kite.yaml"
+  sim_settings: "sim_settings_v3kite.yaml"
   structural_geometry: "struc_geometry.yaml"
-  aero_geometry: "aero_geometry.yaml"
+  aero_geometry: "cfd_aero_geometry.yaml"
   vsm_settings: "vsm_settings.yaml"
   wc_settings: "wc_settings.yaml"
-  kite_settings: "kite_psm.yaml"
-  settle_settings: "settle_v3kite.yaml"
+  kite_settings: "kite_settings_psm.yaml"
+  settle_settings: "settle_settings_v3kite.yaml"
   heading_settings: "heading_settings_v3kite.yaml"

@@ -473,6 +473,104 @@ function span_mean_aoa(sys)
 end
 
 """
+    refresh_wing_pos_b!(sys, wing=sys.wings[1]) -> sys
+
+Recompute the body-frame position of every point of a `PARTICLE_DYNAMICS` wing
+from its live world position, that wing's shape being carried by the points
+themselves. A no-op on a rigid wing, whose `pos_b` is fixed by construction.
+"""
+function refresh_wing_pos_b!(sys, wing=sys.wings[1])
+    wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS || return sys
+    R_w_b = calc_R_b_w(sys)'
+    wing.pos_w .= sys.points[1].pos_w
+    for point in sys.points
+        point.wing_idx == wing.idx || continue
+        point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
+    end
+    return sys
+end
+
+"""
+    wing_station_chords(sys, wing=sys.wings[1]) -> Vector{NamedTuple}
+
+Every twist surface's `(y, le, te)` — span position [m] and leading/trailing
+edge point — sorted from the `-y` tip outboard, on refreshed `pos_b`.
+
+The edges are the surface's extreme points in chordwise CAD x, which is the rule
+SymbolicAWEModels itself maps aero sections onto. Pairing wing nodes off by
+index instead only works on the lattice: a beam station carries eleven chordwise
+control points that are wing nodes too.
+"""
+function wing_station_chords(sys, wing=sys.wings[1])
+    refresh_wing_pos_b!(sys, wing)
+    stations = NamedTuple[]
+    for surface_idx in wing.twist_surface_idxs
+        idxs = sys.twist_surfaces[surface_idx].point_idxs
+        length(idxs) < 2 && continue
+        station = [sys.points[i] for i in idxs]
+        le = argmin(p -> p.pos_cad[1], station)
+        te = argmax(p -> p.pos_cad[1], station)
+        push!(stations, (y=(le.pos_b[2] + te.pos_b[2]) / 2, le=le, te=te))
+    end
+    return sort!(stations, by=station -> station.y)
+end
+
+"""
+    wing_twist_dist(sys, wing=sys.wings[1]) -> (span_y, twist)
+
+Span position [m] and local twist [rad] of every wing station, outboard from the
+`-y` tip. A station's twist is the angle of its chord off the body x axis in the
+plane normal to the local spanwise direction.
+"""
+function wing_twist_dist(sys, wing=sys.wings[1])
+    stations = wing_station_chords(sys, wing)
+    n = length(stations)
+    n < 2 && return (Float64[], Float64[])
+    body_x = [1.0, 0.0, 0.0]
+    twist = Float64[]
+    for k in 1:n
+        chord_b = stations[k].te.pos_b - stations[k].le.pos_b
+        y_airf = normalize(stations[min(k + 1, n)].le.pos_b -
+                           stations[max(k - 1, 1)].le.pos_b)
+        z_loc = normalize(cross(body_x, y_airf))
+        push!(twist, atan(dot(chord_b, z_loc), dot(chord_b, body_x)))
+    end
+    return [station.y for station in stations], twist
+end
+
+"""
+    differential_twist(sys, wing=sys.wings[1]) -> Float64
+
+Mean station twist of the `+y` wing half less that of the `-y` half [rad]: the
+antisymmetric part of the twist distribution, which is what a bridle-steered
+wing turns on. Symmetric deformation gives zero however much overall twist it
+carries, so this separates steering from depower. `NaN` when a half is empty.
+"""
+function differential_twist(sys, wing=sys.wings[1])
+    span_y, twist = wing_twist_dist(sys, wing)
+    right = [t for (y, t) in zip(span_y, twist) if y > 0]
+    left = [t for (y, t) in zip(span_y, twist) if y < 0]
+    (isempty(right) || isempty(left)) && return NaN
+    return mean(right) - mean(left)
+end
+
+"""
+    aero_moment_z(sys, wing=sys.wings[1]) -> Float64
+
+Yaw moment [N·m] of the wing's VSM solution, the z component of its aerodynamic
+moment about the VSM reference point. Read together with
+[`differential_twist`](@ref) it says how much yaw a given twist asymmetry buys.
+
+Under `AeroPressure` the loads the structure feels come from the pressure
+integration rather than from this solution, so it is the aero moment of the same
+deformed geometry, not the applied one. `NaN` without a VSM solver.
+"""
+function aero_moment_z(sys, wing=sys.wings[1])
+    hasproperty(wing, :vsm_solver) || return NaN
+    return wing.vsm_solver.sol.moment[3]
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle

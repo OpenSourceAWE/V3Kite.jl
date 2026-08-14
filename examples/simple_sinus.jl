@@ -59,8 +59,8 @@ HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
 # The tracking error is almost pure phase lag, so it scales with 1/loop gain,
-# but only below the stability boundary. Sweep at the BODY_DAMPING set below,
-# [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
+# but only below the stability boundary. Sweep at the current `init` default
+# body_start_damping = [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
 # the same window): K = 1.2 keeps a
 # ~1.6x margin to the boundary at K ≈ 1.9; K = 1.6 tracks better (0.52°) but
 # sits right at the edge.

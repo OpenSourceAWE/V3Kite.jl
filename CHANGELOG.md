@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- `examples/aero_resolution_check.jl` prints the three spanwise counts that are
+  easy to confuse on a built model: sections the aero geometry ships, unrefined
+  sections surviving the structural remesh (what every refined polar and surface
+  table is blended from), and structural stations driving their geometry.
+- `wing_twist_dist`, `differential_twist` and `aero_moment_z` for diagnosing
+  steering: the per-station twist along the span, the antisymmetric part of it
+  (the `+y` half mean less the `-y` half mean) and the VSM yaw moment to read it
+  against. `wing_station_chords` finds each station's leading and trailing edge
+  as the twist surface's extremes in chordwise CAD x, the rule SymbolicAWEModels
+  itself maps aero sections onto.
 - `V3Kite.SurfplanAdapter`, which turns a SurfplanAdapter export of the V3 into a
   Timoshenko-beam `struc_geometry.yaml`: the leading edge and the struts become
   `Body` chains joined by `TimoshenkoJoint`s, and every bridle branch end rides
@@ -34,12 +44,17 @@
 - `V3KiteConfig.backend`, so a settling can run on the `KernelBackend`. Settling
   built its model without one, and the monolithic build is the dominant cost on a
   beam wing. `build_replay_sys_struct` takes one for the same reason.
-- `examples/v3beam_replay.jl`, `flight_replay.jl` on the beam wing: `AeroPressure`
-  for the surface-traction transfer the beam is built for, the `KernelBackend`,
-  and none of the wing-lattice corrections. Separate from `flight_replay.jl`
-  rather than a switch inside it, almost nothing about the setup being shared.
-  It does not settle yet: `update_sys_struct_from_data!` assigns the flight
-  velocity point by point, which leaves the beam's rigid bodies at rest.
+- `flight_replay.jl` replays on the beam wing as well, picked from its menu:
+  `system_v3beam_replay.yaml` brings the `KernelBackend` and none of the
+  wing-lattice corrections. The beam does not settle yet:
+  `update_sys_struct_from_data!` assigns the flight velocity point by point,
+  which leaves the beam's rigid bodies at rest.
+- The beam wing flies `AeroPressure` only. `data/kite_settings_beam.yaml` carries the
+  surface-traction transfer the wing is built for, and the `ContinuousAero`
+  variant is gone rather than kept as a second file. A project naming a
+  pressure kite now needs the surface-resolved aero geometry, and
+  `aero_geometry_path` says so at load time instead of letting the model build
+  fail on a missing surface contour.
 - `examples/v3beam_aero_geometry.jl`, which slices `V3_25.obj` into the
   surface-resolved aero geometry `AeroPressure` needs — airfoil contours, polars
   and the per-node `Cp`/`cf` tables — where the stock `aero_geometry.yaml`
@@ -65,6 +80,33 @@
   being the maneuver rather than the controller.
 
 ### Changed
+- BREAKING: the `sim_settings:` files are named for the key that points at them
+  and for the run they describe: `sim_settings_default.yaml` (was
+  `settings.yaml`), `sim_settings_v3kite.yaml`, `sim_settings_v3kite_beam.yaml`,
+  `sim_settings_reelout.yaml`, `sim_settings_cabauw.yaml`. `settings.yaml`
+  against `settings_v3kite.yaml` said nothing about which held what; the new
+  names line up with `kite_settings_*`, `settle_settings_*` and `wc_settings`.
+
+### Fixed
+- The two replay projects flew different conditions: `system_v3kite_replay.yaml`
+  read `settings.yaml` while `system_v3beam_replay.yaml` read
+  `settings_v3kite.yaml`, so the pair differed in `sim_time` and depower as well
+  as in wing model. Both now read `sim_settings_default.yaml`.
+
+### Changed
+- BREAKING: the two aero geometries are named for the solver they came from and
+  sit side by side: `cfd_aero_geometry.yaml` (was `aero_geometry.yaml`) and
+  `nf_aero_geometry.yaml`, the NeuralFoil sweep `v3beam_aero_geometry.jl` writes.
+  Its per-node tables stay under `data/polars_neuralfoil/` while the geometry
+  itself moves beside its sibling, using the `geometry_path` keyword
+  `obj_to_yaml` gained. What a dataset can drive is still read off the file by
+  `has_surface_tables`, not off its name.
+- BREAKING: the kite and settling settings files are named for the project key
+  that points at them — `kite_settings_psm.yaml`, `kite_settings_beam.yaml`,
+  `settle_settings_v3kite.yaml`, `settle_settings_replay.yaml` — and each now
+  states every field of its struct explicitly, one line of comment per key,
+  rather than leaving defaults implicit. The beam files omit the tip and
+  trailing-edge reductions, which address lattice segments by index.
 - A run now takes its kite and flight condition from a KiteUtils **project
   file** — `data/system_*.yaml`, a `system:` section of pointers — instead of
   from constants in the example script. Most of the mechanism already existed
@@ -92,9 +134,16 @@
   to match a recorded log needs.
 - `init`'s `aero_mode` and `gc` now default to `nothing`, taking both from the
   project's kite settings; pass either to override it.
-- `examples/v3kite.jl` takes a project filename and flies either kite with the
-  same heading PID. `examples/v3beam.jl` is gone: it differed only in settings
-  and in an open-loop steering ramp that was inert at its own `STEERING = 0.0`.
+- `examples/v3kite.jl` and `examples/flight_replay.jl` open a menu for the wing
+  to run — `select_project` — and fly either kite through the same code.
+  `examples/v3beam.jl` and `examples/v3beam_replay.jl` are gone, each having been
+  its PSM counterpart with another project file's worth of constants. Without a
+  terminal the menu takes its default instead of asking, so a scripted run is
+  unaffected.
+- `V3KiteConfig.wing_mass`, `wing_mass_le_frac` and `wing_drag_coeff` carry the
+  lattice corrections `flight_replay.jl` applied by hand. Both redistribute over
+  wing nodes, which a beam wing does not have mass or drag on, so the beam
+  project turns them off by leaving them out.
 
 ### Removed
 - `V3SimConfig` and `run_v3_simulation`. Nothing called `run_v3_simulation`
@@ -103,6 +152,18 @@
   `Settings`, and the model options are `V3KiteConfig`.
 
 ### Fixed
+- The settling schedule no longer overrides the damping the kite file asks for.
+  `min_damping` named the same quantity as `V3KiteConfig.body_damping` and won,
+  so a kite settling to `[0, 0, 0]` flew at the schedule's `[0, 0, 20]`. The
+  floor is now the kite's own, and both names say which phase they belong to:
+  `body_start_damping`/`world_start_damping` in the settling schedule,
+  `body_sim_damping`/`world_sim_damping` in the kite file.
+  BREAKING: `settle_settings:` no longer accepts `min_damping`, and
+  `body_damping`/`world_damping` are renamed in both files.
+- `plot_twist_dist` paired wing nodes off two at a time, which holds only on the
+  lattice. A beam station carries eleven chordwise control points that are wing
+  nodes too, so the plot read one real station in six and made chords out of
+  pairs of control points. It now reads the twist surfaces.
 - `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a
   beam wing, as its docstring always said it would. Both address segments by
   index into the particle lattice, and the beam is the larger structure, so the
@@ -302,8 +363,8 @@
   is dead on a `PARTICLE_DYNAMICS` wing, whose aero force is a per-point VSM
   solve that never reads it.
 - `v_wind_gnds`/`rel_turbs` extended to `[3.483, 5.324, 8.163, 9.51]` /
-  `[0.342, 0.465, 0.583, 0.626]` in `settings.yaml`, `settings_reelout.yaml`
-  and `settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
+  `[0.342, 0.465, 0.583, 0.626]` in `sim_settings_default.yaml`, `sim_settings_reelout.yaml`
+  and `sim_settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
   an unlisted ground wind speed to a neighbour's turbulence intensity. The
   `0.626` point extends the log fit `rel_turb = 0.342 + 0.283*(ln v - 1.248)`
   fitted to the three Cabauw-calibrated points (turbulence intensity I₉₉ at
@@ -379,7 +440,7 @@
   `simple_parking_client.m` / `simple_sinus_client.m` backed by a new
   `examples/rest_server.jl` and `bin/run_server`.
 - New system/settings projects for the above: `data/system_cabauw.yaml`,
-  `data/system_reelout.yaml`, `data/settings_reelout.yaml`,
+  `data/system_reelout.yaml`, `data/sim_settings_reelout.yaml`,
   `data/wc_settings.yaml`.
 - Optional precompilation workload (`src/precompile.jl`, previously
   disabled): brings TTFX down from ~28 s to ~2 s at the cost of ~90 s longer

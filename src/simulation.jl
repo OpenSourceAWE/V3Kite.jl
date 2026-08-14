@@ -41,7 +41,7 @@ file's `structural_geometry:`, `aero_geometry:` and `vsm_settings:` keys and the
 flight condition from its `sim_settings:`, so neither is repeated here.
 
 Loaded from the `kite_settings:` file of a project by
-[`V3KiteConfig(filename)`](@ref); see `data/kite_beam.yaml`.
+[`V3KiteConfig(filename)`](@ref); see `data/kite_settings_beam.yaml`.
 """
 Base.@kwdef mutable struct V3KiteConfig
     wing_type::SymbolicAWEModels.WingType = SymbolicAWEModels.PARTICLE_DYNAMICS
@@ -56,15 +56,27 @@ Base.@kwdef mutable struct V3KiteConfig
     vsm_interval::Int = 1
 
     """
+    Damping the simulation runs with, and the floor settling decays down to.
     Body-frame damping damps a node against its wing frame, which only `DYNAMIC`
-    points have — on a beam wing, whose wing nodes are `BODY_STATIC` points riding
-    bodies, it reaches nothing and only `world_damping` acts.
+    points have — on a beam wing, whose wing nodes are `BODY_STATIC` points
+    riding bodies, it reaches nothing and only `world_sim_damping` acts.
     """
-    body_damping::Vector{Float64} = [0.0, 0.0, 20.0]
-    world_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+    body_sim_damping::Vector{Float64} = [0.0, 0.0, 20.0]
+    world_sim_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig()
     bridle::V3BridleConfig = V3BridleConfig()
+
+    """
+    Mass [kg] redistributed over the wing nodes by chord, `0` keeping what the
+    geometry carries. A beam wing keeps its mass in the bodies, so setting this
+    there counts gravity twice.
+    """
+    wing_mass::Float64 = 0.0
+    "Leading-edge share of `wing_mass`"
+    wing_mass_le_frac::Float64 = 0.75
+    "Parasitic drag coefficient spread over the wing nodes, `0` adding none"
+    wing_drag_coeff::Float64 = 0.0
 
     """
     SurfplanAdapter export the beam was built from. `nothing` keeps the linear
@@ -133,7 +145,8 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
 
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_settings_path(project; data_path); data_prefix=false)
-    vsm_set.wings[1].geometry_file = aero_geometry_path(project; data_path)
+    vsm_set.wings[1].geometry_file = aero_geometry_path(project;
+        data_path, aero_mode = resolve_aero_mode(kite))
 
     model_name = kite.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
         V3_RIGID_DYNAMICS_MODEL_NAME : V3_MODEL_NAME
@@ -141,8 +154,8 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
         system_name=model_name, set, dynamics_type=kite.wing_type,
         vsm_set, aero_mode=resolve_aero_mode(kite))
 
-    SymbolicAWEModels.set_body_frame_damping(sys, kite.body_damping)
-    SymbolicAWEModels.set_world_frame_damping(sys, kite.world_damping)
+    SymbolicAWEModels.set_body_frame_damping(sys, kite.body_sim_damping)
+    SymbolicAWEModels.set_world_frame_damping(sys, kite.world_sim_damping)
 
     sam = SymbolicAWEModel(set, sys; backend = kite.backend)
 

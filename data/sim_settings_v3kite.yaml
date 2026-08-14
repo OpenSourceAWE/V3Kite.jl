@@ -1,17 +1,21 @@
+# Flight condition and run length of the v3kite.jl example: a 60 s run at 15.4
+# m/s on 250 m of tether, 70 deg elevation, 30 % depower. A variant of
+# sim_settings_default.yaml, differing only in the block below and in `sim_time`.
 system:
   log_file:
     'data/base' # filename without extension  [replay only]
     #   use / as path delimiter, even on Windows
   time_lapse: 1.0 # relative replay speed
-  sim_time: 100.0 # simulation time             [sim only]
+  sim_time: 60.0 # simulation time              [sim only]
   sample_freq: 20 # sample frequency in Hz
   fixed_font: '' # name or filepath+filename of alternative fixed pitch font
   g_earth: 9.81
 
 initial:
-  l_tethers: [0] # initial tether length       [m]
+  l_tethers: [250.0] # initial tether length   [m]
   v_reel_outs: [0] # initial reel out speed    [m/s]
   elevations: [70] # initial elevation angle   [deg]
+  depowers: [30] # initial depower setting     [%]
 
 solver:
   solver: 'FBDF'
@@ -60,9 +64,9 @@ winch:
   i_speed: 0.1 # integral gain of the winch speed controller     [-]
 
 environment:
-  v_wind: 8.0 # wind speed at reference height          [m/s]
+  v_wind: 15.4 # wind speed at reference height         [m/s]
   upwind_dir: -90.0 # upwind direction                        [deg]
-  wind_vec: [8.0, 0.0, 0.0] # wind vector at ref height (ENU) [m/s]
+  wind_vec: [15.4, 0.0, 0.0] # wind vector at ref height (ENU) [m/s]
   use_wind_vec: true # use wind_vec instead of v_wind/upwind_dir
   temp_ref: 15.0 # temperature at reference height         [°C]
   height_gnd: 0.0 # height of groundstation above see level [m]

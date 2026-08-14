@@ -256,7 +256,7 @@ the leading-edge runs out of the perimeter tube chain (see `leading_edge_samples
 `frame_offset` [m] is added to every particle position, moving the whole export into
 the CAD frame the rest of the V3 data uses. It defaults to `V3_ADAPTER_FRAME_OFFSET`,
 which is the translation the V3 `.obj` picked up on its way into the VSM data
-directory, so the emitted beam and `aero_geometry.yaml` end up in the same frame.
+directory, so the emitted beam and `cfd_aero_geometry.yaml` end up in the same frame.
 """
 function read_adapter_geometry(adapter_dir;
         native_file = "struc_geometry.yaml",

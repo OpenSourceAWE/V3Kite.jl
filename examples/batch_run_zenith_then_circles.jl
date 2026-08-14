@@ -41,7 +41,7 @@ followed by circular flight.
 function run_zenith_circles(;
         sim_time_zenith = 10.0, fps_zenith = 1,
         sim_time_circles = 0.0, fps_circles = 1,
-        body_damping = [0.0, 0.0, 20.0],
+        body_sim_damping = [0.0, 0.0, 20.0],
         up = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
@@ -71,6 +71,7 @@ function run_zenith_circles(;
     kite.aero_mode = AERO_MODE
     kite.geom = V3GeomAdjustConfig(
         reduce_te = true, tether_length = tether_length)
+    kite.body_sim_damping = body_sim_damping
     settle_config = V3SettleConfig(
         project = PROJECT,
         kite = kite,
@@ -78,13 +79,13 @@ function run_zenith_circles(;
         tether_length = tether_length,
         g_earth = g_earth,
         kcu_mass = kcu_mass,
-        body_damping = [0.0, 0.0, 40.0],
+        body_start_damping = [0.0, 0.0, 40.0],
         decay_steps = 30,
         num_steps = 40, num_substeps = 1, dt = 0.05,
         start_depower = 40.0,
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
-        world_damping = 0.0, min_damping = [0.0, 0.0, 20.0],
+        world_start_damping = 0.0,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -100,8 +101,6 @@ function run_zenith_circles(;
             "v_wind=$v_wind, lt=$tether_length"
     )
     sys = sam.sys_struct
-
-    SymbolicAWEModels.set_body_frame_damping(sys, body_damping)
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -299,7 +298,7 @@ ramp_time_us = 2
 fps_zenith = 20
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
-body_damping = [0.0, 0.0, 20.0]
+body_sim_damping = [0.0, 0.0, 20.0]
 PROJECT = "system.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
@@ -320,7 +319,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             elevation = elev, g_earth = g,
             kcu_mass = kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            body_damping,
+            body_sim_damping,
             max_us_zenith, target_azimuth = 0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us = us,

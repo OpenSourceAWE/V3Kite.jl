@@ -4,7 +4,7 @@
 # struct default, so this file is also the list of what is tunable.
 #
 # Tuned on examples/simple_sinus.jl (sinusoidal heading tracking) at the current
-# body_damping = [0, 0, 40], measured as RMS heading error over t >= one period.
+# body_start_damping = [0, 0, 40], measured as RMS heading error over t >= one period.
 # The tracking error is almost pure phase lag, so it scales with 1/loop gain, but
 # only below the stability boundary at K ~ 1.9: K = 1.6 tracks better (0.52 deg)
 # but sits right at the edge, so K = 1.2 keeps a ~1.6x margin.

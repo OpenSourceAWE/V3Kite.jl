@@ -72,14 +72,15 @@ V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
 
-# The damping the coefficients are identified AT. The floor is the one that
-# matters: `BODY_DAMPING` only shapes the settling transient, decaying to that
+# The damping the coefficients are identified AT. `BODY_SIM_DAMPING` is the one that
+# matters: `BODY_START_DAMPING` only shapes the settling transient, decaying to this
 # floor, so the floor is what the sweep is FLOWN with and what `c1` below
-# describes. `init` derives it as 0.8 x `BODY_DAMPING`; `MIN_DAMPING` mirrors that
-# default so the report below can state what the sweep flew. Both are part of the
-# settling cache key, so the first run with a new value re-settles the wing.
-BODY_DAMPING     = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
-MIN_DAMPING      = 0.8 .* BODY_DAMPING  # Floor it decays to; what the sweep FLIES
+# describes. Equal values mean no decay at all — settling runs at the flown
+# damping throughout, which is what makes the identified `c1` belong to a single,
+# stated damping instead of a transient. Both are part of the settling cache key,
+# so the first run with a new pair re-settles the wing.
+BODY_START_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
+BODY_SIM_DAMPING   = [0.0, 0.0, 40.0]   # Floor it decays to; what the sweep FLIES
 
 # Relay controller. The KPS4 original uses a ±5° band; it is widened here
 # because `sin(ψ)` has to leave zero for the gravity term `c2` of the turn-rate
@@ -111,7 +112,7 @@ VSM_INTERVAL     = 1   # steps between VSM aero solves
 
 # The in-plane (x, y) damping terms damp the bridle oscillation but also suppress
 # the steering deformation: c1, the turn-rate gain, falls by 3x per damping level.
-# The runs below predate the `min_damping` floor (added 2026-08-08) and quote only
+# The runs below predate the `body_sim_damping` floor (added 2026-08-08) and quote only
 # the damping settling STARTED from — re-identify a cell before relying on it for
 # a run that flies a stated floor:
 # with [20.0, 20.0, 40.0]
@@ -125,7 +126,8 @@ VSM_INTERVAL     = 1   # steps between VSM aero solves
 #  c2                 :  -0.3837 [-] ± 0.0573  (14.93 %)
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
+s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
+    body_sim_damping = BODY_SIM_DAMPING,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
@@ -215,11 +217,11 @@ sl = KiteUtils.syslog(s.logger)
 r = identify_turn_rate_law(sl; dt = DT, t_start = T_START,
                            min_steering = MIN_STEERING_FIT)
 
-# The conditions a row identified from this run is keyed by — `body_damping` and
+# The conditions a row identified from this run is keyed by — `body_sim_damping` and
 # `depower` are the lookup key downstream (SimpleKiteControllers.jl's
 # `turn_rate_coeffs`), the rest belong in the table's `conditions` block.
-@printf("\nidentified at body_damping = %s, depower = %.2f (flown at %s)\n",
-        BODY_DAMPING, DEPOWER_SETPOINT, MIN_DAMPING)
+@printf("\nidentified at body_sim_damping = %s, depower = %.2f (body_start_damping = %s)\n",
+        BODY_SIM_DAMPING, DEPOWER_SETPOINT, BODY_START_DAMPING)
 @printf("             v_wind = %.2f m/s, l_tether = %.1f m, dt = %.4f s, %s\n",
         V_WIND, TETHER_LENGTH, DT, PROJECT)
 

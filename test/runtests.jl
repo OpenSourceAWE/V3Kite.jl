@@ -175,7 +175,8 @@ using KitePodModels: KCU
         set_data_path(v3_data_path())
         for project in ("system.yaml", "system_reelout.yaml",
                         "system_cabauw.yaml", "system_v3kite_psm.yaml",
-                        "system_v3kite_beam.yaml", "system_v3beam_replay.yaml")
+                        "system_v3kite_beam.yaml", "system_v3kite_replay.yaml",
+                        "system_v3beam_replay.yaml")
             kite = load_kite(project)
             @test kite isa V3KiteConfig
             @test kite.init_mode in (:settle, :relaxed_state)
@@ -195,7 +196,18 @@ using KitePodModels: KCU
         @test beam.backend isa KernelBackend
         @test !beam.geom.reduce_tip && !beam.geom.reduce_te
         @test beam.bridle.compression_frac == 0.01
-        @test beam.init_mode == :relaxed_state
+        @test beam.init_mode == :settle
+        @test beam.aero_mode isa AeroPressure
+
+        # The settling schedule sets the transient, the kite file what flies.
+        beam_settle = load_settle("system_v3kite_beam.yaml"; kite=beam)
+        @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
+        @test beam_settle.kite.body_sim_damping == beam.body_sim_damping
+
+        # A geometry carrying polars alone cannot fly `pressure`, and says so
+        # when the project loads rather than inside the model build.
+        @test_throws ErrorException aero_geometry_path("system_v3kite_psm.yaml";
+            aero_mode=AeroPressure())
 
         # A typo in a settings file is caught when it loads, not silently
         # defaulted.

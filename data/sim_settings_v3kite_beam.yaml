@@ -1,6 +1,8 @@
-# Flight condition and run length of the v3kite.jl example: a 60 s run at 15.4
-# m/s on 250 m of tether, 70 deg elevation, 30 % depower. A variant of
-# settings.yaml, differing only in the block below and in `sim_time`.
+# Flight condition of v3kite.jl on the beam wing. Identical to
+# sim_settings_v3kite.yaml apart from the depower, which is not free here: the beam
+# is flown from the relaxed state relax_bridle.jl wrote, and that state was
+# relaxed at 20 %. Changing this means re-running relax_bridle.jl at the new
+# depower and pointing kite_settings_beam.yaml at the state it writes.
 system:
   log_file:
     'data/base' # filename without extension  [replay only]
@@ -15,7 +17,7 @@ initial:
   l_tethers: [250.0] # initial tether length   [m]
   v_reel_outs: [0] # initial reel out speed    [m/s]
   elevations: [70] # initial elevation angle   [deg]
-  depowers: [30] # initial depower setting     [%]
+  depowers: [20] # initial depower setting     [%]
 
 solver:
   solver: 'FBDF'

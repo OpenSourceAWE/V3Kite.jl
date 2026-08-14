@@ -6,14 +6,15 @@ Emit the V3 Surface-Resolved Aero Geometry
 
 Slices `V3_25.obj` into aero sections and runs NeuralFoil on each, writing the
 airfoil contours, the polars and the per-node `Cp`/`cf` surface tables that
-`AeroPressure` needs — `v3beam_replay.jl` loads the `geometry.yaml` this writes.
-The stock `data/aero_geometry.yaml` comes from the same slice but carries only
+`AeroPressure` needs: the tables under `polars_neuralfoil/` and the geometry
+beside them as `nf_aero_geometry.yaml`, which is what a project points at.
+The stock `data/cfd_aero_geometry.yaml` comes from the same slice but carries only
 lift/drag/moment polars, so `AeroPressure` has no surface to build its
 station-point map on and refuses to load.
 
 The mesh is taken from VortexStepMethod's own data directory rather than
 `data/V3_25.obj`, because that copy is already rotated into slicer convention and
-raised by 7.3 m, and `aero_geometry.yaml` was sliced from it — see
+raised by 7.3 m, and `cfd_aero_geometry.yaml` was sliced from it — see
 [`V3_ADAPTER_FRAME_OFFSET`](@ref), which is how the structural export follows it.
 `obj_to_yaml` rotates but does not translate, so slicing the raised copy at
 `rotation=I` is what puts the sections where the beam wing already is.
@@ -44,9 +45,10 @@ using VortexStepMethod.AirfoilAero: ShrinkWrap, NeuralFoilSolver
 # Configuration
 # =============================================================================
 
-OUT_DIR = joinpath(v3_data_path(), "polars_neuralfoil_pressure")
+OUT_DIR = joinpath(v3_data_path(), "polars_neuralfoil")
+GEOMETRY_PATH = joinpath(v3_data_path(), "nf_aero_geometry.yaml")
 
-N_SECTIONS = 37            # matches the section count of aero_geometry.yaml
+N_SECTIONS = 37            # matches the section count of cfd_aero_geometry.yaml
 ALPHA_RANGE = -10:2:30     # deg; every step is another Cp/cf table per section
 DELTA_RANGE = nothing      # the V3 has no trailing-edge flap
 WINGTIP_DISTANCE = 0.05
@@ -58,7 +60,7 @@ FORCE = false              # true reruns the NeuralFoil pass
 RHO = 1.225
 MU = 1.81e-5
 V_APP = 15.4
-CHORD_REF = 2.32           # median chord of aero_geometry.yaml
+CHORD_REF = 2.32           # median chord of cfd_aero_geometry.yaml
 
 # =============================================================================
 # Emission
@@ -72,6 +74,7 @@ reynolds = RHO * V_APP * CHORD_REF / MU
 @info "Slicing the V3 mesh" obj_path N_SECTIONS reynolds ALPHA_RANGE
 
 yaml_path = obj_to_yaml(obj_path, OUT_DIR;
+    geometry_path = GEOMETRY_PATH,
     n_sections = N_SECTIONS,
     Re = reynolds,
     alpha_range = ALPHA_RANGE,
@@ -84,5 +87,5 @@ yaml_path = obj_to_yaml(obj_path, OUT_DIR;
     force = FORCE)
 
 @info "Wrote the surface-resolved aero geometry" yaml_path
-@info "Point v3beam_replay.jl's AERO_YAML at it."
+@info "Projects reach it as `aero_geometry: nf_aero_geometry.yaml`."
 nothing

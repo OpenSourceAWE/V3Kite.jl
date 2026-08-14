@@ -56,10 +56,10 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
-# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with.
-INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
-FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+# `BODY_START_DAMPING` only shapes the settling transient, decaying to
+# `BODY_SIM_DAMPING`, which is the damping the parked run actually FLIES with.
+BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis [1/s]
+BODY_SIM_DAMPING   = [0.0, 0.0, 40.0]  # Floor it decays to; what the run FLIES [1/s]
 # Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
 # default in `data/struc_geometry.yaml`. `init` floors it during settling
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
@@ -70,8 +70,9 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
-    min_damping = FLOWN_BODY_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
+s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
+    body_sim_damping = BODY_SIM_DAMPING,
+    damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 

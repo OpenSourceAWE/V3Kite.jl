@@ -5,7 +5,7 @@
 Translation [m] from the SurfplanAdapter export frame into the CAD frame of the
 other V3 data files. `V3_25.obj` was rotated into slicer convention and raised by
 7.3 m when it was copied into the VortexStepMethod data directory, and
-`aero_geometry.yaml` was sliced from that copy, so the structural export has to
+`cfd_aero_geometry.yaml` was sliced from that copy, so the structural export has to
 follow it for the beam and the aero sections to line up.
 """
 const V3_ADAPTER_FRAME_OFFSET = [0.0, 0.0, 7.3]
@@ -18,7 +18,7 @@ bridle so that "zero pitch" means "mid-span chord". For the V3 that chord droops
 0.994530° in the raw Surfplan frame.
 
 The measured bridle file is raw, so it has to be rotated by this to join an export.
-`aero_geometry.yaml` is chord-aligned as well, which is why the rotation is added to
+`cfd_aero_geometry.yaml` is chord-aligned as well, which is why the rotation is added to
 the bridle rather than removed from the export.
 """
 const V3_ADAPTER_CHORD_ALIGN_DEG = -0.994530

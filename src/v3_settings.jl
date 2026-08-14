@@ -56,20 +56,50 @@ vsm_settings_path(project; data_path=nothing) =
         project_entry(project, "vsm_settings"; data_path))
 
 """
-    aero_geometry_path(project; data_path=nothing) -> String
+    has_surface_tables(geometry_path) -> Bool
+
+Whether an aero geometry carries the per-node `Cp`/`cf` tables `AeroPressure`
+builds its station-point map from, rather than lift/drag/moment polars alone.
+"""
+function has_surface_tables(geometry_path)
+    dict = YAML.load_file(geometry_path)
+    airfoils = get(dict, "wing_airfoils", nothing)
+    isnothing(airfoils) && return false
+    rows = get(airfoils, "data", nothing)
+    isnothing(rows) && return false
+    return any(rows) do row
+        row isa AbstractVector && length(row) >= 3 &&
+            row[3] isa AbstractDict && haskey(row[3], "cp_file")
+    end
+end
+
+"""
+    aero_geometry_path(project; data_path=nothing, aero_mode=nothing) -> String
 
 Absolute path of the project's `aero_geometry:` file, erroring when it is
 missing. The surface-resolved tables `AeroPressure` needs are generated rather
 than tracked, so a fresh checkout hits this and is told which example writes
 them.
+
+Given the `aero_mode` the project will be flown on, a geometry that cannot carry
+that mode is rejected here rather than deep in the model build: `AeroPressure`
+has no surface to work on unless the geometry carries
+[`has_surface_tables`](@ref).
 """
-function aero_geometry_path(project; data_path=nothing)
-    path = joinpath(something(data_path, v3_data_path()),
-        project_entry(project, "aero_geometry"; data_path))
-    isfile(path) && return path
-    error("No aero geometry at $path (from `aero_geometry:` in $project). " *
-          "The surface-resolved tables are generated, not tracked — run " *
-          "examples/v3beam_aero_geometry.jl to write them.")
+function aero_geometry_path(project; data_path=nothing, aero_mode=nothing)
+    entry = project_entry(project, "aero_geometry"; data_path)
+    path = joinpath(something(data_path, v3_data_path()), entry)
+    isfile(path) || error(
+        "No aero geometry at $path (from `aero_geometry:` in $project). " *
+        "The surface-resolved tables are generated, not tracked — run " *
+        "examples/v3beam_aero_geometry.jl to write them.")
+    if aero_mode isa SymbolicAWEModels.AeroPressure && !has_surface_tables(path)
+        error("$project flies `aero_mode: pressure` on `aero_geometry: $entry`, " *
+              "which carries polars but no per-node Cp/cf tables. Run " *
+              "examples/v3beam_aero_geometry.jl and point `aero_geometry:` " *
+              "at nf_aero_geometry.yaml.")
+    end
+    return path
 end
 
 """Filename of the [`V3KiteConfig`](@ref) file of `project`."""
@@ -80,6 +110,29 @@ heading_settings(project) = project_entry(project, "heading_settings")
 
 """Filename of the [`V3SettleConfig`](@ref) file of `project`."""
 settle_settings(project) = project_entry(project, "settle_settings")
+
+"""
+    select_project(options; prompt="Which kite?", default=1) -> String
+
+Ask which project file to run and return its filename. `options` are
+`label => "system_*.yaml"` pairs, so one example covers several kites instead of
+being copied per kite.
+
+Without a terminal — a scripted run, a test, CI — the `default` option is taken
+and reported rather than asked for, and leaving the menu takes it too.
+"""
+function select_project(options::AbstractVector{<:Pair};
+                        prompt="Which kite?", default::Int=1)
+    projects = [String(last(option)) for option in options]
+    if !(stdin isa Base.TTY)
+        @info "$prompt not asked (no terminal)" project=projects[default]
+        return projects[default]
+    end
+    labels = ["$(first(option))  [$(last(option))]" for option in options]
+    choice = request("\n$prompt", RadioMenu(labels, pagesize=8))
+    choice == -1 && (choice = default)
+    return projects[choice]
+end
 
 """
     parse_backend(name) -> ModelBackend

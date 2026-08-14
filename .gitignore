@@ -11,7 +11,8 @@ ideas.txt
 *.arrow
 !data/reel_out_4p_torque_control.arrow
 !data/relaxed_*.arrow
-data/polars_neuralfoil_pressure/
+data/polars_neuralfoil/
+data/nf_aero_geometry.yaml
 *.bin
 *.bin.xz
 *.tar.gz
