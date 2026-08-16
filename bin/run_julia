@@ -15,6 +15,10 @@ for arg in "$@"; do
         force_kaimon=true
     elif [[ "$arg" == "--nosysimage" ]]; then
         no_sysimage=true
+    elif [[ "$arg" == "--psm" ]]; then
+        export V3KITE_PROJECT=psm
+    elif [[ "$arg" == "--beam" ]]; then
+        export V3KITE_PROJECT=beam
     else
         julia_extra_args+=("$arg")
     fi

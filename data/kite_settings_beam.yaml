@@ -18,7 +18,7 @@ kite_settings:
   init_mode: settle              # settle | relaxed_state
   init_state: relaxed_struc_geometry_beam_dp20.arrow  # settling starts here
 
-  remake_cache: false            # true rebuilds the serialized model
+  remake_cache: true            # true rebuilds the serialized model
   brake: true                    # winch brake engaged after bring-up
 
   # The tip and trailing-edge reductions address lattice segments by index and

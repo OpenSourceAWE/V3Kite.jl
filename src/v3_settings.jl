@@ -118,12 +118,26 @@ Ask which project file to run and return its filename. `options` are
 `label => "system_*.yaml"` pairs, so one example covers several kites instead of
 being copied per kite.
 
+`ENV["V3KITE_PROJECT"]` skips the menu: it selects the one option whose filename
+contains it, so `psm` or `beam` is enough. `bin/run_julia --psm` / `--beam` set it.
+An unmatched value errors rather than falling back, so a typo cannot silently run
+the other kite.
+
 Without a terminal — a scripted run, a test, CI — the `default` option is taken
 and reported rather than asked for, and leaving the menu takes it too.
 """
 function select_project(options::AbstractVector{<:Pair};
                         prompt="Which kite?", default::Int=1)
     projects = [String(last(option)) for option in options]
+    wanted = lowercase(strip(get(ENV, "V3KITE_PROJECT", "")))
+    if !isempty(wanted)
+        matched = findall(project -> occursin(wanted, lowercase(project)), projects)
+        length(matched) == 1 || error(
+            "V3KITE_PROJECT=\"$wanted\" matches $(length(matched)) of $projects; " *
+            "give a fragment that picks exactly one")
+        @info "$prompt taken from V3KITE_PROJECT" project=projects[only(matched)]
+        return projects[only(matched)]
+    end
     if !(stdin isa Base.TTY)
         @info "$prompt not asked (no terminal)" project=projects[default]
         return projects[default]
