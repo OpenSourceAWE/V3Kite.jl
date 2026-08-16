@@ -33,7 +33,7 @@ The file must have a top-level `wc_settings:` mapping whose keys are fields of
 `WCSettings`; a missing key keeps the struct default, an unknown key errors.
 """
 function load_wc_settings(filename::AbstractString; dt)
-    path = isabspath(filename) ? filename : joinpath(get_data_path(), filename)
+    path = isabspath(filename) ? filename : joinpath(V3Kite.get_data_path(), filename)
     dict = V3Kite.YAML.load_file(path)["wc_settings"]
     wcs = WCSettings(; dt)
     for (key, value) in dict
