@@ -19,7 +19,7 @@ wc_settings:
   winch_speed_k:      30.0   # Inner speed-loop proportional gain: speed error [m/s] -> winch torque [N*m*s/m]
   winch_speed_ti:     2.0    # Inner speed-loop integral time [s] (larger = weaker integral action)
   winch_torque_limit: 500.0  # Saturation of the inner speed loop's torque correction [N*m]
-  winch_ff_scale:     1.0    # Scale on the feed-forward LOAD term [-]; 1.0 is a perfectly stiff drum, below 1.0 the drum pays out, see WCSettings
+  winch_ff_scale:     1.0    # Scale on the feed-forward LOAD term [-]; 1.0 is a perfectly stiff drum, below 1.0 the drum reels out, see WCSettings
   # --- Force mode (winch_force_torque!) --------------------------------------
   winch_force_tau:   10.0    # Reference-force low-pass time constant [s]; the drum yields to everything faster
   winch_len_kp:     100.0    # Length-trim gain: length error [m] -> reference force [N/m]
