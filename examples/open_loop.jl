@@ -81,7 +81,7 @@ gc = settle_config.kite.geom
 @info "Settling V3 model..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = UP, wind_vec, remake=false)
+    steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 sys.winches[1].brake = true

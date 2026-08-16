@@ -21,9 +21,10 @@ using PrecompileTools: @compile_workload
 # the SciML specializations are compiled against, so a workload that drifts from
 # the example it mirrors warms a code path no example flies.
 #
-# `remake=false` (the `init` default) means the serialized settled geometry and
-# model in data/ are consumed, not rebuilt. Wrapped in try/catch: a workload
-# failure must never break `using V3Kite`.
+# Both remake flags are pinned false here rather than left to the project file:
+# precompilation must consume the serialized geometry and model in data/, never
+# rebuild them. Wrapped in try/catch: a workload failure must never break
+# `using V3Kite`.
 #
 # If either data/*.bin cache is missing (e.g. right after a SymbolicAWEModels
 # or Julia version bump changes the model filename), `init` rebuilds it from
@@ -34,14 +35,16 @@ using PrecompileTools: @compile_workload
 if get(ENV, "V3KITE_SKIP_PRECOMPILE_WORKLOAD", "0") != "1"
     @compile_workload begin
         try
-            body_damping = [0.0, 0.0, 40.0]
+            body_start_damping = [0.0, 0.0, 40.0]
             # sim_time only sizes the logger; keep it below the example's 10 s.
             s = init(9.51, 150.0;
                 depower_setpoint = 0.25, sim_time = 1.0, dt = 0.05/3,
                 system_yaml = "system_reelout.yaml",
                 aero_mode = ContinuousAero(),
-                body_damping, min_damping = 0.8 .* body_damping,
-                damping_per_stiffness = 0.001)
+                body_start_damping,
+                body_sim_damping = 0.8 .* body_start_damping,
+                damping_per_stiffness = 0.001,
+                remake_model = false, remake_settled_state = false)
 
             s.sys.winches[1].brake = true
 

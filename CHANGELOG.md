@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+- BREAKING: the beam joints in `data/struc_geometry_beam*.yaml` carry a single
+  `damping` column (Rayleigh β in seconds) instead of `damping_trans`/
+  `damping_rot`. `V3BeamTopology.damping_ratio` is now converted to β via
+  `β = 2ζ/ω` at the element's axial mode `ω = sqrt(EA/(L·m))`, following
+  `ζ = βω/2`. The old dashpot on relative node velocity also braked rigid
+  rotation of the whole wing — 15332 N·m·s/rad about yaw — which is what made
+  the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
+
 ### Added
 - `examples/aero_resolution_check.jl` prints the three spanwise counts that are
   easy to confuse on a built model: sections the aero geometry ships, unrefined

@@ -1,0 +1,11 @@
+# Heading gains for the Timoshenko-beam V3. The beam wing carries real
+# rotational momentum — twist can return to neutral while the wing keeps
+# yawing — so the loop has lag the lattice does not, and the shared
+# heading_settings_v3kite.yaml (K = 1.0) drives it into a limit cycle that pins
+# the steering at saturation. Proportional only, as there: Ti off so saturation
+# cannot wind up, Td off so K is the single thing being tuned.
+heading_settings:
+  K:  0.25
+  Ti: false
+  Td: false
+  max_steering: 0.15

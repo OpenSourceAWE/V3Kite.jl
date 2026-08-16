@@ -473,44 +473,35 @@ function span_mean_aoa(sys)
 end
 
 """
-    refresh_wing_pos_b!(sys, wing=sys.wings[1]) -> sys
-
-Recompute the body-frame position of every point of a `PARTICLE_DYNAMICS` wing
-from its live world position, that wing's shape being carried by the points
-themselves. A no-op on a rigid wing, whose `pos_b` is fixed by construction.
-"""
-function refresh_wing_pos_b!(sys, wing=sys.wings[1])
-    wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS || return sys
-    R_w_b = calc_R_b_w(sys)'
-    wing.pos_w .= sys.points[1].pos_w
-    for point in sys.points
-        point.wing_idx == wing.idx || continue
-        point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
-    end
-    return sys
-end
-
-"""
     wing_station_chords(sys, wing=sys.wings[1]) -> Vector{NamedTuple}
 
-Every twist surface's `(y, le, te)` — span position [m] and leading/trailing
-edge point — sorted from the `-y` tip outboard, on refreshed `pos_b`.
+Every twist surface's `(y, le, te)` — span position [m] and body-frame leading/
+trailing edge position — sorted from the `-y` tip outboard.
 
 The edges are the surface's extreme points in chordwise CAD x, which is the rule
 SymbolicAWEModels itself maps aero sections onto. Pairing wing nodes off by
 index instead only works on the lattice: a beam station carries eleven chordwise
 control points that are wing nodes too.
+
+Positions are derived from live `pos_w` here rather than read from `point.pos_b`,
+which holds the *undeformed* geometry: the equations take it as the parameter
+that `twist_deformed_offset` rotates by the live twist angle, so writing the
+deformed positions back into it would twist an already-twisted station on the
+next model build.
 """
 function wing_station_chords(sys, wing=sys.wings[1])
-    refresh_wing_pos_b!(sys, wing)
+    R_w_b = calc_R_b_w(sys)'
+    origin = isnothing(wing.origin) ? Vector(wing.pos_w) :
+        SymbolicAWEModels.get_ref_position_from_points(sys.points, wing.origin)
+    body_pos(point) = R_w_b * (point.pos_w - origin)
     stations = NamedTuple[]
     for surface_idx in wing.twist_surface_idxs
         idxs = sys.twist_surfaces[surface_idx].point_idxs
         length(idxs) < 2 && continue
         station = [sys.points[i] for i in idxs]
-        le = argmin(p -> p.pos_cad[1], station)
-        te = argmax(p -> p.pos_cad[1], station)
-        push!(stations, (y=(le.pos_b[2] + te.pos_b[2]) / 2, le=le, te=te))
+        le = body_pos(argmin(p -> p.pos_cad[1], station))
+        te = body_pos(argmax(p -> p.pos_cad[1], station))
+        push!(stations, (y=(le[2] + te[2]) / 2, le=le, te=te))
     end
     return sort!(stations, by=station -> station.y)
 end
@@ -529,9 +520,9 @@ function wing_twist_dist(sys, wing=sys.wings[1])
     body_x = [1.0, 0.0, 0.0]
     twist = Float64[]
     for k in 1:n
-        chord_b = stations[k].te.pos_b - stations[k].le.pos_b
-        y_airf = normalize(stations[min(k + 1, n)].le.pos_b -
-                           stations[max(k - 1, 1)].le.pos_b)
+        chord_b = stations[k].te - stations[k].le
+        y_airf = normalize(stations[min(k + 1, n)].le -
+                           stations[max(k - 1, 1)].le)
         z_loc = normalize(cross(body_x, y_airf))
         push!(twist, atan(dot(chord_b, z_loc), dot(chord_b, body_x)))
     end
@@ -566,7 +557,7 @@ integration rather than from this solution, so it is the aero moment of the same
 deformed geometry, not the applied one. `NaN` without a VSM solver.
 """
 function aero_moment_z(sys, wing=sys.wings[1])
-    hasproperty(wing, :vsm_solver) || return NaN
+    wing.aero isa SymbolicAWEModels.AbstractVSMAero || return NaN
     return wing.vsm_solver.sol.moment[3]
 end
 

@@ -81,7 +81,7 @@ settle_config = V3SettleConfig(
 @info "Settling V3 model at rel_depower = $REL_DEPOWER..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = REL_DEPOWER, wind_vec, remake = false)
+    steering = 0.0, depower = REL_DEPOWER, wind_vec)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 

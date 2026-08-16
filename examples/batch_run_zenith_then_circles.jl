@@ -93,8 +93,7 @@ function run_zenith_circles(;
         velocity = [0.0, 0.0, 0.0],
         heading = 0.0,
         steering = 0.0, depower = up,
-        wind_vec = wind_vec,
-        remake = false
+        wind_vec = wind_vec
     )
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *

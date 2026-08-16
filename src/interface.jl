@@ -391,7 +391,7 @@ end
          body_sim_damping=nothing, damping_per_stiffness=nothing,
          aero_mode=nothing, data_path=v3_data_path(), cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_torque=nothing,
-         remake=false) -> V3KITE
+         remake_model=nothing, remake_settled_state=nothing) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -401,8 +401,10 @@ for a `step!` simulation loop (see `examples/simple_parking.jl`).
 settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
 is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 [s] size the logger and step count, falling back to `1/set.sample_freq` and
-`set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
-re-settling (ignoring the `data/settled_*.arrow` state). There is no winch-gain
+`set.sim_time`. `gc` holds the geometry adjustments;
+`remake_settled_state=true` forces re-settling (ignoring the
+`data/settled_*.arrow` state) and `remake_model=true` rebuilds the serialized
+equations, both defaulting to the project's own flags. There is no winch-gain
 argument: V3Kite owns no winch controller (see [`step!`](@ref)).
 `system_yaml` names the project file (default `"system.yaml"`) that points at
 the settings, geometry and kite-settings files; pass e.g.
@@ -492,7 +494,8 @@ function init(v_wind_gnd, l_tether;
               use_turbulence = nothing,
               warmup_time = 0.0,
               warmup_torque = nothing,
-              remake = false)
+              remake_model = nothing,
+              remake_settled_state = nothing)
     system_path = joinpath(data_path, system_yaml)
     if isnothing(elevation)
         elevation = Settings(system_path).elevation
@@ -506,6 +509,9 @@ function init(v_wind_gnd, l_tether;
     isnothing(gc) || (kite.geom = gc)
     isnothing(body_sim_damping) ||
         (kite.body_sim_damping = collect(Float64, body_sim_damping))
+    isnothing(remake_model) && (remake_model = kite.remake_model)
+    isnothing(remake_settled_state) &&
+        (remake_settled_state = kite.remake_settled_state)
     settle_config = V3SettleConfig(
         project = system_yaml,
         kite = kite,
@@ -525,7 +531,7 @@ function init(v_wind_gnd, l_tether;
     sam, _, settle_failed = settle_wing(settle_config;
         position, velocity = [0.0, 0.0, 0.0], heading = 0.0,
         steering = 0.0, depower = depower_setpoint, wind_vec,
-        data_path, cache_path, remake)
+        data_path, cache_path, remake_model, remake_settled_state)
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
 

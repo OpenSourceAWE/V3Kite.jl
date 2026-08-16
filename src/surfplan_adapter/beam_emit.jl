@@ -235,11 +235,15 @@ function beam_tables(geom, topo)
             resolve_membrane_stiffness(topo, radius))
         torsion = tube_torsion_law(radius, topo.pressure_bar)
         GJ0 = torsion.c1 * torsion.c2
-        damp_t = 2 * topo.damping_ratio * sqrt(EA / len * min(mass_a, mass_b))
-        damp_r = 2 * topo.damping_ratio * sqrt(EI0 / len * min(inertia_a, inertia_b))
+        # Rayleigh β from ζ = βω/2, anchored at the transverse mode
+        # ω = sqrt(12EI/(L³m)): ζ rises with frequency, so anchoring the softest
+        # mode of interest leaves everything stiffer at least as well damped.
+        bend_stiffness = 12 * EI0 / len^3
+        omega_bend = sqrt(bend_stiffness / min(mass_a, mass_b))
+        beta = 2 * topo.damping_ratio / omega_bend
         joint_radius[Symbol(name)] = radius
         push!(joint_rows, [name, String(a), String(b), EA, GA, GJ0, EI0, EI0,
-            TUBE_SHEAR_COEFF, damp_t, damp_r, radius])
+            TUBE_SHEAR_COEFF, beta, radius])
     end
     le_node_full_mass(c) = le_station_of[c] == 0 ? le_node_tube_mass[c] :
         node_mass_of(le_station_of[c], 1)
@@ -566,7 +570,7 @@ function write_model(path, tables, geom, bridle, topo; full)
              "transform_idx"], body_emit)
         emit_table(io, "timoshenko_joints",
             ["name", "body_a", "body_b", "EA", "GA", "GJ", "EIy", "EIz",
-             "shear_coeff", "damping_trans", "damping_rot", "radius"],
+             "shear_coeff", "damping", "radius"],
             tables.joint_rows)
         station_points(i) = [wing_pt[le_ids[i]]; wing_pt[te_ids[i]];
             [spec.name for spec in tables.control_specs if spec.station == i]]

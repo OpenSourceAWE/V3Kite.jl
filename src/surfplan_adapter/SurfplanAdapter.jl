@@ -106,9 +106,8 @@ function apply_comer_bending!(sys, joint_radius::AbstractDict, topo::V3BeamTopol
         new_joint = TimoshenkoJoint(joint.name, joint.body_a_ref, joint.body_b_ref;
             anchor_a = joint.anchor_a_b, anchor_b = joint.anchor_b_b,
             EA, GA, GJ = joint.GJ, EIy = law, EIz = law,
-            shear_coeff = joint.shear_coeff, damping_trans = joint.damping_trans,
-            damping_rot = joint.damping_rot, rest_length = joint.rest_length,
-            radius = joint.radius)
+            shear_coeff = joint.shear_coeff, damping = joint.damping,
+            rest_length = joint.rest_length, radius = joint.radius)
         new_joint.idx = joint.idx
         new_joint.body_a_idx = joint.body_a_idx
         new_joint.body_b_idx = joint.body_b_idx

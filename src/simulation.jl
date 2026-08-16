@@ -98,7 +98,16 @@ Base.@kwdef mutable struct V3KiteConfig
     """
     init_state::Union{Nothing, String} = nothing
 
-    remake_cache::Bool = false
+    """
+    Rebuild the serialized model (`data/model_*.bin`) instead of reading it back.
+    Needed whenever the equations change; the settled state is untouched.
+    """
+    remake_model::Bool = false
+    """
+    Re-run settling instead of loading the cached `data/settled_*.arrow`. Needed
+    when the geometry or the flight condition changes.
+    """
+    remake_settled_state::Bool = false
     brake::Bool = true
 end
 
@@ -189,10 +198,13 @@ function apply_kite_material!(sys, kite::V3KiteConfig)
 end
 
 """
-    build_v3_model(project; data_path=nothing, remake=false, kite=nothing,
+    build_v3_model(project; data_path=nothing, remake_model=nothing,
+                   remake_settled_state=nothing, kite=nothing,
                    settle=nothing) -> (sam, sys)
 
-Bring up the model a project file describes, ready to step.
+Bring up the model a project file describes, ready to step. Both `remake` flags
+default to the project's `remake_model` / `remake_settled_state`; they are
+independent caches, the serialized equations and the settled geometry.
 
 `init_mode: settle` runs power-zone settling at the flight condition of the
 project's `sim_settings:`, starting from the kite's `init_state` when it has one.
@@ -201,11 +213,14 @@ geometry instead, for a kite already relaxed at the depower it is flown at —
 restoring after `init!` rather than before, so the rest lengths stay the ones the
 state was relaxed against.
 """
-function build_v3_model(project; data_path=nothing, remake=false,
-                        kite=nothing, settle=nothing)
+function build_v3_model(project; data_path=nothing, remake_model=nothing,
+                        remake_settled_state=nothing, kite=nothing, settle=nothing)
     isnothing(data_path) && (data_path = v3_data_path())
     set_data_path(data_path)
     isnothing(kite) && (kite = load_kite(project; data_path))
+    isnothing(remake_model) && (remake_model = kite.remake_model)
+    isnothing(remake_settled_state) &&
+        (remake_settled_state = kite.remake_settled_state)
     set = Settings(project)
 
     kite.init_mode in (:settle, :relaxed_state) ||
@@ -220,7 +235,8 @@ function build_v3_model(project; data_path=nothing, remake=false,
         apply_kite_material!(sys, kite)
         set_depower!(sys, set.depower / 100.0, 0.0, kite.geom)
         set_steering!(sys, 0.0, kite.geom)
-        SymbolicAWEModels.init!(sam; remake, ignore_l0=false, remake_vsm=true)
+        SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
+                                remake_vsm=true)
         sys.winches[1].brake = kite.brake
 
         state_path = joinpath(data_path, kite.init_state)
@@ -242,7 +258,7 @@ function build_v3_model(project; data_path=nothing, remake=false,
     sam, _, failed = settle_wing(settle;
         position, velocity=[0.0, 0.0, 0.0], heading=0.0, steering=0.0,
         depower=set.depower / 100.0, wind_vec=[set.v_wind, 0.0, 0.0],
-        data_path, remake)
+        data_path, remake_model, remake_settled_state)
     failed && error("Settling failed for $project")
     sys = sam.sys_struct
     apply_kite_material!(sys, kite)

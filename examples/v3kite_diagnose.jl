@@ -21,7 +21,13 @@ agreeing rules the kinematics out; them disagreeing means the loop is closing on
 a stale signal.
 
 Prints a table plus an end-of-run summary; writes no log and opens no window, so
-it runs headless. `bin/run_julia --beam` (or `--psm`) picks the wing.
+it runs headless. `bin/run_julia --beam` (or `--psm`) picks the wing, and
+`V3KITE_AERO_MODE=continuous` overrides the project's aero mode, which is how the
+same maneuver is compared across couplings.
+
+The loop closes on the heading recomputed from the live wing frame, not on
+`wing.heading`: the `KernelBackend` never writes that field, so a controller
+reading it sees a constant and saturates instead of flying the maneuver.
 """
 
 using Pkg
@@ -76,18 +82,36 @@ function yaw_axis(wing)
     return wing.R_b_to_w' * normalize(radial)
 end
 
+"""
+    live_heading(wing) -> Float64
+
+Heading [rad] recomputed from the wing's current frame and position, the signal
+`wing.heading` would carry if every backend wrote it.
+"""
+live_heading(wing) =
+    V3Kite.calc_heading_from_rotation(wing.R_b_to_w, wing.pos_w)
+
 set_data_path(v3_data_path())
 kite = load_kite(PROJECT)
 heading = load_heading(PROJECT)
 set = Settings(PROJECT)
 
-@info "V3 Kite Turn Diagnostics" PROJECT
+aero_override = get(ENV, "V3KITE_AERO_MODE", "")
+isempty(aero_override) ||
+    (kite.aero_mode = V3Kite.parse_aero_mode(aero_override))
 
-sam, sys = build_v3_model(PROJECT)
+gain_override = get(ENV, "V3KITE_HEADING_K", "")
+isempty(gain_override) || (heading.K = parse(Float64, gain_override))
+time_override = get(ENV, "V3KITE_SIM_TIME", "")
+
+@info "V3 Kite Turn Diagnostics" PROJECT aero_mode=kite.aero_mode
+
+sam, sys = build_v3_model(PROJECT; kite)
 wing = sys.wings[1]
 
-n_steps = Int(round(set.sample_freq * set.sim_time))
-dt = set.sim_time / n_steps
+sim_time = isempty(time_override) ? set.sim_time : parse(Float64, time_override)
+n_steps = Int(round(set.sample_freq * sim_time))
+dt = sim_time / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
 nominal_steering = V3Kite.get_steering(sys, kite.geom)
@@ -107,19 +131,20 @@ heading_field = Float64[]
 heading_live = Float64[]
 kinematics_gap = Float64[]
 
-heading_prev = wing.heading
+heading_prev = live_heading(wing)
 frame_prev = copy(wing.R_b_to_w)
 
-@printf("%5s %7s %7s %8s %8s %8s %9s %9s %9s %8s %8s %7s\n",
-        "step", "t[s]", "cmd[°]", "hfld[°]", "hlive[°]", "steer[m]",
-        "dtwist[°]", "Mapp[Nm]", "|M|[Nm]", "ωyaw[°/s]", "ḣead[°/s]", "kin[%]")
+@printf("%5s %7s %7s %8s %8s %7s %8s %9s %9s %9s %9s %8s %8s\n",
+        "step", "t[s]", "cmd[°]", "hfld[°]", "hlive[°]", "g_k", "steer[m]",
+        "dtwist[°]", "Mapp[Nm]", "Mvsm[Nm]", "|M|[Nm]", "ωyaw[°/s]",
+        "ḣead[°/s]")
 
 failed_at = 0
 for step in 1:n_steps
     t = step * dt
 
     target_rad = max_heading_rad * sin(angular_freq * t)
-    measured = wing.heading
+    measured = live_heading(wing)
     schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
     steer_ctrl = pid(target_rad, measured, 0.0)
     sys_state.bearing = target_rad
@@ -136,9 +161,10 @@ for step in 1:n_steps
     moment = Vector(wing.aero_moment_b)
     omega = Vector(wing.ω_b)
     omega_frame = frame_rate(frame_prev, wing.R_b_to_w, dt)
-    live = V3Kite.calc_heading_from_rotation(wing.R_b_to_w, wing.pos_w)
+    live = live_heading(wing)
     head_rate = rad2deg(wrap_to_pi(live - heading_prev) / dt)
     gap = norm(omega - omega_frame) / max(norm(omega_frame), 1e-6) * 100
+    yaw_rate = rad2deg(dot(omega_frame, axis))
 
     push!(time_s, t)
     push!(steer_cmd, steer_ctrl)
@@ -146,20 +172,21 @@ for step in 1:n_steps
     push!(moment_yaw, dot(moment, axis))
     push!(moment_vsm, aero_moment_z(sys))
     push!(moment_norm, norm(moment))
-    push!(rate_yaw, rad2deg(dot(omega, axis)))
+    push!(rate_yaw, yaw_rate)
     push!(heading_rate, head_rate)
     push!(heading_field, rad2deg(wing.heading))
     push!(heading_live, rad2deg(live))
     push!(kinematics_gap, gap)
 
     if step % REPORT_EVERY == 0 || step <= 3
-        @printf("%5d %7.2f %7.2f %8.2f %8.2f %8.4f %9.3f %9.1f %9.1f %8.3f %8.3f %7.1f\n",
+        @printf("%5d %7.2f %7.2f %8.2f %8.2f %7.3f %8.4f %9.3f %9.1f %9.1f %9.1f %8.3f %8.3f\n",
                 step, t, rad2deg(target_rad), heading_field[end],
-                heading_live[end], steer_ctrl, twist_diff[end],
-                moment_yaw[end], moment_norm[end], rate_yaw[end], head_rate, gap)
+                heading_live[end], pid.K, steer_ctrl, twist_diff[end],
+                moment_yaw[end], moment_vsm[end], moment_norm[end],
+                rate_yaw[end], head_rate)
     end
 
-    global heading_prev = wing.heading
+    global heading_prev = live
     global frame_prev = copy(wing.R_b_to_w)
 end
 
@@ -182,7 +209,7 @@ span("differential twist", twist_diff, "deg")
 span("applied moment about yaw", moment_yaw, "Nm")
 span("VSM yaw moment", moment_vsm, "Nm")
 span("applied moment magnitude", moment_norm, "Nm")
-span("body rate about yaw", rate_yaw, "deg/s")
+span("body rate about yaw (frame)", rate_yaw, "deg/s")
 span("heading rate", heading_rate, "deg/s")
 
 println("\n===== kinematics cross-check =====")

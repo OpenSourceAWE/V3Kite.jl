@@ -288,7 +288,7 @@ function run_physics_replay(h5_path;
 
     if SETTLE
         sam, settle_log, settle_failed =
-            settle_wing(settle_config, row1; remake=true)
+            settle_wing(settle_config, row1; remake_settled_state=true)
         if settle_failed
             @warn "Settling failed — skipping sim"
             base_name = build_replay_name(h5_path,

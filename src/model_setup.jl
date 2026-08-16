@@ -139,7 +139,7 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
         "Expected even number of wing points, got $n")
     pairs = [(wing_pts[i], wing_pts[i+1])
              for i in 1:2:n]
-    chords = [norm(le.pos_b - te.pos_b)
+    chords = [norm(le.pos_undeformed_b - te.pos_undeformed_b)
               for (le, te) in pairs]
     total_chord = sum(chords)
     for (i, (le, te)) in enumerate(pairs)

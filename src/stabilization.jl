@@ -312,13 +312,13 @@ end
 
 """
     settle_wing(config::V3SettleConfig, init_row;
-                data_path=nothing, cache_path=nothing,
-                show_progress=true, remake=false)
+                data_path=nothing, cache_path=nothing, show_progress=true,
+                remake_model=false, remake_settled_state=false)
     settle_wing(config::V3SettleConfig;
                 position, velocity, attitude,
                 steering, depower, wind_vec,
-                data_path=nothing, cache_path=nothing,
-                show_progress=true, remake=false)
+                data_path=nothing, cache_path=nothing, show_progress=true,
+                remake_model=false, remake_settled_state=false)
     -> (sam, syslog, settle_failed)
 
 Run power-zone settling with gravity to find equilibrium wing
@@ -336,9 +336,10 @@ body-frame damping is a per-point field of the serialized
 `SystemStructure` and therefore carries over into the returned
 model on purpose; it is part of the cache key for that reason.
 
-When `remake=false` and the destination file already exists, the
-simulation is skipped and the settled geometry is loaded from
-file. The cache file name encodes the settling inputs, including
+When `remake_settled_state=false` and the destination file already
+exists, the simulation is skipped and the settled geometry is
+loaded from file; `remake_model` is the independent flag for the
+serialized equations. The cache file name encodes the settling inputs, including
 the elevation implied by the initial position and a non-default
 `aero_mode`, so runs that only differ in elevation or in
 aerodynamics get their own file instead of sharing one. A cached
@@ -569,7 +570,8 @@ function settle_wing(config::V3SettleConfig, init_row;
                      data_path=nothing,
                      cache_path=nothing,
                      show_progress=true,
-                     remake=false)
+                     remake_model=false,
+                     remake_settled_state=false)
     if isnothing(data_path)
         data_path = v3_data_path()
     end
@@ -588,7 +590,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Run settling simulation if needed
     syslog = nothing
     settle_failed = false
-    if remake || !isfile(dest_struc)
+    if remake_settled_state || !isfile(dest_struc)
         try
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
@@ -643,7 +645,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         sys.tethers[1].init_stretched_len = gc.tether_length
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
-                remake=false, remake_vsm=true,
+                remake=remake_model, remake_vsm=true,
                 reinit_sys=false)
         end
     else
@@ -659,7 +661,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         sam = SymbolicAWEModel(set, sys; backend = config.kite.backend)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
-                remake=false, ignore_l0=false,
+                remake=remake_model, ignore_l0=false,
                 remake_vsm=true)
         end
     end
