@@ -101,6 +101,7 @@ applied in full. Friction compensation cancels the drum's own coulomb/viscous
 torque and is not part of the load being held, and `winch.friction` flips sign
 with the reel-out direction — scaling it would make the intended compliance
 direction- and speed-dependent instead of a plain fraction of the tether force.
+
 """
 function force_to_torque(force, sys; ff_scale=1.0)
     winch = sys.winches[1]

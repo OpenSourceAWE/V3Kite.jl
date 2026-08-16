@@ -10,6 +10,9 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
+# V3Kite is torque-only; the winch length loop is the caller's.
+isdefined(@__MODULE__, :winch_torque!) ||
+    include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
@@ -185,33 +188,47 @@ using KitePodModels: KCU
     end
 end
 
-@testset "WC_Settings" begin
-    default = WC_Settings()
-    @test default.winch_pos_kp == 0.5
-    @test default.winch_speed_k == 30.0
-    @test default.winch_speed_ti == 2.0
-    @test default.winch_torque_limit == 500.0
-    # Default feed-forward is exact, i.e. a perfectly stiff drum.
-    @test default.winch_ff_scale == 1.0
-    # Force mode (winch_force_torque!); unused while the drum holds a length.
-    @test default.winch_force_tau == 10.0
-    @test default.winch_len_kp == 100.0
-    @test default.winch_damp == 500.0
-    @test default.winch_force_min == 100.0
-
-    # Loaded from data/wc_settings.yaml (see wc_settings: field of system.yaml).
+@testset "WCSettings" begin
+    # The struct and its controllers live in WinchControllers.jl now; V3Kite
+    # reads no winch gains at all. What this checks is that the file V3Kite
+    # SHIPS still loads into that struct and still carries the V3 tuning.
     set_data_path(v3_data_path())
-    loaded = WC_Settings("wc_settings.yaml")
+    default = WCSettings()
+    loaded = load_wc_settings("wc_settings.yaml"; dt = 0.05)
+
+    @test loaded.dt == 0.05                      # dt always wins over the file
+    @test loaded.winch_pos_kp == 0.5
+    @test loaded.winch_speed_k == 30.0
+    @test loaded.winch_speed_ti == 2.0
+    @test loaded.winch_torque_limit == 500.0
+    # Default feed-forward is exact, i.e. a perfectly stiff drum.
+    @test loaded.winch_ff_scale == 1.0
+    # Force mode; unused while the drum holds a length.
+    @test loaded.winch_force_tau == 10.0
+    @test loaded.winch_len_kp == 100.0
+    @test loaded.winch_damp == 500.0
+    @test loaded.winch_force_min == 100.0
+    # The shipped file spells the torque half out, so it doubles as the list.
     @test loaded.winch_pos_kp == default.winch_pos_kp
-    @test loaded.winch_speed_k == default.winch_speed_k
-    @test loaded.winch_speed_ti == default.winch_speed_ti
-    @test loaded.winch_torque_limit == default.winch_torque_limit
-    # The shipped file spells every knob out, so it doubles as the tunable list.
-    @test loaded.winch_ff_scale == default.winch_ff_scale
-    @test loaded.winch_force_tau == default.winch_force_tau
-    @test loaded.winch_len_kp == default.winch_len_kp
-    @test loaded.winch_damp == default.winch_damp
-    @test loaded.winch_force_min == default.winch_force_min
+
+    # The MERGED half: WinchControllers' own speed-controller fields ride along
+    # in the same struct and keep their defaults, since V3Kite's file omits them.
+    @test loaded.kv == default.kv
+    @test loaded.f_low == default.f_low
+    @test loaded.mode == default.mode
+
+    # Type-aware loading, and an unknown key is a typo rather than a default.
+    mktempdir() do dir
+        good = joinpath(dir, "good.yaml")
+        write(good, "wc_settings:\n  winch_pos_kp: 0.75\n  mode: \"reelout\"\n")
+        wcs = load_wc_settings(good; dt = 0.02)
+        @test wcs.winch_pos_kp == 0.75
+        @test wcs.mode == "reelout"                  # a String field survives
+        @test wcs.winch_damp == default.winch_damp   # omitted key keeps default
+        bad = joinpath(dir, "bad.yaml")
+        write(bad, "wc_settings:\n  winch_pos_kpp: 0.75\n")
+        @test_throws ErrorException load_wc_settings(bad; dt = 0.02)
+    end
 
     # Starts with no reference force, so the first step produces no torque jump.
     wfc = WinchForceController(loaded)
@@ -242,8 +259,9 @@ end
         @test s.kcu.depower ≈ DEPOWER_SETPOINT
         @test s.kcu.steering ≈ 0.0
         @test s.sys_state.time == 0.0
-        @test s.winch_ctrl !== nothing
-        @test s.winch_ctrl.kp_pos ≈ 0.5  # from data/wc_settings.yaml
+        # No winch controller on the model any more: V3Kite is the plant, and
+        # `step!` takes a torque. The loop is the caller's (winch_adapter.jl).
+        @test !hasproperty(s, :winch_ctrl)
     end
 
     @testset "init default min_damping" begin
@@ -260,8 +278,10 @@ end
     end
 
     l0 = unstretched_length(s)
+    # The winch length loop is the caller's now; one per model.
+    wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
 
-    @testset "step! holding torque (no set_length/set_torque)" begin
+    @testset "step! holding torque (no set_torque)" begin
         t0 = s.sys_state.time
         step!(s; rel_depower = DEPOWER_SETPOINT)
         @test s.sys_state.time ≈ t0 + s.dt
@@ -275,16 +295,16 @@ end
         @test isfinite(reel_out_speed(s))
     end
 
-    @testset "step! position mode (set_length)" begin
+    @testset "step! position mode (caller's length loop)" begin
         t0 = s.sys_state.time
         # Three steps: the previous torque-mode step left residual winch speed,
         # and the position PI loop (Ti = 2s) needs more than one 0.05s step to
         # bring it back down. The decay from that transient is smooth and
         # monotone (1.31, 1.06, 0.89, 0.73, ... m/s), so two steps sit right on
         # the 1.0 bound below — the third gives it margin.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = winch_torque!(wpc, s, l0))
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = winch_torque!(wpc, s, l0))
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = winch_torque!(wpc, s, l0))
         @test s.sys_state.time ≈ t0 + 3 * s.dt
         @test isfinite(unstretched_length(s))
         @test abs(reel_out_speed(s)) < 1.0  # holding l0: speed setpoint ≈ 0
@@ -303,7 +323,8 @@ end
     @testset "step! vsm_interval" begin
         t0 = s.sys_state.time
         # Not the default: the aero load is held frozen between VSM solves.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, vsm_interval = 2)
+        step!(s; rel_depower = DEPOWER_SETPOINT,
+              set_torque = winch_torque!(wpc, s, l0), vsm_interval = 2)
         @test s.sys_state.time ≈ t0 + s.dt
         @test isfinite(winch_force(s))
         @test isfinite(unstretched_length(s))
@@ -311,14 +332,17 @@ end
 
     @testset "step! live wind update" begin
         t0 = s.sys_state.time
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, v_wind_gnd = 12.0)
+        step!(s; rel_depower = DEPOWER_SETPOINT,
+              set_torque = winch_torque!(wpc, s, l0), v_wind_gnd = 12.0)
         @test s.sys_state.time ≈ t0 + s.dt
         # The mean, not `set.wind_vec`: turbulence borrows the latter across the solve.
         @test norm(s.wind_vec_mean) ≈ 12.0
     end
 
-    @testset "winch_position_torque! speed feed-forward" begin
-        ctrl = s.winch_ctrl
+    @testset "winch length loop speed feed-forward" begin
+        # The loop under test is WinchControllers.jl's, reached through the
+        # adapter; `wpc.v_sp_prev` reads back the resulting speed setpoint.
+        ctrl = wpc
         v_sp_saved = ctrl.v_sp_prev
         # The model is not stepped in here, so the length error is exactly what
         # each call is given, and `v_sp_prev` reads back the resulting setpoint.
@@ -329,29 +353,32 @@ end
 
         # Default: pure feedback, identical to before the kwarg existed.
         ctrl.v_sp_prev = 0.0
-        V3Kite.winch_position_torque!(s, l_now, 8.0, acc)
+        winch_torque!(wpc, s, l_now; speed_limit = 8.0, acceleration_limit = acc)
         @test ctrl.v_sp_prev ≈ 0.0 atol = 1e-12
 
         # No length error: the setpoint IS the feed-forward.
         ctrl.v_sp_prev = 0.0
-        V3Kite.winch_position_torque!(s, l_now, 8.0, acc; v_ff = 1.5)
+        winch_torque!(wpc, s, l_now; v_ff = 1.5, speed_limit = 8.0,
+                      acceleration_limit = acc)
         @test ctrl.v_sp_prev ≈ 1.5
 
         # The outer P loop ADDS to the feed-forward, it does not replace it.
         ctrl.v_sp_prev = 0.0
-        V3Kite.winch_position_torque!(s, l_now + 2.0, 8.0, acc; v_ff = 1.5)
+        winch_torque!(wpc, s, l_now + 2.0; v_ff = 1.5, speed_limit = 8.0,
+                      acceleration_limit = acc)
         @test ctrl.v_sp_prev ≈ 1.5 + ctrl.kp_pos * 2.0
 
         # speed_limit clamps the TOTAL setpoint, feed-forward included.
         ctrl.v_sp_prev = 0.0
-        V3Kite.winch_position_torque!(s, l_now, 1.0, acc; v_ff = 5.0)
+        winch_torque!(wpc, s, l_now; v_ff = 5.0, speed_limit = 1.0,
+                      acceleration_limit = acc)
         @test ctrl.v_sp_prev ≈ 1.0
 
         ctrl.v_sp_prev = v_sp_saved
     end
 
     @testset "acceleration limit from the settings" begin
-        ctrl = s.winch_ctrl
+        ctrl = wpc
         v_sp_saved = ctrl.v_sp_prev
         l_now = unstretched_length(s)
 
@@ -363,17 +390,20 @@ end
         set_no_acc.max_acc = 0.0
         @test V3Kite.winch_acc_limit(set_no_acc) == Inf
 
-        # `step!` uses it by default: a 100 m length error would ask for
-        # `kp_pos * 100` m/s, and the rate limiter allows `max_acc * dt` per step.
+        # The ADAPTER defaults to it (as `step!` used to): a 100 m length error
+        # would ask for `kp_pos * 100` m/s, and the rate limiter allows
+        # `max_acc * dt` per step.
         ctrl.v_sp_prev = 0.0
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l_now + 100.0)
+        step!(s; rel_depower = DEPOWER_SETPOINT,
+              set_torque = winch_torque!(wpc, s, l_now + 100.0))
         @test ctrl.v_sp_prev ≈ s.set.max_acc * s.dt
 
         # Passing `Inf` opts out (checked without stepping: uncapped here is
         # `kp_pos * 100` m/s, which is not a torque worth putting into the DAE).
         ctrl.v_sp_prev = 0.0
         # Re-read the length: the step above moved it.
-        V3Kite.winch_position_torque!(s, unstretched_length(s) + 100.0, Inf, Inf)
+        winch_torque!(wpc, s, unstretched_length(s) + 100.0;
+                      speed_limit = Inf, acceleration_limit = Inf)
         @test ctrl.v_sp_prev ≈ ctrl.kp_pos * 100.0
 
         ctrl.v_sp_prev = v_sp_saved

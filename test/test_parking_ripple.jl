@@ -20,6 +20,8 @@ end
 
 using Test
 using V3Kite
+isdefined(@__MODULE__, :winch_torque!) ||
+    include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
 using KiteUtils: set_data_path, get_data_path
 import KiteUtils   # `syslog` is called qualified: the plots scripts bind the bare
                    # name to a SysLog value, which would shadow the import here
@@ -55,9 +57,10 @@ try
 
         # Constant-length setpoint: the tether length just after settling.
         l0 = s.sys_state.l_tether[1]
+        wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
         for _ in 1:s.steps
             step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING,
-                  set_length = l0, vsm_interval = VSM_INTERVAL)
+                  set_torque = winch_torque!(wpc, s, l0), vsm_interval = VSM_INTERVAL)
         end
         @test s.sys_state.time ≈ SIM_TIME rtol=1e-6   # the run reached the end
 

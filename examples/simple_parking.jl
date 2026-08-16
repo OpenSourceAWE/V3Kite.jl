@@ -7,7 +7,7 @@ high-level `init` + `step!` interface.
 
 The wing is settled at a fixed depower setting (DEPOWER_SETPOINT) and then
 parked at a constant tether length: `step!` runs in POSITION MODE, with
-`set_length` holding the initial tether length via the cascaded winch
+the caller's cascaded winch length loop holding the initial tether length
 controller, so the kite parks without any net reel-out.
 
 The manual, braked-winch reference `examples/parking.jl` is not modified; this
@@ -40,6 +40,7 @@ import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
                    # plots scripts bind the bare name `syslog` to a SysLog value
 using LinearAlgebra: norm
 using Printf: @printf, @sprintf
+include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torque-only
 
 @info "simple_parking.jl: parking the V3 kite via the init/step! interface."
 
@@ -79,6 +80,9 @@ s.sys.winches[1].brake = USE_BRAKE
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
+# The winch length loop is the CALLER's now (V3Kite's `step!` takes a torque).
+wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
+wpc = WinchPosController(wcs; dt = s.dt)
 
 # ============== TETHER AND BRIDLE SEGMENTS =============== #
 
@@ -150,7 +154,7 @@ t_loop = @elapsed try
     for _ in 1:s.steps
         # Position mode: hold the mean tether length at its initial value.
         step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING,
-              set_length = l0, vsm_interval = VSM_INTERVAL)
+              set_torque = winch_torque!(wpc, s, l0), vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
         F_c, seg_idx = log_max_compression!(s, line_segs, compr_peaks)

@@ -11,7 +11,7 @@ using PrecompileTools: @compile_workload
 # (test/test_for_precompile.jl -> examples/v3kite.jl) drives `settle_wing` and
 # `sim_step!` *directly* — it never calls `init` or `step!(::V3KITE, ...)`. So
 # the whole high-level interface path (V3KITE wrapper, KCU actuator dynamics,
-# winch_position_torque!, update_sys_state!) is otherwise not precompiled at
+# update_sys_state!) is otherwise not precompiled at
 # all. Mirrors examples/simple_parking.jl minus the compression logging, the
 # ripple report and the saved log.
 #
@@ -44,10 +44,9 @@ if get(ENV, "V3KITE_SKIP_PRECOMPILE_WORKLOAD", "0") != "1"
 
             s.sys.winches[1].brake = true
 
-            l0 = s.sys_state.l_tether[1]
             for _ in 1:3
                 step!(s; rel_depower = 0.25, rel_steering = 0.0040,
-                      set_length = l0, vsm_interval = 1)
+                      vsm_interval = 1)
             end
 
             # Query functions used by the examples.

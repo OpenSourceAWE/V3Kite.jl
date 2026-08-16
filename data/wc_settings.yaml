@@ -1,10 +1,17 @@
-# Settings of the two winch controllers: the cascaded length controller
+# Settings of the two TORQUE winch controllers: the cascaded length controller
 # (`winch_position_torque!`) and force mode (`winch_force_torque!`). A run uses one
-# or the other; they share only the drum. Loaded into a `WC_Settings` struct via
+# or the other; they share only the drum. Loaded into a `WCSettings` struct via
 # `WC_Settings("wc_settings.yaml")`. These are new parameters with no historical
 # counterpart; tune on examples/simple_parking.jl (constant-length parking) and
 # change them by at most 10 % per iteration. Any key omitted here falls back to the
 # struct default, so this file is also the list of what is tunable.
+#
+# `WCSettings` lives in WinchControllers.jl and carries the fields of BOTH former
+# structs: the ones below, and that package's own speed/force controller gains
+# (`kv`, `f_low`, `f_high`, `p_speed`, ...) which produce a reel-out SPEED rather
+# than a torque. V3Kite drives only the torque controllers, so only their keys are
+# spelled out here; the rest keep their defaults and can be added to this file if
+# a run ever needs WinchControllers' speed controller too.
 wc_settings:
   # --- Position mode (winch_position_torque!) --------------------------------
   winch_pos_kp:       0.5    # Outer proportional gain: length error [m] -> reel-out speed setpoint [1/s]

@@ -7,7 +7,7 @@ from KiteModels.jl to the V3 model and the high-level `init`/`step!` interface.
 
 The maneuver is the bang-bang heading oscillation of the original script. The
 kite is settled and parked at a constant tether length (`step!` in POSITION
-MODE via `set_length`, as in `simple_parking.jl`/`simple_sinus.jl`), then a
+MODE via the caller's length loop, as in `simple_parking.jl`), then a
 relay controller flips the steering between `−u_s` and `+u_s` whenever the
 heading leaves a `±HEADING_OFFSET` band. Each time the heading crosses the
 upper edge going up, the amplitude `u_s` is stepped up by `STEERING_STEP`, so
@@ -58,6 +58,7 @@ using V3Kite
 using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it
 using Printf
+include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torque-only
 
 @info "steering_test_v3.jl: identifying the V3 steering response."
 
@@ -130,6 +131,9 @@ s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
+# The winch length loop is the CALLER's now (V3Kite's `step!` takes a torque).
+wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
+wpc = WinchPosController(wcs; dt = s.dt)
 
 toc("Start simulation loop...")
 
@@ -181,8 +185,9 @@ t_loop = @elapsed try
             end
         end
 
-        # Position mode: `set_length` holds the mean tether length.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+        # Position mode: the caller's length loop holds the mean tether length.
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
+              set_torque = winch_torque!(wpc, s, l0),
               vsm_interval = VSM_INTERVAL)
         global steps_done += 1
 

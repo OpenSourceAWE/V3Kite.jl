@@ -7,7 +7,7 @@ kite using the high-level `init` + `step!` interface.
 
 Same setup as `examples/simple_parking.jl` — the wing is settled at a fixed
 depower setting (DEPOWER_SETPOINT) and parked at a constant tether length
-(`step!` runs in POSITION MODE via `set_length`) — but instead of leaving the
+(the caller's winch length loop holds the tether) — but instead of leaving the
 steering at zero, a heading PID (as in `examples/simple_sinus.jl`) regulates
 the heading to a constant setpoint of zero, so the kite does not drift away
 from straight-up parking.
@@ -46,6 +46,7 @@ using V3Kite: init, step!
 using DiscretePIDs: set_K!
 using Statistics
 using Printf
+include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torque-only
 
 @info "simple_auto_parking.jl: heading-stabilized parking of the V3 kite."
 
@@ -91,6 +92,9 @@ s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
+# The winch length loop is the CALLER's now (V3Kite's `step!` takes a torque).
+wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
+wpc = WinchPosController(wcs; dt = s.dt)
 
 # ==================== HEADING CONTROLLER ================= #
 
@@ -112,8 +116,9 @@ t_loop = @elapsed try
         set_K!(heading_pid, HEADING_P * V_APP_REF / v_app,
                HEADING_SETPOINT, s.sys_state.heading)
         rel_steering = heading_pid(HEADING_SETPOINT, s.sys_state.heading, 0.0)
-        # Position mode: `set_length` holds the mean tether length.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
+        # Position mode: the caller's length loop holds the mean tether length.
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
+              set_torque = winch_torque!(wpc, s, l0),
               vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
