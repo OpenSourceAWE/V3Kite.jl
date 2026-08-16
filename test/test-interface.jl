@@ -13,6 +13,7 @@ using KitePodModels: KCU
 # V3Kite is torque-only; the winch length loop is the caller's.
 isdefined(@__MODULE__, :winch_torque!) ||
     include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
+using WinchControllers: WinchForceController
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
@@ -194,7 +195,7 @@ end
     # SHIPS still loads into that struct and still carries the V3 tuning.
     set_data_path(v3_data_path())
     default = WCSettings()
-    loaded = load_wc_settings("wc_settings.yaml"; dt = 0.05)
+    loaded = WCSettings(true; dt = 0.05)
 
     @test loaded.dt == 0.05                      # dt always wins over the file
     @test loaded.winch_pos_kp == 0.5
@@ -216,19 +217,6 @@ end
     @test loaded.kv == default.kv
     @test loaded.f_low == default.f_low
     @test loaded.mode == default.mode
-
-    # Type-aware loading, and an unknown key is a typo rather than a default.
-    mktempdir() do dir
-        good = joinpath(dir, "good.yaml")
-        write(good, "wc_settings:\n  winch_pos_kp: 0.75\n  mode: \"reelout\"\n")
-        wcs = load_wc_settings(good; dt = 0.02)
-        @test wcs.winch_pos_kp == 0.75
-        @test wcs.mode == "reelout"                  # a String field survives
-        @test wcs.winch_damp == default.winch_damp   # omitted key keeps default
-        bad = joinpath(dir, "bad.yaml")
-        write(bad, "wc_settings:\n  winch_pos_kpp: 0.75\n")
-        @test_throws ErrorException load_wc_settings(bad; dt = 0.02)
-    end
 
     # Starts with no reference force, so the first step produces no torque jump.
     wfc = WinchForceController(loaded)
@@ -279,7 +267,7 @@ end
 
     l0 = unstretched_length(s)
     # The winch length loop is the caller's now; one per model.
-    wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
+    wpc = winch_pos_controller(s)
 
     @testset "step! holding torque (no set_torque)" begin
         t0 = s.sys_state.time
@@ -384,15 +372,13 @@ end
 
         # `winch: max_acc:` of data/settings.yaml, taken as given when positive.
         @test s.set.max_acc > 0.0
-        @test V3Kite.winch_acc_limit(s.set) == s.set.max_acc
+        @test winch_acc_limit(s.set.max_acc) == s.set.max_acc
         # A settings file that names no limit means unlimited, not a dead winch.
-        set_no_acc = deepcopy(s.set)
-        set_no_acc.max_acc = 0.0
-        @test V3Kite.winch_acc_limit(set_no_acc) == Inf
+        @test winch_acc_limit(0.0) == Inf
 
-        # The ADAPTER defaults to it (as `step!` used to): a 100 m length error
-        # would ask for `kp_pos * 100` m/s, and the rate limiter allows
-        # `max_acc * dt` per step.
+        # The adapter defaults to it, where `step!` defaulted to `Inf`: a 100 m
+        # length error would ask for `kp_pos * 100` m/s, and the rate limiter
+        # allows `max_acc * dt` per step.
         ctrl.v_sp_prev = 0.0
         step!(s; rel_depower = DEPOWER_SETPOINT,
               set_torque = winch_torque!(wpc, s, l_now + 100.0))

@@ -104,7 +104,7 @@ export compute_wind_vec, interpolate_lidar_wind
 
 # Simulation helper exports
 export create_logger, ramp_factor, timestamp_colmeta, log_created_at
-export init_winch_torque!, force_to_torque, drum_params, winch_acc_limit
+export init_winch_torque!, force_to_torque, drum_params
 export sim_step!, log_state!, should_report
 export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
 export compute_drag_coeff, compute_lift_coeff, drag_floor
@@ -124,8 +124,6 @@ export find_frame_syslog_idxs, build_replay_sys_struct
 # Simulation exports
 export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
-
-# Winch-controller settings export
 
 # Persistent turbulence preference (data/gui.yaml)
 export get_default_turbulence, set_default_turbulence

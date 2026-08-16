@@ -57,7 +57,7 @@ try
 
         # Constant-length setpoint: the tether length just after settling.
         l0 = s.sys_state.l_tether[1]
-        wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
+        wpc = winch_pos_controller(s)
         for _ in 1:s.steps
             step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING,
                   set_torque = winch_torque!(wpc, s, l0), vsm_interval = VSM_INTERVAL)

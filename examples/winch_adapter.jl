@@ -2,85 +2,51 @@
 # SPDX-License-Identifier: MPL-2.0
 
 """
-Plant/controller adapter. V3Kite is the PLANT: `step!` takes a winch TORQUE,
-because that is what the drum takes. Holding a LENGTH is a control problem —
-it needs a cascaded loop with its own gains, saturations and state — so that
-controller lives in WinchControllers.jl and is the CALLER's to own, exactly as
-`KiteModels.jl`'s `next_step!` takes only speed/torque/force.
+Plant/controller adapter, used by V3Kite's own examples and tests. V3Kite is the
+plant: `step!` takes a winch torque. Holding a length is a control problem, so
+that loop lives in WinchControllers.jl and is the caller's to own. This file is
+the glue: it reads the plant scalars off a `V3KITE` and hands them to
+WinchControllers' scalar-only functions, so neither package depends on the
+other. `include` it and build a controller once per run:
 
-The glue between the two is this file: it reads the plant scalars off a
-`V3KITE` and hands them to WinchControllers' scalar-only functions. It belongs
-to the application, not to either package — V3Kite must not depend on a
-controller, and WinchControllers must not depend on a kite model.
-
-Used by V3Kite's own examples and tests. `include` it and construct a
-controller once per run:
-
-    wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
-    wpc = WinchPosController(wcs; dt = s.dt)
+    wpc = winch_pos_controller(s)
     step!(s; rel_depower, set_torque = winch_torque!(wpc, s, l0))
 """
 
-using WinchControllers: WCSettings, WinchPosController, WinchForceController,
-    winch_position_torque!, winch_force_torque!
+using WinchControllers: WCSettings, WinchPosController, winch_position_torque!,
+    winch_acc_limit
 
 """
-    load_wc_settings(filename; dt) -> WCSettings
+    winch_pos_controller(s::V3KITE) -> WinchPosController
 
-Load winch-controller settings from the YAML file `filename`, looked up under
-the active data path (`joinpath(get_data_path(), filename)`) unless absolute.
-The file must have a top-level `wc_settings:` mapping whose keys are fields of
-`WCSettings`; a missing key keeps the struct default, an unknown key errors.
+The cascaded length controller a run drives `s` with, at the model's own `dt`.
+One per model. Gains come from the file named by the `wc_settings:` field of the
+active system YAML, loaded by WinchControllers' own `WCSettings(true; dt)`.
 """
-function load_wc_settings(filename::AbstractString; dt)
-    path = isabspath(filename) ? filename : joinpath(V3Kite.get_data_path(), filename)
-    dict = V3Kite.YAML.load_file(path)["wc_settings"]
-    wcs = WCSettings(; dt)
-    for (key, value) in dict
-        sym = Symbol(key)
-        hasfield(WCSettings, sym) ||
-            error("Unknown key \"$key\" in $path — not a field of WCSettings.")
-        setfield!(wcs, sym, convert(fieldtype(WCSettings, sym), value))
-    end
-    wcs.dt = dt
-    return wcs
-end
+winch_pos_controller(s::V3KITE) =
+    WinchPosController(WCSettings(true; dt = s.dt); dt = s.dt)
 
 """
     winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
                   v_ff=0.0, speed_limit=Inf,
-                  acceleration_limit=winch_acc_limit(s.set)) -> torque
+                  acceleration_limit=winch_acc_limit(s.set.max_acc)) -> torque
 
 Run WinchControllers.jl's cascaded length loop against `s` and return the winch
 torque [N·m] for `step!`'s `set_torque`. Replaces the `set_length` keyword
 `step!` used to carry before the winch controllers moved out of V3Kite.
 
-`acceleration_limit` comes from the plant's own `winch: max_acc:`
-([`winch_acc_limit`](@ref)), which is what `step!` defaulted it to. `v_ff` [m/s]
-is the speed feed-forward: a caller integrating a speed setpoint into
-`set_length` should pass that same speed, or the outer P loop has to rediscover
-it from a length error at a cost of `1/kp_pos` of lag.
+`acceleration_limit` defaults to the plant's own `winch: max_acc:`, where
+`step!` used to default it to `Inf`. `v_ff` [m/s] is the speed feed-forward: a
+caller integrating a speed setpoint into `set_length` should pass that same
+speed, or the outer P loop has to rediscover it from a length error at a cost
+of `1/kp_pos` of lag.
 """
 function winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
                        v_ff = 0.0, speed_limit = Inf,
-                       acceleration_limit = winch_acc_limit(s.set))
+                       acceleration_limit = winch_acc_limit(s.set.max_acc))
     r, G, friction = drum_params(s)
     return winch_position_torque!(wpc, set_length, unstretched_length(s),
                                   reel_out_speed(s), winch_force(s),
                                   r, G, friction, s.dt,
                                   speed_limit, acceleration_limit; v_ff)
-end
-
-"""
-    winch_force_hold!(wfc::WinchForceController, s::V3KITE, set_length) -> torque
-
-The force-mode counterpart of [`winch_torque!`](@ref): the drum holds a FORCE,
-reeling out whenever the tether pulls harder than the reference, and only trims
-towards `set_length`. Returns a torque for `step!`'s `set_torque`.
-"""
-function winch_force_hold!(wfc::WinchForceController, s::V3KITE, set_length)
-    r, G, friction = drum_params(s)
-    return winch_force_torque!(wfc, set_length, unstretched_length(s),
-                               reel_out_speed(s), winch_force(s),
-                               r, G, friction, s.dt)
 end

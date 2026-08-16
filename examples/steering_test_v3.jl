@@ -132,8 +132,7 @@ s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
 # The winch length loop is the CALLER's now (V3Kite's `step!` takes a torque).
-wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
-wpc = WinchPosController(wcs; dt = s.dt)
+wpc = winch_pos_controller(s)
 
 toc("Start simulation loop...")
 

@@ -1,7 +1,7 @@
 # Settings of the two TORQUE winch controllers: the cascaded length controller
 # (`winch_position_torque!`) and force mode (`winch_force_torque!`). A run uses one
 # or the other; they share only the drum. Loaded into a `WCSettings` struct via
-# `load_wc_settings("wc_settings.yaml"; dt)` (`examples/winch_adapter.jl`). These are
+# WinchControllers' `WCSettings(true; dt)`. These are
 # new parameters with no historical counterpart; tune on examples/simple_parking.jl
 # (constant-length parking) and change them by at most 10 % per iteration. Any key
 # omitted here falls back to the struct default, so this file is also the list of

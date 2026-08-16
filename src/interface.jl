@@ -4,11 +4,9 @@ using Printf
 """
     V3KITE <: AbstractKiteModel
 
-This package is the PLANT. Winch CONTROLLERS — the cascaded length loop and
-force mode, and the settings struct they read — live in WinchControllers.jl;
-`step!` here takes a torque, which is what the drum takes. What remains is the
-plant side they need: `drum_params`, `winch_force`, `reel_out_speed`,
-`unstretched_length`, `force_to_torque` and `winch_acc_limit`.
+The plant. Winch controllers live in WinchControllers.jl; `step!` here takes a
+torque. What remains is the plant side they read: `drum_params`, `winch_force`,
+`reel_out_speed`, `unstretched_length` and `force_to_torque`.
 
 The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
 of `data/settings.yaml`, loaded like any other `Settings` field.
@@ -387,22 +385,6 @@ end
 # ============================ High-level interface ============================ #
 
 """
-    winch_acc_limit(set::Settings) -> Float64
-
-The winch acceleration limit [m/s²] of the settings (`winch: max_acc:` in
-`data/settings.yaml`, 4.0 for the V3), in the form the rate limiter of
-WinchControllers.jl's `winch_position_torque!` wants. A non-positive `max_acc` — which is what
-a settings file that never names one inherits from `KiteUtils.Settings` — means
-*unlimited*, not a frozen drum, and maps to `Inf`; taking it literally would pin
-the speed setpoint at `v_sp_prev` forever and kill the winch silently.
-
-It stays in this package because the limit is a property of the DRUM, even
-though it is the caller's controller that enforces it.
-"""
-winch_acc_limit(set::Settings) = set.max_acc > 0 ? Float64(set.max_acc) : Inf
-
-
-"""
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=V3GeomAdjustConfig(), body_damping=[0.0, 0.0, 40.0],
@@ -630,29 +612,13 @@ fails, so no gust is ever latched into the settings. The restore happens
 *after* `update_sys_state!`, so the logged `v_wind_gnd` is the instantaneous
 wind the kite saw.
 
-**The winch takes a TORQUE, which is what the drum physically takes.**
-`set_torque` [N·m] is applied as given; omitting it applies the measured
-holding torque, i.e. the drum holds whatever force the tether currently pulls.
-`prn` logs per-step lift/drag diagnostics; progress is reported every 200 steps.
-
-There is deliberately no `set_length`: a length setpoint is a CONTROL concept,
-not a plant input, and converting one into a torque is a cascaded controller
-with its own gains, saturations and state. V3Kite is the plant, so that
-controller belongs to the caller — exactly as `KiteModels.jl`'s `next_step!`
-takes only `set_speed`/`set_torque`/`set_force`. Use WinchControllers.jl's
-[`winch_position_torque!`](https://github.com/OpenSourceAWE/WinchControllers.jl),
-which is where it lives, and feed it this model's plant scalars:
-
-    r, G, friction = drum_params(s)
-    tau = winch_position_torque!(wpc, l_set, unstretched_length(s),
-                                 reel_out_speed(s), winch_force(s),
-                                 r, G, friction, s.dt,
-                                 speed_limit, winch_acc_limit(s.set); v_ff)
-    step!(s; rel_depower, rel_steering, set_torque = tau)
-
-[`winch_acc_limit`](@ref) is kept here because the drum's acceleration limit is
-a property of the plant (`winch: max_acc:` in `settings.yaml`, 4.0 m/s² for the
-V3) even though it is the controller that enforces it.
+The winch takes a torque: `set_torque` [N·m] is applied as given, and omitting
+it applies the measured holding torque, i.e. the drum holds whatever force the
+tether currently pulls. There is no `set_length` — turning a length setpoint
+into a torque is a controller, which belongs to the caller; use
+WinchControllers.jl's `winch_position_torque!` fed with `drum_params(s)`, as
+`examples/winch_adapter.jl` does. `prn` logs per-step lift/drag diagnostics;
+progress is reported every 200 steps.
 
 `vsm_interval` is forwarded to `sim_step!`: the VSM aero load is recomputed
 every `vsm_interval` steps and held frozen inside the DAE in between (`0`
@@ -759,15 +725,8 @@ warm-up reintroduces the discontinuity it exists to remove. It is a callback
 warm-up is holding; `nothing` (the default) holds the drum at the measured
 tether force, which is what a run that commands no torque of its own gets.
 
-A caller running a winch controller passes a closure over it, e.g. with
-WinchControllers.jl's cascaded length loop:
-
-    winch_torque = (s, l) -> winch_position_torque!(wpc, l, unstretched_length(s),
-        reel_out_speed(s), winch_force(s), drum_params(s)..., s.dt, Inf,
-        winch_acc_limit(s.set))
-
-V3Kite owns no winch controller (see [`step!`](@ref)), which is why this is a
-callback rather than a controller object.
+A caller running a winch controller passes a closure over it, e.g.
+`(s, l) -> winch_torque!(wpc, s, l)` with `examples/winch_adapter.jl`.
 
 The integrator clock keeps running; only the logged time restarts. Progress lines
 printed during the warm-up count against `s.steps` and can be ignored.

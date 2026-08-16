@@ -40,7 +40,7 @@ try
         function fly(perturb!)
             s = fresh_model()
             l0 = unstretched_length(s)
-            wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
+            wpc = winch_pos_controller(s)
             for i in 1:N_STEPS
                 perturb!(s, i)
                 step!(s; rel_depower = DEPOWER, set_torque = winch_torque!(wpc, s, l0))
@@ -66,7 +66,7 @@ try
             else
                 s.am.wf = WindField(s.am, s.set.v_wind)
                 l0 = unstretched_length(s)
-                wpc = WinchPosController(load_wc_settings("wc_settings.yaml"; dt = s.dt); dt = s.dt)
+                wpc = winch_pos_controller(s)
                 for _ in 1:N_STEPS
                     step!(s; rel_depower = DEPOWER, set_torque = winch_torque!(wpc, s, l0))
                 end

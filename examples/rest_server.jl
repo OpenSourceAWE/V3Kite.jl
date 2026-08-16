@@ -246,8 +246,7 @@ function run_init(session::Session, params)
         end
         lock(session.lock) do
             session.s = kite
-            session.wpc = WinchPosController(
-                load_wc_settings("wc_settings.yaml"; dt = kite.dt); dt = kite.dt)
+            session.wpc = winch_pos_controller(kite)
             session.step_count = 0
             session.result = Dict{String, Any}(
                 "l0"    => kite.sys_state.l_tether[1],
