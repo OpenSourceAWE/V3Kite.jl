@@ -12,8 +12,13 @@ using PrecompileTools: @compile_workload
 # `sim_step!` *directly* — it never calls `init` or `step!(::V3KITE, ...)`. So
 # the whole high-level interface path (V3KITE wrapper, KCU actuator dynamics,
 # update_sys_state!) is otherwise not precompiled at
-# all. Mirrors examples/simple_parking.jl minus the compression logging, the
-# ripple report and the saved log.
+# all. Mirrors examples/simple_parking.jl's `init`/`step!` call minus the
+# compression logging, the ripple report and the saved log — and minus the
+# winch length loop: `src/` must not depend on WinchControllers.jl (see
+# `V3KITE`'s docstring), so `step!` here is called with no `set_torque` and
+# just applies the measured holding torque, unlike the example's
+# `winch_torque!` (`examples/winch_adapter.jl`). The winch is still braked, as
+# in the example.
 #
 # Every `init`/`step!` keyword below is passed explicitly, even where it equals
 # the current default: `aero_mode` and `system_yaml` select which model binary
