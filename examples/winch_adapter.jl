@@ -1,23 +1,25 @@
 # Copyright (c) 2026 Uwe Fechner
 # SPDX-License-Identifier: MPL-2.0
 
-# Plant/controller adapter. V3Kite is the PLANT: `step!` takes a winch TORQUE,
-# because that is what the drum takes. Holding a LENGTH is a control problem —
-# it needs a cascaded loop with its own gains, saturations and state — so that
-# controller lives in WinchControllers.jl and is the CALLER's to own, exactly as
-# `KiteModels.jl`'s `next_step!` takes only speed/torque/force.
-#
-# The glue between the two is this file: it reads the plant scalars off a
-# `V3KITE` and hands them to WinchControllers' scalar-only functions. It belongs
-# to the application, not to either package — V3Kite must not depend on a
-# controller, and WinchControllers must not depend on a kite model.
-#
-# Used by V3Kite's own examples and tests. `include` it and construct a
-# controller once per run:
-#
-#     wcs = WCSettings(dt = s.dt)          # or WC_Settings("wc_settings.yaml")
-#     wpc = WinchPosController(wcs; dt = s.dt)
-#     step!(s; rel_depower, set_torque = winch_torque!(wpc, s, l0))
+"""
+Plant/controller adapter. V3Kite is the PLANT: `step!` takes a winch TORQUE,
+because that is what the drum takes. Holding a LENGTH is a control problem —
+it needs a cascaded loop with its own gains, saturations and state — so that
+controller lives in WinchControllers.jl and is the CALLER's to own, exactly as
+`KiteModels.jl`'s `next_step!` takes only speed/torque/force.
+
+The glue between the two is this file: it reads the plant scalars off a
+`V3KITE` and hands them to WinchControllers' scalar-only functions. It belongs
+to the application, not to either package — V3Kite must not depend on a
+controller, and WinchControllers must not depend on a kite model.
+
+Used by V3Kite's own examples and tests. `include` it and construct a
+controller once per run:
+
+    wcs = load_wc_settings("wc_settings.yaml"; dt = s.dt)
+    wpc = WinchPosController(wcs; dt = s.dt)
+    step!(s; rel_depower, set_torque = winch_torque!(wpc, s, l0))
+"""
 
 using WinchControllers: WCSettings, WinchPosController, WinchForceController,
     winch_position_torque!, winch_force_torque!
@@ -29,11 +31,6 @@ Load winch-controller settings from the YAML file `filename`, looked up under
 the active data path (`joinpath(get_data_path(), filename)`) unless absolute.
 The file must have a top-level `wc_settings:` mapping whose keys are fields of
 `WCSettings`; a missing key keeps the struct default, an unknown key errors.
-
-This used to be V3Kite's own `WC_Settings(filename)`. It lives here now because
-the struct belongs to WinchControllers.jl and the *file* belongs to the run —
-V3Kite itself no longer reads winch gains at all. `dt` always wins over the
-file's placeholder value: it is the plant's timestep, not a tuning choice.
 """
 function load_wc_settings(filename::AbstractString; dt)
     path = isabspath(filename) ? filename : joinpath(get_data_path(), filename)

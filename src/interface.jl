@@ -1,15 +1,18 @@
 import SymbolicAWEModels: winch_force, tether_length
 using Printf
 
-# This package is the PLANT. Winch CONTROLLERS — the cascaded length loop and
-# force mode, and the settings struct they read — live in WinchControllers.jl;
-# `step!` here takes a torque, which is what the drum takes. What remains is the
-# plant side they need: `drum_params`, `winch_force`, `reel_out_speed`,
-# `unstretched_length`, `force_to_torque` and `winch_acc_limit`.
-#
-# The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
-# of `data/settings.yaml`, loaded like any other `Settings` field.
+"""
+    V3KITE <: AbstractKiteModel
 
+This package is the PLANT. Winch CONTROLLERS — the cascaded length loop and
+force mode, and the settings struct they read — live in WinchControllers.jl;
+`step!` here takes a torque, which is what the drum takes. What remains is the
+plant side they need: `drum_params`, `winch_force`, `reel_out_speed`,
+`unstretched_length`, `force_to_torque` and `winch_acc_limit`.
+
+The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
+of `data/settings.yaml`, loaded like any other `Settings` field.
+"""
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
     set::Settings
