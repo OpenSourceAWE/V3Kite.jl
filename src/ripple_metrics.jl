@@ -49,8 +49,7 @@ end
     RippleSettings(filename::String) -> RippleSettings
 
 Load the ripple-analysis settings from the YAML file `filename`, looked up in the
-active data path, i.e. `joinpath(get_data_path(), filename)` — same convention as
-`WC_Settings` in `src/wc_settings.jl`. The file must have a top-level
+active data path, i.e. `joinpath(get_data_path(), filename)`. The file must have a top-level
 `ripple_settings:` mapping whose keys are field names of `RippleSettings`; any
 missing key falls back to the struct default. Call
 `set_data_path(v3_data_path())` first if the data path is not already set.

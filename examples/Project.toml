@@ -22,6 +22,7 @@ Timers = "21f18d07-b854-4dab-86f0-c15a3821819a"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 V3Kite = "4caac9c8-c726-438f-ab10-3553e918eab1"
 VortexStepMethod = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
+WinchControllers = "9e74470a-8ab1-4f32-b878-f32ebd236ea2"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [sources]

@@ -9,7 +9,8 @@ Does the same as the heading-PID loop in `examples/v3kite.jl` (track a
 sinusoidal heading setpoint on a settled, depowered wing), but built on
 `init()`/`step!()` in the style of `examples/simple_parking.jl`: the wing is
 settled at a fixed depower setting (DEPOWER_SETPOINT) and parked at a
-constant tether length (`step!` runs in POSITION MODE via `set_length`),
+constant tether length (held by the caller's winch length loop, see
+`winch_adapter.jl`),
 while a `create_heading_pid` controller drives `rel_steering` each step.
 
 Logs the run to "tmp_sinus" in the `output` folder (`examples/../output`,
@@ -41,6 +42,7 @@ using V3Kite: init, step!
 using DiscretePIDs: set_Td!
 using Statistics
 using Printf
+include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torque-only
 
 @info "simple_sinus.jl: sinusoidal heading tracking of the V3 kite via the init/step! interface."
 
@@ -102,6 +104,8 @@ s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
+# The winch length loop is the CALLER's now (V3Kite's `step!` takes a torque).
+wpc = winch_pos_controller(s)
 
 heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,
@@ -122,9 +126,9 @@ t_loop = @elapsed try
         # Ramp HEADING_D down to zero at t = HEADING_PERIOD.
         set_Td!(heading_pid, HEADING_D * (1 - ramp_factor(t, 0.0, HEADING_PERIOD)))
         rel_steering = heading_pid(target, s.sys_state.heading, 0.0)
-        # Position mode: `set_length` holds the mean tether length.
-        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering, set_length = l0,
-              vsm_interval = VSM_INTERVAL)
+        # Position mode: the caller's length loop holds the mean tether length.
+        step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering,
+              set_torque = winch_torque!(wpc, s, l0), vsm_interval = VSM_INTERVAL)
         global steps_done += 1
         # The current system state is available via `s.sys_state`.
     end

@@ -1,5 +1,47 @@
 # Changelog
 
+## V3Kite (unreleased)
+
+### Changed
+- BREAKING: `step!` is torque-only. It takes `set_torque` [N·m], or applies the
+  measured holding torque when omitted, and no longer accepts `set_length`,
+  `speed_limit` or `acceleration_limit`. A run that held a length now builds its own
+  torque; `examples/winch_adapter.jl` shows how.
+- BREAKING: `init` no longer takes `wc`, and its `warmup_wfc` is now `warmup_torque`,
+  a `(s, l_hold) -> torque` callback (`warmup!`'s `wfc` is likewise `winch_torque`).
+  Omitting either holds the measured tether force where it used to hold the length.
+- BREAKING: `WC_Settings`, `WinchPosController`, `WinchForceController` and
+  `winch_force_torque!` are no longer exported, and `V3KITE` has no `winch_ctrl`
+  field. The controllers live in
+  [WinchControllers.jl](https://github.com/OpenSourceAWE/WinchControllers.jl) v0.6.0,
+  so V3Kite no longer precompiles against them.
+- The winch length loop the examples and tests run defaults `acceleration_limit` to
+  the `winch: max_acc:` setting (4.0 m/s² for the V3) where `step!` defaulted it to
+  `Inf`, so the commanded speed no longer slews faster than the real drum.
+  `speed_limit` still defaults to `Inf`: it is one number where the settings give the
+  signed pair `v_ro_max`/`v_ro_min`.
+- `test/` no longer depends on WinchControllers.jl. `test/winch_hold_stub.jl` is a
+  small length-holding torque controller (`LengthHoldController`/
+  `length_hold_controller`/`hold_torque!`) built only from V3Kite's own public
+  interface (`force_to_torque`, `unstretched_length`, `reel_out_speed`,
+  `winch_force`), replacing `examples/winch_adapter.jl`'s WinchControllers-based
+  adapter for `test-interface.jl`, `test-turbulence-injection.jl` and
+  `test_parking_ripple.jl`. Its names are deliberately distinct from the
+  adapter's (`WinchPosController`/`winch_pos_controller`/`winch_torque!`) so
+  the two can never shadow each other if both get loaded into one session.
+  `examples/` is unaffected and still uses WinchControllers.jl.
+
+### Added
+- `drum_params(s)`: the first winch's drum radius, gear ratio and current friction
+  torque, the plant scalars WinchControllers.jl's torque controllers take.
+- `examples/winch_adapter.jl`'s `winch_torque!` gained a `v_ff` keyword [m/s], the
+  speed feed-forward of the position-mode winch (`v_sp = v_ff + winch_pos_kp *
+  (set_length - l)`). A caller that builds `set_length` by integrating a speed
+  setpoint should pass that speed, or the outer P loop rediscovers it from a
+  length error at a lag of `1/winch_pos_kp` (2 s at the default `winch_pos_kp =
+  0.5`) plus a standing error of `v_ro/winch_pos_kp`. The default `0.0`
+  reproduces the previous behaviour exactly.
+
 ## V3Kite v1.1.1 13-08-2026
 
 ### Changed

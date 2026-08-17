@@ -5,7 +5,8 @@
 REST interface for driving a V3Kite simulation from Matlab, Python or any
 HTTP client. Covers the
 parking example (`examples/simple_parking.jl`): `init` + `step!` with
-`rel_depower`/`rel_steering`/`set_length`, plus saving the log.
+`rel_depower`/`rel_steering`/`set_length` (converted to a winch torque by
+`winch_adapter.jl`), plus saving the log.
 
 `/step` advances `steps` (default 2) Julia integration steps per call and
 returns only the LAST state as a compact `KiteState` (just the fields the
@@ -51,6 +52,7 @@ using HTTP
 using JSON3
 using Logging
 using LoggingExtras
+include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torque-only
 
 AERO_MODE = ContinuousAero()
 
@@ -71,12 +73,14 @@ mutable struct Session
     error::Union{String, Nothing}
     result::Union{Dict{String, Any}, Nothing}
     s::Union{V3KITE, Nothing}
+    # The winch length loop is the caller's: V3Kite's `step!` takes a torque.
+    wpc::Union{WinchPosController, Nothing}
     step_count::Int
     init_task::Union{Task, Nothing}
 end
 
 Session() = Session(ReentrantLock(), ReentrantLock(), "idle",
-                    String[], nothing, nothing, nothing, 0, nothing)
+                    String[], nothing, nothing, nothing, nothing, 0, nothing)
 
 const SESSION = Session()
 
@@ -242,6 +246,7 @@ function run_init(session::Session, params)
         end
         lock(session.lock) do
             session.s = kite
+            session.wpc = winch_pos_controller(kite)
             session.step_count = 0
             session.result = Dict{String, Any}(
                 "l0"    => kite.sys_state.l_tether[1],
@@ -384,7 +389,8 @@ end
         # preserved in the saved run while the response stays small.
         try
             for _ in 1:nsteps
-                step!(kite; rel_depower, rel_steering, set_length)
+                step!(kite; rel_depower, rel_steering,
+                      set_torque = winch_torque!(SESSION.wpc, kite, set_length))
                 SESSION.step_count += 1
             end
         catch e

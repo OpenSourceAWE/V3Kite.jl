@@ -15,6 +15,8 @@ end
 using Test
 using LinearAlgebra
 using V3Kite
+isdefined(@__MODULE__, :hold_torque!) ||
+    include(joinpath(@__DIR__, "winch_hold_stub.jl"))
 using AtmosphericModels
 using KiteUtils: set_data_path, get_data_path
 
@@ -38,9 +40,10 @@ try
         function fly(perturb!)
             s = fresh_model()
             l0 = unstretched_length(s)
+            lhc = length_hold_controller(s)
             for i in 1:N_STEPS
                 perturb!(s, i)
-                step!(s; rel_depower = DEPOWER, set_length = l0)
+                step!(s; rel_depower = DEPOWER, set_torque = hold_torque!(lhc, s, l0))
             end
             return s
         end
@@ -63,8 +66,9 @@ try
             else
                 s.am.wf = WindField(s.am, s.set.v_wind)
                 l0 = unstretched_length(s)
+                lhc = length_hold_controller(s)
                 for _ in 1:N_STEPS
-                    step!(s; rel_depower = DEPOWER, set_length = l0)
+                    step!(s; rel_depower = DEPOWER, set_torque = hold_torque!(lhc, s, l0))
                 end
                 @test norm(pos_kite(s) - pos_ref) > MIN_DIVERGENCE
                 # The gust is borrowed for the solve only, never latched into the settings.

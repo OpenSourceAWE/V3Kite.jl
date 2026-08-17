@@ -10,6 +10,9 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
+# V3Kite is torque-only; the winch length loop is the caller's.
+isdefined(@__MODULE__, :hold_torque!) ||
+    include(joinpath(@__DIR__, "winch_hold_stub.jl"))
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
@@ -185,43 +188,6 @@ using KitePodModels: KCU
     end
 end
 
-@testset "WC_Settings" begin
-    default = WC_Settings()
-    @test default.winch_pos_kp == 0.5
-    @test default.winch_speed_k == 30.0
-    @test default.winch_speed_ti == 2.0
-    @test default.winch_torque_limit == 500.0
-    # Default feed-forward is exact, i.e. a perfectly stiff drum.
-    @test default.winch_ff_scale == 1.0
-    # Force mode (winch_force_torque!); unused while the drum holds a length.
-    @test default.winch_force_tau == 10.0
-    @test default.winch_len_kp == 100.0
-    @test default.winch_damp == 500.0
-    @test default.winch_force_min == 100.0
-
-    # Loaded from data/wc_settings.yaml (see wc_settings: field of system.yaml).
-    set_data_path(v3_data_path())
-    loaded = WC_Settings("wc_settings.yaml")
-    @test loaded.winch_pos_kp == default.winch_pos_kp
-    @test loaded.winch_speed_k == default.winch_speed_k
-    @test loaded.winch_speed_ti == default.winch_speed_ti
-    @test loaded.winch_torque_limit == default.winch_torque_limit
-    # The shipped file spells every knob out, so it doubles as the tunable list.
-    @test loaded.winch_ff_scale == default.winch_ff_scale
-    @test loaded.winch_force_tau == default.winch_force_tau
-    @test loaded.winch_len_kp == default.winch_len_kp
-    @test loaded.winch_damp == default.winch_damp
-    @test loaded.winch_force_min == default.winch_force_min
-
-    # Starts with no reference force, so the first step produces no torque jump.
-    wfc = WinchForceController(loaded)
-    @test wfc.force_tau == loaded.winch_force_tau
-    @test wfc.len_kp == loaded.winch_len_kp
-    @test wfc.damp == loaded.winch_damp
-    @test wfc.force_min == loaded.winch_force_min
-    @test isnan(wfc.f_lpf)
-end
-
 @testset "init / step! Interface" begin
     # Mirrors examples/simple_parking.jl's init() call so it hits the
     # data/settled_*.bin cache (see stabilization.jl) instead of resettling.
@@ -242,8 +208,11 @@ end
         @test s.kcu.depower ≈ DEPOWER_SETPOINT
         @test s.kcu.steering ≈ 0.0
         @test s.sys_state.time == 0.0
-        @test s.winch_ctrl !== nothing
-        @test s.winch_ctrl.kp_pos ≈ 0.5  # from data/wc_settings.yaml
+        # No winch controller on the model any more: V3Kite is the plant, and
+        # `step!` takes a torque. The loop is the caller's (winch_hold_stub.jl).
+        @test !hasproperty(s, :winch_ctrl)
+        # `winch: max_acc:` of data/settings.yaml, read by the caller's rate limiter.
+        @test s.set.max_acc > 0.0
     end
 
     @testset "init default min_damping" begin
@@ -260,8 +229,10 @@ end
     end
 
     l0 = unstretched_length(s)
+    # The winch length loop is the caller's now; one per model.
+    lhc = length_hold_controller(s)
 
-    @testset "step! holding torque (no set_length/set_torque)" begin
+    @testset "step! holding torque (no set_torque)" begin
         t0 = s.sys_state.time
         step!(s; rel_depower = DEPOWER_SETPOINT)
         @test s.sys_state.time ≈ t0 + s.dt
@@ -275,16 +246,16 @@ end
         @test isfinite(reel_out_speed(s))
     end
 
-    @testset "step! position mode (set_length)" begin
+    @testset "step! position mode (caller's length loop)" begin
         t0 = s.sys_state.time
         # Three steps: the previous torque-mode step left residual winch speed,
         # and the position PI loop (Ti = 2s) needs more than one 0.05s step to
         # bring it back down. The decay from that transient is smooth and
         # monotone (1.31, 1.06, 0.89, 0.73, ... m/s), so two steps sit right on
         # the 1.0 bound below — the third gives it margin.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0)
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = hold_torque!(lhc, s, l0))
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = hold_torque!(lhc, s, l0))
+        step!(s; rel_depower = DEPOWER_SETPOINT, set_torque = hold_torque!(lhc, s, l0))
         @test s.sys_state.time ≈ t0 + 3 * s.dt
         @test isfinite(unstretched_length(s))
         @test abs(reel_out_speed(s)) < 1.0  # holding l0: speed setpoint ≈ 0
@@ -303,7 +274,8 @@ end
     @testset "step! vsm_interval" begin
         t0 = s.sys_state.time
         # Not the default: the aero load is held frozen between VSM solves.
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, vsm_interval = 2)
+        step!(s; rel_depower = DEPOWER_SETPOINT,
+              set_torque = hold_torque!(lhc, s, l0), vsm_interval = 2)
         @test s.sys_state.time ≈ t0 + s.dt
         @test isfinite(winch_force(s))
         @test isfinite(unstretched_length(s))
@@ -311,7 +283,8 @@ end
 
     @testset "step! live wind update" begin
         t0 = s.sys_state.time
-        step!(s; rel_depower = DEPOWER_SETPOINT, set_length = l0, v_wind_gnd = 12.0)
+        step!(s; rel_depower = DEPOWER_SETPOINT,
+              set_torque = hold_torque!(lhc, s, l0), v_wind_gnd = 12.0)
         @test s.sys_state.time ≈ t0 + s.dt
         # The mean, not `set.wind_vec`: turbulence borrows the latter across the solve.
         @test norm(s.wind_vec_mean) ≈ 12.0
