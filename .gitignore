@@ -75,3 +75,4 @@ examples_2d/LocalPreferences.toml
 .markdownlint.json
 data/*.npz
 data/gui.yaml
+PlanCleanupTests.md
