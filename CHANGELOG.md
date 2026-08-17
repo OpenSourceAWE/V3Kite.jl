@@ -1,6 +1,6 @@
 # Changelog
 
-## V3Kite (unreleased)
+## V3Kite v1.2.0 17-08-2026
 
 ### Changed
 - BREAKING: `step!` is torque-only. It takes `set_torque` [N·m], or applies the
