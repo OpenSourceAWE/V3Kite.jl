@@ -209,8 +209,10 @@ end
         @test s.kcu.steering ≈ 0.0
         @test s.sys_state.time == 0.0
         # No winch controller on the model any more: V3Kite is the plant, and
-        # `step!` takes a torque. The loop is the caller's (winch_adapter.jl).
+        # `step!` takes a torque. The loop is the caller's (winch_hold_stub.jl).
         @test !hasproperty(s, :winch_ctrl)
+        # `winch: max_acc:` of data/settings.yaml, read by the caller's rate limiter.
+        @test s.set.max_acc > 0.0
     end
 
     @testset "init default min_damping" begin
@@ -286,36 +288,6 @@ end
         @test s.sys_state.time ≈ t0 + s.dt
         # The mean, not `set.wind_vec`: turbulence borrows the latter across the solve.
         @test norm(s.wind_vec_mean) ≈ 12.0
-    end
-
-    @testset "acceleration limit from the settings" begin
-        ctrl = wpc
-        v_sp_saved = ctrl.v_sp_prev
-        l_now = unstretched_length(s)
-
-        # `winch: max_acc:` of data/settings.yaml, taken as given when positive.
-        @test s.set.max_acc > 0.0
-        @test winch_acc_limit(s.set.max_acc) == s.set.max_acc
-        # A settings file that names no limit means unlimited, not a dead winch.
-        @test winch_acc_limit(0.0) == Inf
-
-        # The adapter defaults to it, where `step!` defaulted to `Inf`: a 100 m
-        # length error would ask for `kp_pos * 100` m/s, and the rate limiter
-        # allows `max_acc * dt` per step.
-        ctrl.v_sp_prev = 0.0
-        step!(s; rel_depower = DEPOWER_SETPOINT,
-              set_torque = winch_torque!(wpc, s, l_now + 100.0))
-        @test ctrl.v_sp_prev ≈ s.set.max_acc * s.dt
-
-        # Passing `Inf` opts out (checked without stepping: uncapped here is
-        # `kp_pos * 100` m/s, which is not a torque worth putting into the DAE).
-        ctrl.v_sp_prev = 0.0
-        # Re-read the length: the step above moved it.
-        winch_torque!(wpc, s, unstretched_length(s) + 100.0;
-                      speed_limit = Inf, acceleration_limit = Inf)
-        @test ctrl.v_sp_prev ≈ ctrl.kp_pos * 100.0
-
-        ctrl.v_sp_prev = v_sp_saved
     end
 
     @testset "init damping_per_stiffness" begin
