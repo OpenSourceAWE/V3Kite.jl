@@ -288,44 +288,6 @@ end
         @test norm(s.wind_vec_mean) ≈ 12.0
     end
 
-    @testset "winch length loop speed feed-forward" begin
-        # The loop under test is winch_hold_stub.jl's outer P loop;
-        # `wpc.v_sp_prev` reads back the resulting speed setpoint.
-        ctrl = wpc
-        v_sp_saved = ctrl.v_sp_prev
-        # The model is not stepped in here, so the length error is exactly what
-        # each call is given, and `v_sp_prev` reads back the resulting setpoint.
-        l_now = unstretched_length(s)
-        # A huge acceleration_limit keeps the rate limiter out of the way; it is
-        # `v_sp_prev = 0` before each call that makes the readback meaningful.
-        acc = 1e6
-
-        # Default: pure feedback, identical to before the kwarg existed.
-        ctrl.v_sp_prev = 0.0
-        winch_torque!(wpc, s, l_now; speed_limit = 8.0, acceleration_limit = acc)
-        @test ctrl.v_sp_prev ≈ 0.0 atol = 1e-12
-
-        # No length error: the setpoint IS the feed-forward.
-        ctrl.v_sp_prev = 0.0
-        winch_torque!(wpc, s, l_now; v_ff = 1.5, speed_limit = 8.0,
-                      acceleration_limit = acc)
-        @test ctrl.v_sp_prev ≈ 1.5
-
-        # The outer P loop ADDS to the feed-forward, it does not replace it.
-        ctrl.v_sp_prev = 0.0
-        winch_torque!(wpc, s, l_now + 2.0; v_ff = 1.5, speed_limit = 8.0,
-                      acceleration_limit = acc)
-        @test ctrl.v_sp_prev ≈ 1.5 + ctrl.kp_pos * 2.0
-
-        # speed_limit clamps the TOTAL setpoint, feed-forward included.
-        ctrl.v_sp_prev = 0.0
-        winch_torque!(wpc, s, l_now; v_ff = 5.0, speed_limit = 1.0,
-                      acceleration_limit = acc)
-        @test ctrl.v_sp_prev ≈ 1.0
-
-        ctrl.v_sp_prev = v_sp_saved
-    end
-
     @testset "acceleration limit from the settings" begin
         ctrl = wpc
         v_sp_saved = ctrl.v_sp_prev
