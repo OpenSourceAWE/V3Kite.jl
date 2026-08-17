@@ -3,57 +3,58 @@
 
 """
 Length-holding torque source for the tests, built only from V3Kite's own
-public interface (`force_to_torque`, `unstretched_length`, `reel_out_speed`).
-Unlike `examples/winch_adapter.jl`, this does not depend on WinchControllers.jl:
-a cascaded P controller (outer: length error -> speed setpoint, inner: speed
-error -> torque correction) replaces WinchControllers' PI. Gains mirror V3's
-tuning in `data/wc_settings.yaml` (`winch_pos_kp`, `winch_speed_k`).
+public interface (`force_to_torque`, `unstretched_length`, `reel_out_speed`,
+`winch_force`). Unlike `examples/winch_adapter.jl`, this does not depend on
+WinchControllers.jl. Its names are deliberately distinct from that adapter's
+(`hold_torque!`/`LengthHoldController`, not `winch_torque!`/
+`WinchPosController`), so a session that has loaded both never has one
+silently shadow the other.
 
-    wpc = winch_pos_controller(s)
-    step!(s; rel_depower, set_torque = winch_torque!(wpc, s, l0))
+    lhc = length_hold_controller(s)
+    step!(s; rel_depower, set_torque = hold_torque!(lhc, s, l0))
 """
 
 """
-    winch_acc_limit(max_acc) -> Float64
+    length_hold_acc_limit(max_acc) -> Float64
 
-Acceleration limit [m/s²] for the rate limiter in [`winch_torque!`](@ref). A
+Acceleration limit [m/s²] for the rate limiter in [`hold_torque!`](@ref). A
 non-positive `max_acc` means unlimited, not a frozen drum.
 """
-winch_acc_limit(max_acc) = max_acc > 0 ? Float64(max_acc) : Inf
+length_hold_acc_limit(max_acc) = max_acc > 0 ? Float64(max_acc) : Inf
 
 """
-    WinchPosController(; kp_pos=0.5, kp_speed=30.0)
+    LengthHoldController(; kp_pos=0.5, kp_speed=30.0)
 
 State of the cascaded length-holding torque controller: `kp_pos` is the outer
 proportional gain, length error [m] to speed setpoint [m/s]; `kp_speed` the
 inner one, speed error [m/s] to torque correction [N·m]. `v_sp_prev` carries
 the rate-limited speed setpoint between steps.
 """
-Base.@kwdef mutable struct WinchPosController
+Base.@kwdef mutable struct LengthHoldController
     kp_pos::Float64 = 0.5
     kp_speed::Float64 = 30.0
     v_sp_prev::Float64 = 0.0
 end
 
 """
-    winch_pos_controller(s::V3KITE) -> WinchPosController
+    length_hold_controller(s::V3KITE) -> LengthHoldController
 
 The length-holding torque controller for `s`. One per model.
 """
-winch_pos_controller(s::V3KITE) = WinchPosController()
+length_hold_controller(s::V3KITE) = LengthHoldController()
 
 """
-    winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
-                  acceleration_limit=winch_acc_limit(s.set.max_acc)) -> torque
+    hold_torque!(lhc::LengthHoldController, s::V3KITE, set_length;
+                 acceleration_limit=length_hold_acc_limit(s.set.max_acc)) -> torque
 
 Winch torque [N·m] holding `set_length`, for `step!`'s `set_torque`.
 """
-function winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
-                       acceleration_limit = winch_acc_limit(s.set.max_acc))
-    v_sp = wpc.kp_pos * (set_length - unstretched_length(s))
+function hold_torque!(lhc::LengthHoldController, s::V3KITE, set_length;
+                      acceleration_limit = length_hold_acc_limit(s.set.max_acc))
+    v_sp = lhc.kp_pos * (set_length - unstretched_length(s))
     dv_max = acceleration_limit * s.dt
-    v_sp = clamp(v_sp, wpc.v_sp_prev - dv_max, wpc.v_sp_prev + dv_max)
-    wpc.v_sp_prev = v_sp
+    v_sp = clamp(v_sp, lhc.v_sp_prev - dv_max, lhc.v_sp_prev + dv_max)
+    lhc.v_sp_prev = v_sp
     return force_to_torque(winch_force(s), s.sys) +
-        wpc.kp_speed * (v_sp - reel_out_speed(s))
+        lhc.kp_speed * (v_sp - reel_out_speed(s))
 end
