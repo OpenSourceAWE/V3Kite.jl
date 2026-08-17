@@ -43,17 +43,14 @@ The length-holding torque controller for `s`. One per model.
 winch_pos_controller(s::V3KITE) = WinchPosController()
 
 """
-    winch_torque!(wpc::WinchPosController, s::V3KITE, set_length; v_ff=0.0,
-                  speed_limit=Inf, acceleration_limit=winch_acc_limit(s.set.max_acc)) -> torque
+    winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
+                  acceleration_limit=winch_acc_limit(s.set.max_acc)) -> torque
 
-Winch torque [N·m] holding `set_length`, for `step!`'s `set_torque`. `v_ff`
-[m/s] is a speed feed-forward added to the outer loop's setpoint.
+Winch torque [N·m] holding `set_length`, for `step!`'s `set_torque`.
 """
 function winch_torque!(wpc::WinchPosController, s::V3KITE, set_length;
-                       v_ff = 0.0, speed_limit = Inf,
                        acceleration_limit = winch_acc_limit(s.set.max_acc))
-    v_sp = v_ff + wpc.kp_pos * (set_length - unstretched_length(s))
-    v_sp = clamp(v_sp, -speed_limit, speed_limit)
+    v_sp = wpc.kp_pos * (set_length - unstretched_length(s))
     dv_max = acceleration_limit * s.dt
     v_sp = clamp(v_sp, wpc.v_sp_prev - dv_max, wpc.v_sp_prev + dv_max)
     wpc.v_sp_prev = v_sp
