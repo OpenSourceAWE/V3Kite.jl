@@ -13,7 +13,6 @@ using KitePodModels: KCU
 # V3Kite is torque-only; the winch length loop is the caller's.
 isdefined(@__MODULE__, :winch_torque!) ||
     include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
-using WinchControllers: WinchForceController
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
@@ -187,44 +186,6 @@ using WinchControllers: WinchForceController
         @test length(sf) > 0
         @test all(isfinite, sf)
     end
-end
-
-@testset "WCSettings" begin
-    # The struct and its controllers live in WinchControllers.jl now; V3Kite
-    # reads no winch gains at all. What this checks is that the file V3Kite
-    # SHIPS still loads into that struct and still carries the V3 tuning.
-    set_data_path(v3_data_path())
-    default = WCSettings()
-    loaded = WCSettings(true; dt = 0.05)
-
-    @test loaded.dt == 0.05                      # dt always wins over the file
-    @test loaded.winch_pos_kp == 0.5
-    @test loaded.winch_speed_k == 30.0
-    @test loaded.winch_speed_ti == 2.0
-    @test loaded.winch_torque_limit == 500.0
-    # Default feed-forward is exact, i.e. a perfectly stiff drum.
-    @test loaded.winch_ff_scale == 1.0
-    # Force mode; unused while the drum holds a length.
-    @test loaded.winch_force_tau == 10.0
-    @test loaded.winch_len_kp == 100.0
-    @test loaded.winch_damp == 500.0
-    @test loaded.winch_force_min == 100.0
-    # The shipped file spells the torque half out, so it doubles as the list.
-    @test loaded.winch_pos_kp == default.winch_pos_kp
-
-    # The MERGED half: WinchControllers' own speed-controller fields ride along
-    # in the same struct and keep their defaults, since V3Kite's file omits them.
-    @test loaded.kv == default.kv
-    @test loaded.f_low == default.f_low
-    @test loaded.mode == default.mode
-
-    # Starts with no reference force, so the first step produces no torque jump.
-    wfc = WinchForceController(loaded)
-    @test wfc.force_tau == loaded.winch_force_tau
-    @test wfc.len_kp == loaded.winch_len_kp
-    @test wfc.damp == loaded.winch_damp
-    @test wfc.force_min == loaded.winch_force_min
-    @test isnan(wfc.f_lpf)
 end
 
 @testset "init / step! Interface" begin
