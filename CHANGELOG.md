@@ -20,6 +20,13 @@
   `Inf`, so the commanded speed no longer slews faster than the real drum.
   `speed_limit` still defaults to `Inf`: it is one number where the settings give the
   signed pair `v_ro_max`/`v_ro_min`.
+- `test/` no longer depends on WinchControllers.jl. `test/winch_hold_stub.jl` is a
+  small length-holding torque controller built only from V3Kite's own public
+  interface (`force_to_torque`, `unstretched_length`, `reel_out_speed`,
+  `winch_force`), replacing `examples/winch_adapter.jl`'s WinchControllers-based
+  adapter for `test-interface.jl`, `test-turbulence-injection.jl` and
+  `test_parking_ripple.jl`. `examples/` is unaffected and still uses
+  WinchControllers.jl.
 
 ### Added
 - `drum_params(s)`: the first winch's drum radius, gear ratio and current friction
