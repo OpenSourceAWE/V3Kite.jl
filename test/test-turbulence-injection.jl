@@ -16,7 +16,7 @@ using Test
 using LinearAlgebra
 using V3Kite
 isdefined(@__MODULE__, :winch_torque!) ||
-    include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
+    include(joinpath(@__DIR__, "winch_hold_stub.jl"))
 using AtmosphericModels
 using KiteUtils: set_data_path, get_data_path
 

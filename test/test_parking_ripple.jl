@@ -21,7 +21,7 @@ end
 using Test
 using V3Kite
 isdefined(@__MODULE__, :winch_torque!) ||
-    include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
+    include(joinpath(@__DIR__, "winch_hold_stub.jl"))
 using KiteUtils: set_data_path, get_data_path
 import KiteUtils   # `syslog` is called qualified: the plots scripts bind the bare
                    # name to a SysLog value, which would shadow the import here

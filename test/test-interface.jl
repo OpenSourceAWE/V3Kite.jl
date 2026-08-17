@@ -12,7 +12,7 @@ using V3Kite
 using KitePodModels: KCU
 # V3Kite is torque-only; the winch length loop is the caller's.
 isdefined(@__MODULE__, :winch_torque!) ||
-    include(joinpath(@__DIR__, "..", "examples", "winch_adapter.jl"))
+    include(joinpath(@__DIR__, "winch_hold_stub.jl"))
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
@@ -289,8 +289,8 @@ end
     end
 
     @testset "winch length loop speed feed-forward" begin
-        # The loop under test is WinchControllers.jl's, reached through the
-        # adapter; `wpc.v_sp_prev` reads back the resulting speed setpoint.
+        # The loop under test is winch_hold_stub.jl's outer P loop;
+        # `wpc.v_sp_prev` reads back the resulting speed setpoint.
         ctrl = wpc
         v_sp_saved = ctrl.v_sp_prev
         # The model is not stepped in here, so the length error is exactly what

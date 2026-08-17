@@ -1,5 +1,4 @@
 [deps]
-WinchControllers = "9e74470a-8ab1-4f32-b878-f32ebd236ea2"
 AtmosphericModels = "c59cac55-771d-4f45-b14d-1c681463a295"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
