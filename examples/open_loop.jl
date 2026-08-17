@@ -42,7 +42,7 @@ RAMP_END_US = 5.0
 SIM_TIME = 60.0
 FPS = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
-PROJECT = "system.yaml"   # project file: geometry, settings and kite
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 # =============================================================================

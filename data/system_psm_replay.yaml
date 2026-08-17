@@ -1,4 +1,4 @@
-# flight_replay.jl on the particle lattice; system_v3beam_replay.yaml is the
+# flight_replay.jl on the particle lattice; system_beam_replay.yaml is the
 # beam variant.
 system:
   # A replay takes its wind, tether length and depower from the log row it

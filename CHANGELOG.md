@@ -12,6 +12,24 @@
   the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
 
 ### Added
+- `beam_angular_damping` in the kite settings and `beam_angular_start_damping`
+  in the settle settings: per-axis spin damping on every leading- and
+  trailing-edge body of a beam wing, `dω/dt -= c .* ω` [1/s] about the body's own
+  axes. `[0, 20, 0]` resists rotation about `y`, the chord-flapping axis. It damps
+  absolute spin, so unlike the joints' Rayleigh `damping` it brakes rigid wing
+  rotation too. Zero by default, and it skips the wing bodies, whose angular
+  damping carries the `y_damping` their constructor seeded.
+- `beam_body_damping` / `beam_world_damping` in the kite settings and
+  `beam_body_start_damping` / `beam_world_start_damping` in the settle settings:
+  the point damping the two already had, now reaching the rigid bodies. A beam
+  wing keeps its mass in bodies, and `body_sim_damping` never touched them —
+  its wing nodes are `BODY_STATIC` points riding those bodies. Zero by default.
+- `relax_bridle!` damps the bodies over the ramp as well as the points
+  (`V3RelaxConfig.body_damping`), and reports progress every
+  `report_every` steps. Without it a beam geometry never reached full stiffness:
+  nothing damped the rigid-body motion of the 22 tube bodies, so the ramp
+  diverged at `scale = 1.8e-4`. It now reaches `scale = 1.0` in 291 steps, and
+  the beam project flies a full 60 s heading maneuver on the state it writes.
 - `examples/aero_resolution_check.jl` prints the three spanwise counts that are
   easy to confuse on a built model: sections the aero geometry ships, unrefined
   sections surviving the structural remesh (what every refined polar and surface
@@ -54,7 +72,7 @@
   built its model without one, and the monolithic build is the dominant cost on a
   beam wing. `build_replay_sys_struct` takes one for the same reason.
 - `flight_replay.jl` replays on the beam wing as well, picked from its menu:
-  `system_v3beam_replay.yaml` brings the `KernelBackend` and none of the
+  `system_beam_replay.yaml` brings the `KernelBackend` and none of the
   wing-lattice corrections. The beam does not settle yet:
   `update_sys_struct_from_data!` assigns the flight velocity point by point,
   which leaves the beam's rigid bodies at rest.
@@ -91,14 +109,25 @@
 ### Changed
 - BREAKING: the `sim_settings:` files are named for the key that points at them
   and for the run they describe: `sim_settings_default.yaml` (was
-  `settings.yaml`), `sim_settings_v3kite.yaml`, `sim_settings_v3kite_beam.yaml`,
+  `settings.yaml`), `sim_settings_v3kite.yaml`,
   `sim_settings_reelout.yaml`, `sim_settings_cabauw.yaml`. `settings.yaml`
   against `settings_v3kite.yaml` said nothing about which held what; the new
   names line up with `kite_settings_*`, `settle_settings_*` and `wc_settings`.
 
 ### Fixed
-- The two replay projects flew different conditions: `system_v3kite_replay.yaml`
-  read `settings.yaml` while `system_v3beam_replay.yaml` read
+- `setup_settling_model` honours the project's `remake_model` instead of
+  hardcoding `remake=false`. With `remake_model: true` a run settled on the
+  serialized model and only rebuilt afterwards, so the settled state every
+  later stage starts from was produced by the previous right-hand side.
+  `settle_wing` then reuses that rebuild for the settled model rather than
+  compiling the kernels a second time; the bin's structure hash rebuilds
+  anyway if the settled structure is not the one settling built.
+- `examples/relax_bridle.jl` rebuilt nothing: it called `init!(remake=false)`, so
+  it read back the serialized model and ran the old right-hand side whenever the
+  equations had changed. It now honours the project's `remake_model`, as
+  `build_v3_model` does.
+- The two replay projects flew different conditions: `system_psm_replay.yaml`
+  read `settings.yaml` while `system_beam_replay.yaml` read
   `settings_v3kite.yaml`, so the pair differed in `sim_time` and depower as well
   as in wing model. Both now read `sim_settings_default.yaml`.
 
@@ -112,7 +141,7 @@
   `has_surface_tables`, not off its name.
 - BREAKING: the kite and settling settings files are named for the project key
   that points at them — `kite_settings_psm.yaml`, `kite_settings_beam.yaml`,
-  `settle_settings_v3kite.yaml`, `settle_settings_replay.yaml` — and each now
+  `settle_settings_default.yaml`, `settle_settings_replay.yaml` — and each now
   states every field of its struct explicitly, one line of comment per key,
   rather than leaving defaults implicit. The beam files omit the tip and
   trailing-edge reductions, which address lattice segments by index.

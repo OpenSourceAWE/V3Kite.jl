@@ -126,7 +126,7 @@ using KitePodModels: KCU
         @test endswith(path_dir, ".arrow")
 
         # A state logged for one geometry has the wrong point count for another.
-        cfg_beam = V3Kite.V3SettleConfig(project="system_v3kite_beam.yaml")
+        cfg_beam = V3Kite.V3SettleConfig(project="system_beam.yaml")
         path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
         @test path_beam != path_dir
         @test occursin("_struc_geometry_beam", path_beam)
@@ -174,9 +174,9 @@ using KitePodModels: KCU
         # only surfaces here rather than mid-run.
         set_data_path(v3_data_path())
         for project in ("system.yaml", "system_reelout.yaml",
-                        "system_cabauw.yaml", "system_v3kite_psm.yaml",
-                        "system_v3kite_beam.yaml", "system_v3kite_replay.yaml",
-                        "system_v3beam_replay.yaml")
+                        "system_cabauw.yaml", "system_psm.yaml",
+                        "system_beam.yaml", "system_psm_replay.yaml",
+                        "system_beam_replay.yaml")
             kite = load_kite(project)
             @test kite isa V3KiteConfig
             @test kite.init_mode in (:settle, :relaxed_state)
@@ -188,11 +188,11 @@ using KitePodModels: KCU
 
         # The beam is flown from a state relaxed at one depower, so the
         # project's depower is not free to disagree with it.
-        beam_set = Settings("system_v3kite_beam.yaml")
+        beam_set = Settings("system_beam.yaml")
         @test occursin("dp$(Int(beam_set.depower))",
-            load_kite("system_v3kite_beam.yaml").init_state)
+            load_kite("system_beam.yaml").init_state)
 
-        beam = load_kite("system_v3kite_beam.yaml")
+        beam = load_kite("system_beam.yaml")
         @test beam.backend isa KernelBackend
         @test !beam.geom.reduce_tip && !beam.geom.reduce_te
         @test beam.bridle.compression_frac == 0.01
@@ -200,13 +200,13 @@ using KitePodModels: KCU
         @test beam.aero_mode isa AeroPressure
 
         # The settling schedule sets the transient, the kite file what flies.
-        beam_settle = load_settle("system_v3kite_beam.yaml"; kite=beam)
+        beam_settle = load_settle("system_beam.yaml"; kite=beam)
         @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
         @test beam_settle.kite.body_sim_damping == beam.body_sim_damping
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.
-        @test_throws ErrorException aero_geometry_path("system_v3kite_psm.yaml";
+        @test_throws ErrorException aero_geometry_path("system_psm.yaml";
             aero_mode=AeroPressure())
 
         # A typo in a settings file is caught when it loads, not silently

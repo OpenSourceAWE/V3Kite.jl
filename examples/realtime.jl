@@ -48,7 +48,7 @@ MAX_TIME = 1000.0
 FPS = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 DISPLAY_FPS = 10
-PROJECT = "system.yaml"   # project file: geometry, settings and kite
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 vector_scale = 1.0
 

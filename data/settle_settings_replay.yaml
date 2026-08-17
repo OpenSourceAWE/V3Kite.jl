@@ -1,5 +1,5 @@
 # Settling schedule of flight_replay.jl on either wing: longer and more heavily
-# damped than settle_settings_v3kite.yaml because it settles onto a recorded
+# damped than settle_settings_default.yaml because it settles onto a recorded
 # flight state.
 settle_settings:
   num_steps: 69                  # settling steps

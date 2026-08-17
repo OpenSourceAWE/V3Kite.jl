@@ -8,8 +8,8 @@ Heading PID tracking a sinusoidal setpoint on a settled, depowered wing, with th
 winch braked at a constant tether length.
 
 Which kite this flies and at what flight condition is the project file's, not the
-script's, and the menu picks between them: `system_v3kite_psm.yaml` is the
-particle lattice and `system_v3kite_beam.yaml` the Timoshenko-beam wing.
+script's, and the menu picks between them: `system_psm.yaml` is the
+particle lattice and `system_beam.yaml` the Timoshenko-beam wing.
 """
 
 using Pkg
@@ -28,8 +28,8 @@ using SymbolicAWEModels
 # =============================================================================
 
 PROJECT = select_project(
-    ["particle lattice" => "system_v3kite_psm.yaml",
-     "Timoshenko-beam wing" => "system_v3kite_beam.yaml"];
+    ["particle lattice" => "system_psm.yaml",
+     "Timoshenko-beam wing" => "system_beam.yaml"];
     prompt = "Which wing model should fly?")
 
 # The maneuver. The gains that track it are the project's heading settings.

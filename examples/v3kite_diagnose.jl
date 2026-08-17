@@ -20,10 +20,11 @@ controller reads) against the heading recomputed from the live wing frame. Those
 agreeing rules the kinematics out; them disagreeing means the loop is closing on
 a stale signal.
 
-Prints a table plus an end-of-run summary; writes no log and opens no window, so
-it runs headless. `bin/run_julia --beam` (or `--psm`) picks the wing, and
-`V3KITE_AERO_MODE=continuous` overrides the project's aero mode, which is how the
-same maneuver is compared across couplings.
+Prints a table plus an end-of-run summary, then saves the log and replays it.
+`V3KITE_REPLAY=0` skips the window so the run stays headless. `bin/run_julia
+--beam` (or `--psm`) picks the wing, and `V3KITE_AERO_MODE=continuous` overrides
+the project's aero mode, which is how the same maneuver is compared across
+couplings.
 
 The loop closes on the heading recomputed from the live wing frame, not on
 `wing.heading`: the `KernelBackend` never writes that field, so a controller
@@ -43,13 +44,16 @@ using Printf
 using Statistics
 
 PROJECT = select_project(
-    ["Timoshenko-beam wing" => "system_v3kite_beam.yaml",
-     "particle lattice" => "system_v3kite_psm.yaml"];
+    ["Timoshenko-beam wing" => "system_beam.yaml",
+     "particle lattice" => "system_psm.yaml"];
     prompt = "Which wing model should fly?")
 
 MAX_HEADING = 40.0    # setpoint amplitude [deg]
 PERIOD = 30.0         # setpoint period [s]
 REPORT_EVERY = 5      # steps between table rows
+REPLAY = get(ENV, "V3KITE_REPLAY", "1") != "0"
+
+REPLAY && @eval using GLMakie, MakieControlPlots
 
 """
     frame_rate(R_prev, R_now, dt) -> KVec3
@@ -246,4 +250,11 @@ if length(twist_diff) > 2 && std(twist_diff) > 1e-9
 end
 
 failed_at > 0 && @warn "Run ended early" failed_at
+
+if REPLAY
+    log_name = "v3kite_diagnose_$(splitext(PROJECT)[1])"
+    save_log(logger, log_name)
+    scene = SymbolicAWEModels.replay(load_log(log_name), sam.sys_struct)
+    display(GLMakie.Screen(), scene)
+end
 nothing

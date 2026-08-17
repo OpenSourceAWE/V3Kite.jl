@@ -316,7 +316,7 @@ ramp_time_us = 2
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 body_sim_damping = [0.0, 0.0, 20.0]
-PROJECT = "system.yaml"   # project file: geometry, settings and kite
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 combos = generate_run_combos(defaults, sweeps, combine_all)

@@ -1,6 +1,8 @@
 # Flight condition and run length of the v3kite.jl example: a 60 s run at 15.4
 # m/s on 250 m of tether, 70 deg elevation, 30 % depower. A variant of
 # sim_settings_default.yaml, differing only in the block below and in `sim_time`.
+# Shared by both wings, so the beam and the particle lattice are compared on the
+# same condition.
 system:
   log_file:
     'data/base' # filename without extension  [replay only]
@@ -14,7 +16,7 @@ system:
 initial:
   l_tethers: [250.0] # initial tether length   [m]
   v_reel_outs: [0] # initial reel out speed    [m/s]
-  elevations: [70] # initial elevation angle   [deg]
+  elevations: [60] # initial elevation angle   [deg]
   depowers: [30] # initial depower setting     [%]
 
 solver:

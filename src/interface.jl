@@ -406,7 +406,7 @@ is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 `data/settled_*.arrow` state) and `remake_model=true` rebuilds the serialized
 equations, both defaulting to the project's own flags. There is no winch-gain
 argument: V3Kite owns no winch controller (see [`step!`](@ref)).
-`system_yaml` names the project file (default `"system.yaml"`) that points at
+`system_yaml` names the project file (default `"system_psm.yaml"`) that points at
 the settings, geometry and kite-settings files; pass e.g.
 `"system_beam.yaml"` to fly another kite. `aero_mode` and `gc` override
 the aerodynamics and the geometry adjustments of that project's
@@ -484,7 +484,7 @@ function init(v_wind_gnd, l_tether;
               dt = nothing,
               sim_time = nothing,
               gc = nothing,
-              system_yaml = "system.yaml",
+              system_yaml = "system_psm.yaml",
               body_start_damping = [0.0, 0.0, 40.0],
               body_sim_damping = nothing,
               damping_per_stiffness = nothing,

@@ -6,8 +6,15 @@ kite_settings:
   backend: kernel                # monolith | kernel model assembly
   vsm_interval: 1                # steps between VSM aero solves
 
-  body_sim_damping: [0.0, 0.0, 0.0]   # per-axis wing-frame damping in flight
-  world_sim_damping: [0.0, 0.0, 0.0]  # per-axis world-frame damping in flight
+  body_sim_damping: [0.0, 0.0, 20.0]   # per-axis wing-frame damping of the points
+  world_sim_damping: [0.0, 0.0, 0.0]  # per-axis world-frame damping of the points
+
+  # The beam bodies carry the wing mass, so these are what reach it in flight.
+  beam_body_damping: [0.0, 0.0, 5.0]  # per-axis damping on the bodies' own axes
+  beam_world_damping: [0.0, 0.0, 0.0] # per-axis damping on the world axes
+
+  # Spin damping about each body's own axes; y is the chord-flapping axis.
+  beam_angular_damping: [0.0, 80.0, 0.0]
 
   wing_mass: 0.0                 # [kg] mass redistributed over the wing nodes
   wing_mass_le_frac: 0.75        # leading-edge share of `wing_mass`
@@ -34,7 +41,7 @@ kite_settings:
     tether_length: null          # [m] overrides the settings tether length
 
   bridle:
-    compression_frac: 0.01           # stiffness a segment keeps in compression
+    compression_frac: 0.0           # stiffness a segment keeps in compression
     compression_damping_frac: 1.0    # the same for the damping term
     bridle_rel_damping: 0.001        # [s] damping per stiffness on lines/tapes
     pulley_efficiency: 0.95          # line tension a sheave passes on

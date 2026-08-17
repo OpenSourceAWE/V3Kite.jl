@@ -45,10 +45,10 @@ end
 # =============================================================================
 
 function build_sys(; v_wind=10.0, tether_length=150.0)
-    settings = Settings("system.yaml")
+    settings = Settings("system_psm.yaml")
     settings.v_wind = v_wind
     settings.l_tether = tether_length
-    _, sys = create_v3_model("system.yaml"; settings)
+    _, sys = create_v3_model("system_psm.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
         reduce_te=true))
     return sys

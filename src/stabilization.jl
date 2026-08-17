@@ -31,7 +31,7 @@ Loaded from the `settle_settings:` file of a project by
 """
 Base.@kwdef mutable struct V3SettleConfig
     "Project file the geometry, settings and kite come from"
-    project::String = "system.yaml"
+    project::String = "system_psm.yaml"
     kite::V3KiteConfig = V3KiteConfig()
 
     num_steps::Int = 1600
@@ -61,6 +61,17 @@ Base.@kwdef mutable struct V3SettleConfig
     # diverges. `init` applies the unfloored ratio to the settled structure.
     min_settle_damping_per_stiffness::Float64 =
         MIN_SETTLE_DAMPING_PER_STIFFNESS
+
+    """
+    The same for the rigid bodies, floored at `kite.beam_body_damping` /
+    `kite.beam_world_damping` / `kite.beam_angular_damping`. Zero by default:
+    only a beam wing has bodies that carry mass and are not the whole kite.
+    `beam_angular_start_damping` ramps the bodies' spin damping rather than their
+    translation.
+    """
+    beam_body_start_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
+    beam_world_start_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
+    beam_angular_start_damping::Union{Float64, Vector{Float64}} = [0.0, 0.0, 0.0]
 
     """
     Flight condition to settle at. These stay runtime values rather than moving
@@ -175,6 +186,11 @@ function settled_state_path(config::V3SettleConfig, init_row;
         # whole usable range of this ratio onto one or two tags.
         suffix *= "_dps$(num_tag(settle_dps * 1e3))"
     end
+    beam_damping = vcat(config.kite.beam_body_damping,
+        config.kite.beam_world_damping, config.kite.beam_angular_damping,
+        config.beam_body_start_damping, config.beam_world_start_damping,
+        config.beam_angular_start_damping)
+    all(iszero, beam_damping) || (suffix *= "_bb$(num_tag(beam_damping))")
     aero_tag = SymbolicAWEModels.aero_mode_tag(config.kite.aero_mode)
     aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
     struc_tag = splitext(basename(
@@ -253,21 +269,47 @@ relaxed_state_name(struc_yaml, depower) =
     "relaxed_$(splitext(basename(struc_yaml))[1])_dp$(num_tag(depower * 100))"
 
 """
-    apply_settled_damping!(sys, config)
+    beam_body_idxs(sys) -> Vector{Int}
 
-Re-apply the damping the settling loop ended on: both decay over
-`config.decay_steps` down to the sim damping of `config.kite`. Both follow
-from `config`, so they are recomputed rather than stored with the state.
+Indices of the structural bodies of `sys`, skipping the wings. A wing is a `Body`
+too, and its angular damping is the wing's own, so the beam settings must not
+reach it.
 """
-function apply_settled_damping!(sys, config::V3SettleConfig)
-    decay = max(0.0, 1.0 - config.num_steps / config.decay_steps)
+beam_body_idxs(sys) =
+    [idx for (idx, body) in enumerate(sys.bodies)
+     if !SymbolicAWEModels.is_wing(body)]
+
+"""
+    apply_decayed_damping!(sys, config, decay)
+
+Set the point and body damping `decay` of the way along the settling ramp: each
+start value scaled by `decay`, floored elementwise at the damping the kite flies
+with.
+"""
+function apply_decayed_damping!(sys, config::V3SettleConfig, decay)
     kite = config.kite
     SymbolicAWEModels.set_world_frame_damping(sys,
         max.(config.world_start_damping .* decay, kite.world_sim_damping))
     SymbolicAWEModels.set_body_frame_damping(sys,
         max.(config.body_start_damping .* decay, kite.body_sim_damping))
+    SymbolicAWEModels.set_world_frame_damping(sys.bodies,
+        max.(config.beam_world_start_damping .* decay, kite.beam_world_damping))
+    SymbolicAWEModels.set_body_frame_damping(sys.bodies,
+        max.(config.beam_body_start_damping .* decay, kite.beam_body_damping))
+    SymbolicAWEModels.set_angular_damping(sys.bodies,
+        max.(config.beam_angular_start_damping .* decay, kite.beam_angular_damping),
+        beam_body_idxs(sys))
     return sys
 end
+
+"""
+    apply_settled_damping!(sys, config)
+
+Re-apply the damping the settling loop ended on. It follows from `config`, so it
+is recomputed rather than stored with the state.
+"""
+apply_settled_damping!(sys, config::V3SettleConfig) = apply_decayed_damping!(
+    sys, config, max(0.0, 1.0 - config.num_steps / config.decay_steps))
 
 """
     apply_settled_state!(sys, config, path) -> Bool
@@ -387,12 +429,16 @@ Base.@kwdef mutable struct V3RelaxConfig
     growth::Float64 = 1.35
     settled_tol::Float64 = 50.0
     world_damping::Float64 = 200.0
+    "Damping held on the bodies, both frames, during the ramp and decayed after."
+    body_damping::Float64 = 20.0
     dt::Float64 = 0.02
     max_steps::Int = 600
     "Steps held at full stiffness while the damping decays back to its own value."
     hold_steps::Int = 200
     "VSM solve interval during the hold phase; 0 keeps the aero frozen."
     hold_vsm_interval::Int = 1
+    "Steps between progress lines."
+    report_every::Int = 20
 end
 
 """
@@ -419,6 +465,30 @@ function scale_segment_stiffness!(sys, baseline, scale)
     for (idx, segment) in enumerate(sys.segments)
         segment.unit_stiffness = stiffness[idx] * scale
         segment.unit_damping = damping[idx] * scale
+    end
+    return nothing
+end
+
+"""
+    damping_snapshot(components) -> Vector{Tuple}
+
+Copy the world- and body-frame damping of every point or body, so a relaxation
+can hand them back when it is done.
+"""
+damping_snapshot(components) =
+    [(copy(item.world_frame_damping), copy(item.body_frame_damping))
+     for item in components]
+
+"""
+    raise_damping!(components, saved, world, body)
+
+Hold every component's damping at `world`/`body`, or at the value it started
+with where that is already larger. `world`/`body` at zero restores the snapshot.
+"""
+function raise_damping!(components, saved, world, body)
+    for (idx, item) in enumerate(components)
+        item.world_frame_damping .= max.(saved[idx][1], world)
+        item.body_frame_damping .= max.(saved[idx][2], body)
     end
     return nothing
 end
@@ -452,7 +522,9 @@ that into a range it can integrate; the ramp is gated on the residual falling
 below `config.settled_tol` rather than run on a fixed schedule, because raising
 the stiffness before the knots have moved just puts the strain energy back.
 `config.world_damping` is applied to every point for the duration so the knots
-settle instead of ringing, and is removed again before returning.
+settle instead of ringing, and `config.body_damping` to every body in both
+frames: a beam wing carries most of its mass in bodies, whose rigid-body motion
+nothing else damps. Both decay away over the hold phase before returning.
 
 Call after `init!`. Returns the scale actually reached (1.0 on success), the
 number of steps taken and the final residual.
@@ -460,9 +532,11 @@ number of steps taken and the final residual.
 function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
                        prn::Bool=true)
     baseline = segment_stiffness_baseline(sys)
-    saved_damping = [copy(point.world_frame_damping) for point in sys.points]
-    SymbolicAWEModels.set_world_frame_damping(
-        sys, fill(config.world_damping, 3))
+    saved_points = damping_snapshot(sys.points)
+    saved_bodies = damping_snapshot(sys.bodies)
+    raise_damping!(sys.points, saved_points, config.world_damping, 0.0)
+    raise_damping!(sys.bodies, saved_bodies, config.body_damping,
+        config.body_damping)
 
     scale = config.start_scale
     scale_segment_stiffness!(sys, baseline, scale)
@@ -477,6 +551,8 @@ function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
             break
         end
         residual = relax_residual(sam)
+        prn && steps % config.report_every == 0 &&
+            @info "relax_bridle! ramping" steps scale residual
         residual < config.settled_tol || continue
         scale = min(1.0, scale * config.growth)
         scale_segment_stiffness!(sys, baseline, scale)
@@ -486,10 +562,10 @@ function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
     if scale >= 1.0
         for hold in 1:config.hold_steps
             decay = 1.0 - hold / config.hold_steps
-            for (idx, point) in enumerate(sys.points)
-                point.world_frame_damping .=
-                    max.(saved_damping[idx], config.world_damping * decay)
-            end
+            raise_damping!(sys.points, saved_points,
+                config.world_damping * decay, 0.0)
+            raise_damping!(sys.bodies, saved_bodies,
+                config.body_damping * decay, config.body_damping * decay)
             try
                 next_step!(sam; dt=config.dt,
                     vsm_interval=config.hold_vsm_interval)
@@ -498,11 +574,12 @@ function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
                 break
             end
             steps += 1
+            prn && hold % config.report_every == 0 &&
+                @info "relax_bridle! holding" hold residual=relax_residual(sam)
         end
     end
-    for (idx, point) in enumerate(sys.points)
-        point.world_frame_damping .= saved_damping[idx]
-    end
+    raise_damping!(sys.points, saved_points, 0.0, 0.0)
+    raise_damping!(sys.bodies, saved_bodies, 0.0, 0.0)
     residual = relax_residual(sam)
     prn && @info "Bridle relaxed" scale steps residual
     return scale, steps, residual
@@ -590,12 +667,14 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Run settling simulation if needed
     syslog = nothing
     settle_failed = false
+    settling_rebuilt = false
     if remake_settled_state || !isfile(dest_struc)
         try
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero, dest_struc,
                 log_path = cache_path, cache_path, init_row)
+            settling_rebuilt = remake_model
         catch err
             is_interrupt = err isa InterruptException ||
                 any(e isa InterruptException
@@ -644,8 +723,10 @@ function settle_wing(config::V3SettleConfig, init_row;
         apply_geom_adjustments!(sys, gc)
         sys.tethers[1].init_stretched_len = gc.tether_length
         with_model_cache(cache_path) do
+            # Settling already rebuilt into this cache, and the bin carries a
+            # structure hash that rejects it if the settled structure differs.
             SymbolicAWEModels.init!(sam;
-                remake=remake_model, remake_vsm=true,
+                remake=remake_model && !settling_rebuilt, remake_vsm=true,
                 reinit_sys=false)
         end
     else
@@ -661,7 +742,7 @@ function settle_wing(config::V3SettleConfig, init_row;
         sam = SymbolicAWEModel(set, sys; backend = config.kite.backend)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
-                remake=remake_model, ignore_l0=false,
+                remake=remake_model && !settling_rebuilt, ignore_l0=false,
                 remake_vsm=true)
         end
     end
@@ -734,8 +815,8 @@ function setup_settling_model(config::V3SettleConfig;
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do
-        SymbolicAWEModels.init!(
-            sam; remake=false, ignore_l0=false, remake_vsm=true)
+        SymbolicAWEModels.init!(sam; remake=config.kite.remake_model,
+            ignore_l0=false, remake_vsm=true)
     end
 
     @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt
@@ -807,12 +888,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     try
         for step in 1:config.num_steps
             decay = max(0.0, 1.0 - step / config.decay_steps)
-            damping = max.(config.body_start_damping .* decay,
-                config.kite.body_sim_damping)
-            SymbolicAWEModels.set_world_frame_damping(sys,
-                max.(config.world_start_damping .* decay,
-                    config.kite.world_sim_damping))
-            SymbolicAWEModels.set_body_frame_damping(sys, damping)
+            apply_decayed_damping!(sys, config, decay)
 
             # Ramp depower linearly over settling steps
             if !isnothing(config.start_depower)
@@ -847,7 +923,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(sys.points[1].body_frame_damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
                 end
             end
             failed && break

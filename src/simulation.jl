@@ -56,13 +56,32 @@ Base.@kwdef mutable struct V3KiteConfig
     vsm_interval::Int = 1
 
     """
-    Damping the simulation runs with, and the floor settling decays down to.
-    Body-frame damping damps a node against its wing frame, which only `DYNAMIC`
-    points have — on a beam wing, whose wing nodes are `BODY_STATIC` points
-    riding bodies, it reaches nothing and only `world_sim_damping` acts.
+    Damping of the *points* the simulation runs with, and the floor settling
+    decays down to. Body-frame damping damps a node against its wing frame, which
+    only `DYNAMIC` points have — on a beam wing, whose wing nodes are
+    `BODY_STATIC` points riding bodies, it reaches nothing.
     """
     body_sim_damping::Vector{Float64} = [0.0, 0.0, 20.0]
     world_sim_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+
+    """
+    The same for the rigid *bodies*, which is where a beam wing carries its mass.
+    Body-frame damping resolves the body's own velocity on its own axes, so
+    `[0, 0, 20]` resists motion normal to the wing while leaving flight along it
+    alone. Zero by default: on a `RIGID_DYNAMICS` wing the one DYNAMIC body is
+    the whole kite, and damping it damps the flight.
+    """
+    beam_body_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+    beam_world_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+
+    """
+    Per-axis angular damping of the beam bodies' spin about their own axes,
+    `dω/dt -= c .* ω` [1/s], reaching every leading- and trailing-edge body.
+    `[0, 20, 0]` resists rotation about the body `y`, which is the chord-flapping
+    axis. It resists *absolute* spin, so unlike the joints' Rayleigh `damping` it
+    brakes rigid rotation of the wing too.
+    """
+    beam_angular_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig()
     bridle::V3BridleConfig = V3BridleConfig()
@@ -165,6 +184,10 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
 
     SymbolicAWEModels.set_body_frame_damping(sys, kite.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite.world_sim_damping)
+    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite.beam_body_damping)
+    SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite.beam_world_damping)
+    SymbolicAWEModels.set_angular_damping(sys.bodies, kite.beam_angular_damping,
+                                          beam_body_idxs(sys))
 
     sam = SymbolicAWEModel(set, sys; backend = kite.backend)
 

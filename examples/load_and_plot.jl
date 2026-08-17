@@ -81,10 +81,10 @@ function load_log_and_system(; log_name)
     lt = parse(Int, m.captures[4])
     @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
 
-    settings = Settings("system.yaml")
+    settings = Settings("system_psm.yaml")
     settings.v_wind = Float64(v_wind)
     settings.l_tether = Float64(lt)
-    sam, sys = create_v3_model("system.yaml"; settings)
+    sam, sys = create_v3_model("system_psm.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
         reduce_te=true))
 

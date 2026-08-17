@@ -41,8 +41,8 @@ using SymbolicAWEModels
 # =============================================================================
 
 PROJECT = select_project(
-    ["Timoshenko-beam wing" => "system_v3kite_beam.yaml",
-     "particle lattice" => "system_v3kite_psm.yaml"];
+    ["Timoshenko-beam wing" => "system_beam.yaml",
+     "particle lattice" => "system_psm.yaml"];
     prompt = "Which wing model should be relaxed?")
 
 DEPOWER = 0.20        # fraction [0, 1]
@@ -62,7 +62,7 @@ apply_kite_material!(sys, kite)
 set_depower!(sys, DEPOWER, STEERING, kite.geom)
 set_steering!(sys, STEERING, kite.geom)
 
-init!(sam; remake=false, ignore_l0=false, remake_vsm=true)
+init!(sam; remake=kite.remake_model, ignore_l0=false, remake_vsm=true)
 sys.winches[1].brake = true
 
 scale, steps, residual = relax_bridle!(sam, sys)

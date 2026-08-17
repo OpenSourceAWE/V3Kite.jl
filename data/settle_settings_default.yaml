@@ -8,7 +8,10 @@ settle_settings:
 
   body_start_damping: [0.0, 0.0, 40.0]  # wing-frame damping settling starts at
   world_start_damping: [0.0, 0.0, 0.0]  # world-frame damping settling starts at
-  decay_steps: 30                # steps over which both decay to the sim damping
+  beam_body_start_damping: [0.0, 0.0, 0.0]   # the same on the bodies' own axes
+  beam_world_start_damping: [0.0, 0.0, 0.0]  # the same on the world axes
+  beam_angular_start_damping: [0.0, 0.0, 0.0]  # spin damping of the bodies
+  decay_steps: 30                # steps over which they decay to the sim damping
 
   course_correction_gain: 0.05   # steering gain of the course/heading hold
   course_correction_mode: heading  # heading (from rest) | course (from a log)

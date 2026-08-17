@@ -298,7 +298,7 @@ fps_zenith = 20
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
 body_sim_damping = [0.0, 0.0, 20.0]
-PROJECT = "system.yaml"   # project file: geometry, settings and kite
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]
