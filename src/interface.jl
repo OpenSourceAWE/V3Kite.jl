@@ -694,9 +694,11 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     i = Int(round(t / dt))
     if i % 200 == 0
         now = time()
-        rtf_str = isnan(s.last_step_time) ? "----" :
-            @sprintf("%.2f", (200 * dt) / (now - s.last_step_time))
-        @info @sprintf("step %04d / %04d, %s times realtime, lift/drag [N]: %7.2f/%7.2f",
+        # Widths fixed so the column does not jog: step counts reach 5 digits and
+        # the realtime factor 3 before the point.
+        rtf_str = isnan(s.last_step_time) ? "  ----" :
+            @sprintf("%6.2f", (200 * dt) / (now - s.last_step_time))
+        @info @sprintf("step %5d / %5d, %s times realtime, lift/drag [N]: %7.2f/%7.2f",
                        i, s.steps, rtf_str, lift, wing_drag)
         s.last_step_time = now
     end
