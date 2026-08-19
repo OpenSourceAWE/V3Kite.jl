@@ -5,7 +5,7 @@
 # the steering at saturation. Proportional only, as there: Ti off so saturation
 # cannot wind up, Td off so K is the single thing being tuned.
 heading_settings:
-  K:  0.25
+  K:  1.0
   Ti: false
   Td: false
   max_steering: 0.15

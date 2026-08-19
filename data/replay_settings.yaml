@@ -1,0 +1,45 @@
+# Which recorded maneuver flight_replay.jl puts through the simulator, and the
+# corrections it applies. Shared by every replay project, so the same maneuver
+# can be flown on any wing; the wing is the project's `kite_settings:`.
+replay_settings:
+  year: 2025                     # 2025 | 2019 flight recording
+  section: straight_right        # keys into `maneuvers` as `<section>_<year>`
+  n_substeps: 2                  # per 10 Hz data sample; 2 gives dt = 0.05 s
+  settle: true                   # settle the wing on the first data row
+
+  depower_offset_2019: 0.07      # the 2025 offset is the kite file's
+  steering_multiplier: 1.0       # scales every recorded steering command
+  steering_offset: 1.5           # [%] added to every steering command
+
+  heading_K: 0.0                 # heading feedback gain; 0 replays open loop
+  heading_Ti: 0.0                # [s] heading feedback integral time
+  lateral_K: 0.0                 # lateral position feedback gain
+
+  distance_based_steering: false # steer off flown distance instead of time
+
+  # Photogrammetry linear angle-of-attack offset model
+  aoa_offset_slope: -0.6831      # [deg] per % depower
+  aoa_offset_intercept: 28.74    # [deg]
+
+  wind_source_speed: ekf         # ekf | lidar
+  wind_source_dir: lidar         # ekf | lidar, also the vertical component
+
+  save_figs: true                # write the PDFs and animations, not just display
+  figures_dir: output            # relative to the repository root
+
+  maneuvers:
+    straight_right_2025:
+      start: "15:36:29.0"
+      end: "15:36:38.0"
+    straight_left_2025:
+      start: "15:36:47.0"
+      end: "15:36:57.0"
+    power_depower_2025:
+      start: "15:42:10.0"
+      end: "15:42:21.0"
+    straight_right_2019:
+      start: "11:10:03.0"
+      end: "11:10:13.0"
+    straight_left_2019:
+      start: "11:10:13.0"
+      end: "11:10:23.0"

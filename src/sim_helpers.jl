@@ -807,9 +807,9 @@ end
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
-adjustments, and call `init!`. Mirrors the `SETTLE=false`
-branch of `flight_replay.jl` so plotting can be done after
-deserializing a syslog.
+adjustments, and call `init!`. Mirrors the `settle: false`
+path of `flight_replay.jl`, so `flight_replay_plots.jl` can
+draw a saved syslog without re-running the replay.
 """
 function build_replay_sys_struct(set,
         geom::V3GeomAdjustConfig, source_struc, vsm_set;
@@ -855,4 +855,23 @@ function build_replay_name(h5_path, start_utc, end_utc,
         gc.tip_reduction, gc.te_frac)
     suffix = replace(suffix, "." => "")
     return "$(year)_$(start_san)_$(end_san)_$(suffix)"
+end
+
+"""
+    replay_log_names(h5_path, start_utc, end_utc,
+        gc::V3GeomAdjustConfig) -> (sim_name, data_name)
+
+Names of the two logs a replay writes, read from the first data row of the
+window so plotting can find them without re-running the replay.
+"""
+function replay_log_names(h5_path, start_utc, end_utc,
+        gc::V3GeomAdjustConfig)
+    full_data = load_flight_data(h5_path)
+    limited_data, _ = limit_by_utc(full_data, start_utc, end_utc)
+    raw_depower = limited_data.kcu_actual_depower[1]
+    depower = occursin("2019", basename(h5_path)) ?
+        (0.2564 - 0.0768 * raw_depower / 100.0) : raw_depower / 100.0
+    steering = limited_data.kcu_actual_steering[1] / 100.0
+    base = build_replay_name(h5_path, start_utc, end_utc, depower, steering, gc)
+    return base * "_sim", base * "_data"
 end

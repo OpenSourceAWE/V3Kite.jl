@@ -231,10 +231,7 @@ function beam_tables(geom, topo)
     joint_rows = Vector{Any}[]
     joint_radius = Dict{Symbol, Float64}()
     function beam_joint!(name, a, b, radius, len, mass_a, mass_b, inertia_a, inertia_b)
-        EA, GA, EI0 = membrane_linear_rigidities(radius,
-            resolve_membrane_stiffness(topo, radius))
-        torsion = tube_torsion_law(radius, topo.pressure_bar)
-        GJ0 = torsion.c1 * torsion.c2
+        EA, GA, EI0, GJ0 = tube_linear_rigidities(radius, topo.pressure_bar)
         # Rayleigh β from ζ = βω/2, anchored at the transverse mode
         # ω = sqrt(12EI/(L³m)): ζ rises with frequency, so anchoring the softest
         # mode of interest leaves everything stiffer at least as well damped.
@@ -481,7 +478,8 @@ function write_model(path, tables, geom, bridle, topo; full)
             norm(spec.pos - neighbour.pos), topo))
     end
 
-    body_emit = [[r..., full ? 1 : "nothing"] for r in tables.body_rows]
+    body_ref = full ? 1 : "nothing"
+    body_emit = [[r..., body_ref, body_ref] for r in tables.body_rows]
     pulley_rows = Vector{Any}[]
     tether_rows = Vector{Any}[]
     if full
@@ -567,7 +565,7 @@ function write_model(path, tables, geom, bridle, topo; full)
                  compression_damping_frac = topo.bridle.compression_damping_frac)])
         emit_table(io, "bodies",
             ["name", "mass", "inertia_principal", "pos", "type", "Q_b_to_w",
-             "transform_idx"], body_emit)
+             "transform_idx", "wing"], body_emit)
         emit_table(io, "timoshenko_joints",
             ["name", "body_a", "body_b", "EA", "GA", "GJ", "EIy", "EIz",
              "shear_coeff", "damping", "radius"],

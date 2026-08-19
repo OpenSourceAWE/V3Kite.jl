@@ -127,7 +127,7 @@ export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
-export build_replay_name
+export build_replay_name, replay_log_names
 export find_frame_syslog_idxs, build_replay_sys_struct
 
 # Simulation exports
@@ -139,6 +139,7 @@ export resolve_aero_mode, aero_geometry_path
 # Project settings exports
 export kite_settings, heading_settings, settle_settings, select_project
 export load_kite, load_settle, settings_block
+export V3ReplayConfig, load_replay, replay_maneuver
 export struc_geometry_path, aero_geometry_path, vsm_settings_path
 export parse_backend, parse_aero_mode, parse_wing_type
 export fill_struct, convert_setting, project_entry

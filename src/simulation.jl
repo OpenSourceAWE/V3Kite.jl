@@ -65,11 +65,11 @@ Base.@kwdef mutable struct V3KiteConfig
     world_sim_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
     """
-    The same for the rigid *bodies*, which is where a beam wing carries its mass.
-    Body-frame damping resolves the body's own velocity on its own axes, so
-    `[0, 0, 20]` resists motion normal to the wing while leaving flight along it
-    alone. Zero by default: on a `RIGID_DYNAMICS` wing the one DYNAMIC body is
-    the whole kite, and damping it damps the flight.
+    The same for the structural *bodies*, which is where a beam wing carries its
+    mass. Body-frame damping resolves a body's velocity relative to its parent
+    wing on the wing's axes, so `[0, 0, 20]` resists motion normal to the wing
+    while leaving flight along it alone. Wings are skipped, so a
+    `RIGID_DYNAMICS` kite is never damped by these.
     """
     beam_body_damping::Vector{Float64} = [0.0, 0.0, 0.0]
     beam_world_damping::Vector{Float64} = [0.0, 0.0, 0.0]
@@ -82,6 +82,15 @@ Base.@kwdef mutable struct V3KiteConfig
     brakes rigid rotation of the wing too.
     """
     beam_angular_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+
+    """
+    Scales every Timoshenko joint's Rayleigh β. The geometry emits β for a modal
+    damping ratio of 1 at each element's transverse mode, which is not enough to
+    hold the chord modes: under the flight loads they grow until the implicit
+    solver stalls. The beam projects fly at `30`; by `5` the chord modes are back
+    and the wing overshoots its heading setpoint instead of holding it.
+    """
+    beam_joint_damping_scale::Float64 = 1.0
 
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig()
     bridle::V3BridleConfig = V3BridleConfig()
@@ -184,10 +193,13 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
 
     SymbolicAWEModels.set_body_frame_damping(sys, kite.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite.world_sim_damping)
-    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite.beam_body_damping)
-    SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite.beam_world_damping)
+    beam_idxs = beam_body_idxs(sys)
+    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite.beam_body_damping,
+                                             beam_idxs)
+    SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite.beam_world_damping,
+                                              beam_idxs)
     SymbolicAWEModels.set_angular_damping(sys.bodies, kite.beam_angular_damping,
-                                          beam_body_idxs(sys))
+                                          beam_idxs)
 
     sam = SymbolicAWEModel(set, sys; backend = kite.backend)
 
@@ -205,10 +217,11 @@ end
 """
     apply_kite_material!(sys, kite::V3KiteConfig) -> sys
 
-Set the bridle material a kite carries onto a loaded structure, and swap the
-YAML's linear Breukels bending for the curvature-softening Comer-Levy law when
-`kite.adapter_dir` names the export the beam was built from. Both are no-ops on
-a geometry that has neither bridle tethers nor beam joints.
+Set the bridle material a kite carries onto a loaded structure, scale the beam
+joints' Rayleigh damping by `kite.beam_joint_damping_scale`, and swap the YAML's
+linear Breukels bending for the curvature-softening Comer-Levy law when
+`kite.adapter_dir` names the export the beam was built from. All three are no-ops
+on a geometry that has neither bridle tethers nor beam joints.
 """
 function apply_kite_material!(sys, kite::V3KiteConfig)
     if !isnothing(kite.adapter_dir) && isdir(kite.adapter_dir)
@@ -217,6 +230,11 @@ function apply_kite_material!(sys, kite::V3KiteConfig)
         @info "Comer-Levy bending applied" joints=length(sys.timoshenko_joints)
     end
     SurfplanAdapter.apply_bridle_material!(sys, kite.bridle)
+    if kite.beam_joint_damping_scale != 1.0
+        for joint in sys.timoshenko_joints
+            joint.damping *= kite.beam_joint_damping_scale
+        end
+    end
     return sys
 end
 

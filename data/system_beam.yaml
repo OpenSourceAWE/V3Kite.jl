@@ -8,5 +8,5 @@ system:
   vsm_settings: "vsm_settings.yaml"
   wc_settings: "wc_settings.yaml"
   kite_settings: "kite_settings_beam.yaml"
-  settle_settings: "settle_settings_default.yaml"
+  settle_settings: "settle_settings_beam.yaml"
   heading_settings: "heading_settings_beam.yaml"

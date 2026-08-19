@@ -427,3 +427,87 @@ function schedule_heading_pid!(pid, settings::HeadingSettings, t, v_app,
     end
     return pid
 end
+
+"""
+    V3ReplayConfig
+
+Which recorded maneuver `flight_replay.jl` puts through the simulator, and the
+corrections it applies on the way. The wing itself is not here: that is the
+project's `kite_settings:`, so the same maneuver can be replayed on any wing.
+"""
+Base.@kwdef mutable struct V3ReplayConfig
+    "Flight year, selecting the recording and its depower calibration"
+    year::Int = 2025
+    "Maneuver to replay; `\$(section)_\$(year)` keys into `maneuvers`"
+    section::String = "straight_right"
+    "Substeps per 10 Hz data sample; 2 gives dt = 0.05 s"
+    n_substeps::Int = 2
+    "Settle the wing on the first data row before replaying"
+    settle::Bool = true
+    "Depower offset of the 2019 flight; the 2025 one is the kite file's"
+    depower_offset_2019::Float64 = 0.07
+    "Scales every recorded steering command"
+    steering_multiplier::Float64 = 1.0
+    "Proportional gain of the heading feedback; 0 replays open loop"
+    heading_K::Float64 = 0.0
+    "Integral time of the heading feedback [s]"
+    heading_Ti::Float64 = 0.0
+    "Proportional gain of the lateral position feedback; 0 disables it"
+    lateral_K::Float64 = 0.0
+    "Constant added to every steering command [%]"
+    steering_offset::Float64 = 1.5
+    "Drive the steering off flown distance instead of off time"
+    distance_based_steering::Bool = false
+    "Slope of the photogrammetry angle-of-attack offset [deg per % depower]"
+    aoa_offset_slope::Float64 = -0.6831
+    "Intercept of the photogrammetry angle-of-attack offset [deg]"
+    aoa_offset_intercept::Float64 = 28.74
+    "Where the wind speed comes from: `ekf` or `lidar`"
+    wind_source_speed::Symbol = :ekf
+    "Where the wind direction and vertical component come from: `ekf` or `lidar`"
+    wind_source_dir::Symbol = :lidar
+    "Write the figures instead of only displaying them"
+    save_figs::Bool = true
+    "Directory the figures go to, relative to the repository root when not absolute"
+    figures_dir::String = "output"
+    "UTC window `[start, end]` of every maneuver, keyed by `\$(section)_\$(year)`"
+    maneuvers::Dict{String, Any} = Dict{String, Any}()
+end
+
+"""
+    V3ReplayConfig(filename; data_path=nothing) -> V3ReplayConfig
+
+Load the replay setup from `filename`, whose top-level `replay_settings:`
+mapping holds the field names of [`V3ReplayConfig`](@ref).
+"""
+function V3ReplayConfig(filename::String; data_path=nothing)
+    dict, source = settings_block(filename, "replay_settings"; data_path)
+    return fill_struct(V3ReplayConfig, dict; source)
+end
+
+"""
+    load_replay(project; data_path=nothing) -> V3ReplayConfig
+
+The [`V3ReplayConfig`](@ref) a project file points at with its
+`replay_settings:` key. A project without one gets the struct defaults.
+"""
+function load_replay(project; data_path=nothing)
+    filename = project_entry(project, "replay_settings"; data_path, default="")
+    return isempty(filename) ? V3ReplayConfig() :
+        V3ReplayConfig(filename; data_path)
+end
+
+"""
+    replay_maneuver(config::V3ReplayConfig) -> (name, start_utc, end_utc)
+
+The maneuver `config` selects: its `\$(section)_\$(year)` name and the UTC
+window `maneuvers:` gives it. Errors on a section the file does not list.
+"""
+function replay_maneuver(config::V3ReplayConfig)
+    name = "$(config.section)_$(config.year)"
+    haskey(config.maneuvers, name) || error(
+        "`$name` is not in `maneuvers:`; known: " *
+        join(sort(collect(keys(config.maneuvers))), ", "))
+    window = config.maneuvers[name]
+    return name, String(window["start"]), String(window["end"])
+end

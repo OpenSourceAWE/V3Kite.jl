@@ -11,3 +11,4 @@ system:
   kite_settings: "kite_settings_beam_replay.yaml"
   settle_settings: "settle_settings_replay.yaml"
   heading_settings: "heading_settings.yaml"
+  replay_settings: "replay_settings.yaml"

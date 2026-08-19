@@ -35,7 +35,7 @@ module SurfplanAdapter
 
 using LinearAlgebra
 import YAML
-using SymbolicAWEModels: TimoshenkoJoint, TUBE_SHEAR_COEFF, tube_torsion_law,
+using SymbolicAWEModels: TimoshenkoJoint, TUBE_SHEAR_COEFF, tube_linear_rigidities,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
 using ..V3Kite: v3_data_path, V3BridleConfig

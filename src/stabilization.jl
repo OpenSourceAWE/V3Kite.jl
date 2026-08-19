@@ -292,13 +292,16 @@ function apply_decayed_damping!(sys, config::V3SettleConfig, decay)
         max.(config.world_start_damping .* decay, kite.world_sim_damping))
     SymbolicAWEModels.set_body_frame_damping(sys,
         max.(config.body_start_damping .* decay, kite.body_sim_damping))
+    beam_idxs = beam_body_idxs(sys)
     SymbolicAWEModels.set_world_frame_damping(sys.bodies,
-        max.(config.beam_world_start_damping .* decay, kite.beam_world_damping))
+        max.(config.beam_world_start_damping .* decay, kite.beam_world_damping),
+        beam_idxs)
     SymbolicAWEModels.set_body_frame_damping(sys.bodies,
-        max.(config.beam_body_start_damping .* decay, kite.beam_body_damping))
+        max.(config.beam_body_start_damping .* decay, kite.beam_body_damping),
+        beam_idxs)
     SymbolicAWEModels.set_angular_damping(sys.bodies,
         max.(config.beam_angular_start_damping .* decay, kite.beam_angular_damping),
-        beam_body_idxs(sys))
+        beam_idxs)
     return sys
 end
 
@@ -754,9 +757,14 @@ end
     build_settling_struct(config; data_path, source_struc, source_aero)
 
 Build the settling `SystemStructure` from the source YAML: settings, VSM, the
-structure itself, the resolved KCU mass and the starting damping. Returns
-`(sys, set)`. Shared by [`setup_settling_model`](@ref) and the settled-state
-cache, which rebuilds the same structure before restoring a state onto it.
+structure itself, the resolved KCU mass, the kite's material and the starting
+damping. Returns `(sys, set)`. Shared by [`setup_settling_model`](@ref) and the
+settled-state cache, which rebuilds the same structure before restoring a state
+onto it.
+
+The material goes on here and not only in [`create_v3_model`](@ref) because a
+structure settled on the YAML's bridle stiffness is not an equilibrium of the one
+the run flies.
 """
 function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
@@ -785,6 +793,7 @@ function build_settling_struct(config::V3SettleConfig;
         sys.points[1].extra_mass = kcu_mass
     end
 
+    apply_kite_material!(sys, config.kite)
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_start_damping)
     set_body_frame_damping!(sys, config.body_start_damping)

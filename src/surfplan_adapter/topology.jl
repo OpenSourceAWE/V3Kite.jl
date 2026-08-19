@@ -52,13 +52,21 @@ the segments [`set_depower!`](@ref) and [`set_steering!`](@ref) drive.
 checked against the export's own wing nodes, so a mismatched pair of files fails at
 read time instead of silently building a skewed kite.
 
-`membrane_stiffness` is the tube fabric `E·t` [N/m] feeding the Comer-Levy
-curvature-softening bending law. `:from_breukels` (the default) derives it per tube
-radius from the Breukels linear stiffness (`EI0_breukels/(π·r³)`), so the linear
-regime matches the correlation the V3 models already use and only the
-pressure-driven collapse branch is added; a `Float64` fixes it to a measured value.
-No fabric coupon data exists for the V3, which is why there is no `:from_fabric`
-option here.
+`pressure_bar` is the inflation pressure of the leading edge and struts, and sets
+every emitted rigidity through the Breukels correlations. The measured V3 bridle
+file vendored from awegroup/TUDELFT_V3_KITE records `pressure: 0.3 [bar]`, which is
+where the default comes from.
+
+The emitted `EA`, `GA`, `EI0` and `GJ` are the Breukels linear rigidities
+(`tube_linear_rigidities`) at that pressure, so all four share one provenance.
+
+`membrane_stiffness` is the tube fabric `E·t` [N/m] feeding the *optional*
+Comer-Levy curvature-softening bending law, which only
+[`apply_comer_bending!`](@ref) installs. `:from_breukels` (the default) derives it
+per tube radius from the Breukels linear bending stiffness
+(`EI0_breukels/(π·r³)`), so that law's linear regime matches the emitted one; a
+`Float64` fixes it to a measured value. No fabric coupon data exists for the V3,
+which is why there is no `:from_fabric` option here.
 
 `areal_density` [kg/m²] is the tube fabric weight used by the area-based mass model
 to back out tube radii from element masses; `:from_mass_file` (the default) reads
@@ -115,7 +123,7 @@ Base.@kwdef struct V3BeamTopology
     chord_control_fractions::Vector{Float64} = collect(0.0:0.1:1.0)
     le_tip_joints::Int = 2
     bridle_segments::Int = 1
-    pressure_bar::Float64 = 4.5 * 0.0689476
+    pressure_bar::Float64 = 0.3
     membrane_stiffness::Union{Symbol, Float64} = :from_breukels
     areal_density::Union{Symbol, Float64} = :from_mass_file
     youngs_modulus::Float64 = 5.5e10

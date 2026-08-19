@@ -14,21 +14,44 @@ structure actually receives (`wing.aero_moment_b`). Under `AeroPressure` those
 are different quantities, and a gap between them is load that the aero produced
 but the scatter onto points never delivered.
 
+Quantifies the flow-curvature damping the continuous aero modes do not have.
+`set_particle_panel_va!` gives each section the mean of its LE/TE apparent wind,
+so a section rotating about its own spanwise axis produces no force at all and
+the thin-airfoil increment `Δcm = -(π/4)q̂` is missing. The section rates are
+recoverable from the live LE/TE point velocities, so the moment and the power
+that increment would dissipate can be measured without carrying it in the RHS.
+
+Sets that against the joints' Rayleigh damping at the same state. Both are
+reported as dissipated power, which is the comparison that does not depend on
+where a moment is taken. `V3KITE_JOINT_SCALE` overrides
+`beam_joint_damping_scale`: measure at 1 so the section rates are free, since
+a large scale suppresses the very rates the curvature term feeds on and makes
+its own contribution look small. The Rayleigh term is linear in `beta`, so what
+a larger scale would have dissipated at the same state is reported alongside.
+`V3KITE_ANGULAR_DAMPING` sets `beam_angular_damping` on all three axes, which
+tells the two artificial dampings apart: whether a run needs one, the other or
+both is otherwise not visible from a run that carries both.
+
 Also cross-checks the rigid-body kinematics: the wing's own `ω_b` against the
 rate implied by differencing its frame, and `wing.heading` (the field the
 controller reads) against the heading recomputed from the live wing frame. Those
 agreeing rules the kinematics out; them disagreeing means the loop is closing on
 a stale signal.
 
-Prints a table plus an end-of-run summary, then saves the log and replays it.
-`V3KITE_REPLAY=0` skips the window so the run stays headless. `bin/run_julia
+Prints a table plus an end-of-run summary and saves the log. `V3KITE_REPLAY=0`
+skips the replay window so the run stays headless; the log is written either way.
+`V3KITE_RECORD=<path>` records the run to that file at the log's own sample rate,
+so the video plays at realtime; the extension picks the format (`.mp4`, `.gif`).
+Recording from this run rather than from the saved log keeps it on the structure
+the run actually built, which a cached model does not always reproduce. `bin/run_julia
 --beam` (or `--psm`) picks the wing, and `V3KITE_AERO_MODE=continuous` overrides
 the project's aero mode, which is how the same maneuver is compared across
 couplings.
 
-The loop closes on the heading recomputed from the live wing frame, not on
-`wing.heading`: the `KernelBackend` never writes that field, so a controller
-reading it sees a constant and saturates instead of flying the maneuver.
+The loop closes on the heading recomputed from the live wing frame rather than on
+`wing.heading`, so that the comparison of the two stays a diagnostic. Both
+backends do write the field — on a particle wing it comes from
+`write_wing_scalars!` — and it tracks the recomputed heading exactly.
 """
 
 using Pkg
@@ -39,6 +62,7 @@ end
 
 using V3Kite
 using SymbolicAWEModels
+using VortexStepMethod
 using LinearAlgebra
 using Printf
 using Statistics
@@ -51,9 +75,12 @@ PROJECT = select_project(
 MAX_HEADING = 40.0    # setpoint amplitude [deg]
 PERIOD = 30.0         # setpoint period [s]
 REPORT_EVERY = 5      # steps between table rows
+REFERENCE_SCALE = 30.0   # joint damping scale the counterfactual reports
 REPLAY = get(ENV, "V3KITE_REPLAY", "1") != "0"
+RECORD_PATH = get(ENV, "V3KITE_RECORD", "")
 
-REPLAY && @eval using GLMakie, MakieControlPlots
+# `record` and `replay` live in the Makie extension, so both need GLMakie loaded.
+(REPLAY || !isempty(RECORD_PATH)) && @eval using GLMakie, MakieControlPlots
 
 """
     frame_rate(R_prev, R_now, dt) -> KVec3
@@ -95,6 +122,130 @@ Heading [rad] recomputed from the wing's current frame and position, the signal
 live_heading(wing) =
     V3Kite.calc_heading_from_rotation(wing.R_b_to_w, wing.pos_w)
 
+"""
+    section_pitch_rates(wing, points) -> (rates, chords, midpoints)
+
+Per unrefined section: the rate [rad/s] it rotates about its own spanwise axis,
+its chord [m], and its mid-chord point, all in the wing body frame, from the
+live LE/TE structural points. Uniform wind cancels in the LE-minus-TE
+difference, so the structural velocities alone carry the rate.
+"""
+function section_pitch_rates(wing, points)
+    leading = Dict{Int64, Int64}()
+    trailing = Dict{Int64, Int64}()
+    for (point_idx, (section_idx, edge)) in wing.point_to_vsm_point
+        (edge === :LE ? leading : trailing)[section_idx] = point_idx
+    end
+    sections = sort(collect(intersect(keys(leading), keys(trailing))))
+    count = length(sections)
+    frame = wing.R_b_to_w
+    chords = zeros(count)
+    midpoints = [zeros(3) for _ in 1:count]
+    chord_dirs = [zeros(3) for _ in 1:count]
+    velocities = [(zeros(3), zeros(3)) for _ in 1:count]
+    for (k, section) in enumerate(sections)
+        point_le = points[leading[section]]
+        point_te = points[trailing[section]]
+        pos_le = frame' * Vector(point_le.pos_w)
+        pos_te = frame' * Vector(point_te.pos_w)
+        chord_vec = pos_te .- pos_le
+        chords[k] = norm(chord_vec)
+        chords[k] < 1e-9 && continue
+        chord_dirs[k] = chord_vec ./ chords[k]
+        midpoints[k] = 0.5 .* (pos_le .+ pos_te)
+        velocities[k] = (frame' * Vector(point_le.vel_w),
+                         frame' * Vector(point_te.vel_w))
+    end
+    rates = zeros(count)
+    for k in 1:count
+        chords[k] < 1e-9 && continue
+        neighbour = k < count ? k + 1 : k - 1
+        spanwise = midpoints[neighbour] .- midpoints[k]
+        norm(spanwise) < 1e-9 && continue
+        normal = cross(chord_dirs[k], spanwise ./ norm(spanwise))
+        norm(normal) < 1e-9 && continue
+        vel_le, vel_te = velocities[k]
+        rates[k] = section_pitch_rate(-vel_le, -vel_te, normal ./ norm(normal),
+                                      chords[k])
+    end
+    return rates, chords, midpoints
+end
+
+"""
+    curvature_damping(wing, points, rho) -> (moment, power)
+
+Moment magnitude [Nm] and dissipated power [W] of the thin-airfoil pitch-rate
+increment `Δcm = -(π/4)q̂` the continuous aero modes drop, summed over the
+wing's panels. The dissipation is sign-definite in the section rate, so it does
+not depend on which way the section normal points.
+"""
+function curvature_damping(wing, points, rho)
+    isnothing(wing.point_to_vsm_point) && return (0.0, 0.0)
+    rates, chords, midpoints = section_pitch_rates(wing, points)
+    length(rates) < 2 && return (0.0, 0.0)
+    v_rel = norm(wing.va_b)
+    moment = 0.0
+    power = 0.0
+    for k in 1:(length(rates) - 1)
+        rate = 0.5 * (rates[k] + rates[k + 1])
+        chord = 0.5 * (chords[k] + chords[k + 1])
+        width = norm(midpoints[k + 1] .- midpoints[k])
+        delta_cm = VortexStepMethod.flow_curvature_cm(rate, chord, v_rel)
+        panel = 0.5 * rho * v_rel^2 * chord^2 * width * delta_cm
+        moment += abs(panel)
+        power -= panel * rate
+    end
+    return moment, power
+end
+
+"""
+    joint_damping_wrench(sys) -> (moment, power)
+
+Rayleigh damping moment [Nm] the Timoshenko joints apply at their `a` nodes and
+the power [W] they dissipate, at the live state. The model emits only the
+combined elastic-plus-damping wrench, so the damping half is rebuilt here from
+the library's own element frame and local wrench. Linear in each joint's `beta`,
+so another damping scale is this scaled.
+"""
+function joint_damping_wrench(sys)
+    moment = 0.0
+    power = 0.0
+    for joint in sys.timoshenko_joints
+        body_a = sys.bodies[joint.body_a_idx]
+        body_b = sys.bodies[joint.body_b_idx]
+        rot_a = SymbolicAWEModels.quaternion_to_rotation_matrix(body_a.Q_b_to_w)
+        rot_b = SymbolicAWEModels.quaternion_to_rotation_matrix(body_b.Q_b_to_w)
+        x_a = Vector(body_a.pos_w) .+ rot_a * Vector(joint.anchor_a_b)
+        x_b = Vector(body_b.pos_w) .+ rot_b * Vector(joint.anchor_b_b)
+        e1, e2, e3, len = SymbolicAWEModels.timoshenko_element_frame(x_a, x_b,
+                                                                    rot_a)
+        element = [e1 e2 e3]
+        omega_a = rot_a * Vector(body_a.ω_b)
+        omega_b = rot_b * Vector(body_b.ω_b)
+        vel_a = Vector(body_a.com_vel) .+ cross(omega_a, x_a .- Vector(body_a.com_w))
+        vel_b = Vector(body_b.com_vel) .+ cross(omega_b, x_b .- Vector(body_b.com_w))
+        relative = vel_b .- vel_a
+        axis = element[:, 1]
+        spin = dot(axis, omega_a) .* axis .+ cross(axis, relative) ./ len
+        beta = joint.damping
+        rate_a = element' * (omega_a .- spin)
+        rate_b = element' * (omega_b .- spin)
+        rigidities = (joint.EA, joint.GA, joint.GA, joint.GJ,
+                      joint.EIy, joint.EIz)
+        damp = SymbolicAWEModels.timoshenko_local_wrench(
+            rigidities, joint.rest_length, joint.shear_coeff,
+            beta * dot(relative, axis), beta .* rate_a, beta .* rate_b)
+        force_a = element * damp[1]
+        moment_a = element * damp[2]
+        force_b = element * damp[3]
+        moment_b = element * damp[4]
+        moment += norm(moment_a)
+        power -= dot(force_a, vel_a) + dot(moment_a, omega_a) +
+                 dot(force_b, vel_b) + dot(moment_b, omega_b)
+    end
+    return moment, power
+end
+
 set_data_path(v3_data_path())
 kite = load_kite(PROJECT)
 heading = load_heading(PROJECT)
@@ -103,6 +254,14 @@ set = Settings(PROJECT)
 aero_override = get(ENV, "V3KITE_AERO_MODE", "")
 isempty(aero_override) ||
     (kite.aero_mode = V3Kite.parse_aero_mode(aero_override))
+
+scale_override = get(ENV, "V3KITE_JOINT_SCALE", "")
+isempty(scale_override) ||
+    (kite.beam_joint_damping_scale = parse(Float64, scale_override))
+
+angular_override = get(ENV, "V3KITE_ANGULAR_DAMPING", "")
+isempty(angular_override) ||
+    (kite.beam_angular_damping = fill(parse(Float64, angular_override), 3))
 
 gain_override = get(ENV, "V3KITE_HEADING_K", "")
 isempty(gain_override) || (heading.K = parse(Float64, gain_override))
@@ -134,14 +293,18 @@ heading_rate = Float64[]
 heading_field = Float64[]
 heading_live = Float64[]
 kinematics_gap = Float64[]
+curvature_moment = Float64[]
+curvature_power = Float64[]
+rayleigh_moment = Float64[]
+rayleigh_power = Float64[]
 
 heading_prev = live_heading(wing)
 frame_prev = copy(wing.R_b_to_w)
 
-@printf("%5s %7s %7s %8s %8s %7s %8s %9s %9s %9s %9s %8s %8s\n",
+@printf("%5s %7s %7s %8s %8s %7s %8s %9s %9s %9s %9s %8s %8s %9s %9s\n",
         "step", "t[s]", "cmd[°]", "hfld[°]", "hlive[°]", "g_k", "steer[m]",
         "dtwist[°]", "Mapp[Nm]", "Mvsm[Nm]", "|M|[Nm]", "ωyaw[°/s]",
-        "ḣead[°/s]")
+        "ḣead[°/s]", "Mcrv[Nm]", "Pcrv[W]")
 
 failed_at = 0
 for step in 1:n_steps
@@ -182,12 +345,21 @@ for step in 1:n_steps
     push!(heading_live, rad2deg(live))
     push!(kinematics_gap, gap)
 
+    rho = SymbolicAWEModels.air_density(sam.sys_struct.am, wing.pos_w[3])
+    curv_moment, curv_power = curvature_damping(wing, sys.points, rho)
+    push!(curvature_moment, curv_moment)
+    push!(curvature_power, curv_power)
+
+    joint_moment, joint_power = joint_damping_wrench(sys)
+    push!(rayleigh_moment, joint_moment)
+    push!(rayleigh_power, joint_power)
+
     if step % REPORT_EVERY == 0 || step <= 3
-        @printf("%5d %7.2f %7.2f %8.2f %8.2f %7.3f %8.4f %9.3f %9.1f %9.1f %9.1f %8.3f %8.3f\n",
+        @printf("%5d %7.2f %7.2f %8.2f %8.2f %7.3f %8.4f %9.3f %9.1f %9.1f %9.1f %8.3f %8.3f %9.2f %9.2f\n",
                 step, t, rad2deg(target_rad), heading_field[end],
                 heading_live[end], pid.K, steer_ctrl, twist_diff[end],
                 moment_yaw[end], moment_vsm[end], moment_norm[end],
-                rate_yaw[end], head_rate)
+                rate_yaw[end], head_rate, curv_moment, curv_power)
     end
 
     global heading_prev = live
@@ -215,6 +387,28 @@ span("VSM yaw moment", moment_vsm, "Nm")
 span("applied moment magnitude", moment_norm, "Nm")
 span("body rate about yaw (frame)", rate_yaw, "deg/s")
 span("heading rate", heading_rate, "deg/s")
+
+println("\n===== damping the beam gets, and the damping it does not =====")
+scale = kite.beam_joint_damping_scale
+counterfactual = REFERENCE_SCALE / scale
+@printf("  joint damping scale flown  %.4g  (counterfactual x%.4g)\n",
+        scale, REFERENCE_SCALE)
+span("curvature moment", curvature_moment, "Nm")
+span("curvature dissipation", curvature_power, "W")
+span("Rayleigh moment", rayleigh_moment, "Nm")
+span("Rayleigh dissipation", rayleigh_power, "W")
+span("Rayleigh moment at ref", counterfactual .* rayleigh_moment, "Nm")
+span("Rayleigh dissipation at ref", counterfactual .* rayleigh_power, "W")
+if !isempty(curvature_power) && mean(rayleigh_power) != 0
+    @printf("  %-26s %9.2f %%\n", "curvature / Rayleigh flown",
+            100 * mean(curvature_power) / mean(rayleigh_power))
+    @printf("  %-26s %9.2f %%\n", "curvature / Rayleigh at ref",
+            100 * mean(curvature_power) / (counterfactual * mean(rayleigh_power)))
+end
+if !isempty(curvature_moment) && mean(moment_norm) > 0
+    @printf("  %-26s %9.2f %%\n", "curvature / aero moment",
+            100 * mean(curvature_moment) / mean(moment_norm))
+end
 
 println("\n===== kinematics cross-check =====")
 span("wing.heading (controller)", heading_field, "deg")
@@ -251,9 +445,20 @@ end
 
 failed_at > 0 && @warn "Run ended early" failed_at
 
+log_name = "v3kite_diagnose_$(splitext(PROJECT)[1])"
+save_log(logger, log_name)
+@info "Log saved" log_name
+
+if !isempty(RECORD_PATH)
+    mkpath(dirname(RECORD_PATH))
+    framerate = max(1, round(Int, 1 / dt))
+    @info "Recording" RECORD_PATH framerate
+    SymbolicAWEModels.record(load_log(log_name), sam.sys_struct, RECORD_PATH;
+                             size=(1000, 800), framerate)
+    @info "Recorded" kB=filesize(RECORD_PATH) ÷ 1024
+end
+
 if REPLAY
-    log_name = "v3kite_diagnose_$(splitext(PROJECT)[1])"
-    save_log(logger, log_name)
     scene = SymbolicAWEModels.replay(load_log(log_name), sam.sys_struct)
     display(GLMakie.Screen(), scene)
 end

@@ -3,6 +3,30 @@
 ## Unreleased
 
 ### Changed
+- `examples/flight_replay.jl` runs the replay and saves the logs; the plotting
+  moved to `examples/flight_replay_plots.jl`, which draws them from disk. This
+  retires the `LOAD_FROM_DISK` toggle — running the plots alone is what it did.
+- BREAKING: the replay's maneuver, feedback gains and figure options moved from
+  constants at the top of `flight_replay.jl` into a `replay_settings:` key on the
+  replay projects, loaded with `load_replay` into a `V3ReplayConfig`. The UTC
+  windows are `maneuvers:` entries in `data/replay_settings.yaml` rather than an
+  `if`/`elseif` chain in the script.
+- The replay kite settings carry the same damping as the wings they replay:
+  `kite_settings_psm_replay.yaml` gains the kernel backend and `body_sim_damping`
+  of 20 about z, and `kite_settings_beam_replay.yaml` gains that plus
+  `beam_body_damping`, `beam_world_damping`, `beam_angular_damping` and
+  `beam_joint_damping_scale`. Both had drifted from their flying configuration
+  without being corrections fitted to the flights, which is what those files are
+  for; a beam replay was flying with no beam damping at all.
+- BREAKING: the beam bodies in `data/struc_geometry_beam*.yaml` carry a `wing`
+  column naming the wing each belongs to, which is what lets the body damping
+  resolve a body's velocity against its parent wing. Regenerate with
+  `examples/v3beam_geometry.jl`.
+- The beam's four rigidities all come from `tube_linear_rigidities` at the tube
+  pressure, so `EA`, `GA`, `EI0` and `GJ` share one Breukels provenance instead of
+  taking `EA`/`GA`/`EI0` from the membrane laws. `EA` roughly doubles and `GA`
+  drops by a fifth. `V3BeamTopology.pressure_bar` is now the V3 bridle file's
+  measured `0.3` bar rather than 4.5 psi, which it was within 3% of anyway.
 - BREAKING: the beam joints in `data/struc_geometry_beam*.yaml` carry a single
   `damping` column (Rayleigh β in seconds) instead of `damping_trans`/
   `damping_rot`. `V3BeamTopology.damping_ratio` is now converted to β via
@@ -11,7 +35,33 @@
   rotation of the whole wing — 15332 N·m·s/rad about yaw — which is what made
   the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
 
+### Fixed
+- Settling applies the kite's bridle material and beam joint damping, through the
+  same `apply_kite_material!` the flight model uses. It settled on the geometry
+  YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
+  an equilibrium of the model that started from it. Existing `settled_*.arrow`
+  files are regenerated.
+- `beam_body_damping` and `beam_world_damping` skip the wing bodies, as
+  `beam_angular_damping` already did. On a `RIGID_DYNAMICS` kite the one dynamic
+  body is the whole wing, and these settings damped its flight.
+
 ### Added
+- `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
+  Rayleigh β without regenerating the geometry. The emitted β is ζ = 1 at each
+  joint's transverse mode, which the chord modes outgrow under flight load until
+  the implicit solver stalls; the beam projects fly at `30`. The scale is
+  numerical, not material — ζ = 30 is far past anything an inflated tube has — so
+  it stands in for damping the model is missing rather than for a property of the
+  structure. `examples/v3kite_diagnose.jl` measures one candidate for that missing
+  damping, the thin-airfoil flow-curvature moment the panels omit because a
+  section's `va` is the mean of its edge velocities and so carries no pitch rate.
+  Its dissipation is 3% of the Rayleigh damping at scale 30 and about equal to it
+  at scale 3, where the crutch no longer suppresses the motion it feeds on.
+- `data/settle_settings_beam.yaml`, a settling schedule of the beam's own, so the
+  ramps that quiet a beam do not change how the lattice settles. The shared
+  default left every `beam_*_start_damping` at zero, which damps nothing on a beam
+  wing — its wing nodes are `BODY_STATIC` points that the point damping cannot
+  reach — so the run began by flying a ringing structure.
 - `beam_angular_damping` in the kite settings and `beam_angular_start_damping`
   in the settle settings: per-axis spin damping on every leading- and
   trailing-edge body of a beam wing, `dω/dt -= c .* ω` [1/s] about the body's own
@@ -30,10 +80,6 @@
   nothing damped the rigid-body motion of the 22 tube bodies, so the ramp
   diverged at `scale = 1.8e-4`. It now reaches `scale = 1.0` in 291 steps, and
   the beam project flies a full 60 s heading maneuver on the state it writes.
-- `examples/aero_resolution_check.jl` prints the three spanwise counts that are
-  easy to confuse on a built model: sections the aero geometry ships, unrefined
-  sections surviving the structural remesh (what every refined polar and surface
-  table is blended from), and structural stations driving their geometry.
 - `wing_twist_dist`, `differential_twist` and `aero_moment_z` for diagnosing
   steering: the per-station twist along the span, the antisymmetric part of it
   (the `+y` half mean less the `-y` half mean) and the VSM yaw moment to read it
