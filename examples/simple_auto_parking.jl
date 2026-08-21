@@ -70,12 +70,11 @@ V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 MAX_STEERING     = 0.175    # Steering command limit [-]
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
 VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
-# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with — and
-# which the heading gains above were tuned at. Both are part of the settling
-# cache key, so changing either re-settles instead of reusing the cached geometry.
-INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
-FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+# `BODY_START_DAMPING` shapes the settling transient; it decays to the
+# `body_sim_damping:` of the project's kite settings file, the floor the parked
+# run actually flies with — and which the heading gains above were tuned at. Both
+# are part of the settling cache key, so changing either re-settles.
+BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis [1/s]
 # Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
 # default in `data/struc_geometry.yaml`. `init` floors it during settling
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
@@ -85,7 +84,7 @@ DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_start_damping = [0.0, 0.0, 40.0],
+s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
     system_yaml = PROJECT, aero_mode = AERO_MODE)

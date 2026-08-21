@@ -290,7 +290,7 @@ function apply_decayed_damping!(sys, config::V3SettleConfig, decay)
     kite = config.kite
     SymbolicAWEModels.set_world_frame_damping(sys,
         max.(config.world_start_damping .* decay, kite.world_sim_damping))
-    SymbolicAWEModels.set_body_frame_damping(sys,
+    set_body_frame_damping!(sys,
         max.(config.body_start_damping .* decay, kite.body_sim_damping))
     beam_idxs = beam_body_idxs(sys)
     SymbolicAWEModels.set_world_frame_damping(sys.bodies,

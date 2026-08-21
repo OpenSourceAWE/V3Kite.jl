@@ -212,11 +212,11 @@ end
         @test s.set.max_acc > 0.0
     end
 
-    @testset "init default min_damping" begin
-        # Settling decays `body_damping` linearly to the `min_damping` floor and
-        # the returned model runs with that floor, so the default `min_damping`
-        # is readable off the settled points: 0.8 .* the default body_damping.
-        expected = 0.8 .* [0.0, 0.0, 40.0]
+    @testset "init default body_sim_damping" begin
+        # Settling decays `body_start_damping` linearly to the flown floor and the
+        # returned model runs with that floor, so the default is readable off the
+        # settled points: the `body_sim_damping:` of the project's kite settings.
+        expected = load_kite(PROJECT).body_sim_damping
         tether_pts = Set(tether_point_idxs(s.sys))
         wing_pts = [i for i in eachindex(s.sys.points) if !(i in tether_pts)]
         @test !isempty(wing_pts)

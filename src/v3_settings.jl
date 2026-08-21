@@ -8,7 +8,8 @@ already is.
 A KiteUtils project file (`system*.yaml`) is a `system:` section of pointers to
 other files. KiteUtils ships accessors for the keys it defines
 (`sim_settings`, `structural_geometry`, `aero_geometry`, `vsm_settings`) and
-returns each as a bare filename, leaving the parse to the consumer. The three accessors here are siblings for the keys V3Kite adds.
+returns each as a bare filename, leaving the parse to the consumer. The three
+accessors here are siblings for the keys V3Kite adds.
 """
 
 """
@@ -16,10 +17,10 @@ returns each as a bare filename, leaving the parse to the consumer. The three ac
 
 Filename under `key` in the `system:` section of `project`. This is KiteUtils'
 `sim_settings(project)` with two differences: it reaches keys KiteUtils does not
-define, and it takes `data_path` explicitly rather than reading the global one, which settling needs
-because it resolves paths against a data path while the active one points at the
-model cache. It defaults to [`v3_data_path`](@ref), as `settle_wing` and
-`create_v3_model` do, not to the active path.
+define, and it takes `data_path` explicitly rather than reading the global one,
+which settling needs because it resolves paths against a data path while the
+active one points at the model cache. It defaults to [`v3_data_path`](@ref), as
+`settle_wing` and `create_v3_model` do, not to the active path.
 
 Errors naming the project file when the key is absent and no `default` is given,
 since a missing pointer is a mistake in the file rather than something to guess.

@@ -191,7 +191,7 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
         system_name=model_name, set, dynamics_type=kite.wing_type,
         vsm_set, aero_mode=resolve_aero_mode(kite))
 
-    SymbolicAWEModels.set_body_frame_damping(sys, kite.body_sim_damping)
+    set_body_frame_damping!(sys, kite.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite.world_sim_damping)
     beam_idxs = beam_body_idxs(sys)
     SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite.beam_body_damping,

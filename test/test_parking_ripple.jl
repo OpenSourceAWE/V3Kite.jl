@@ -41,7 +41,7 @@ try
         REL_STEERING          = 0.0040
         AERO_MODE             = ContinuousAero()
         VSM_INTERVAL          = 1
-        BODY_DAMPING          = [0.0, 0.0, 40.0]
+        BODY_START_DAMPING    = [0.0, 0.0, 40.0]
         DAMPING_PER_STIFFNESS = 0.001
 
         # Measured with the parameters above; 1.5x leaves room for the run-to-run
@@ -49,7 +49,7 @@ try
         RIPPLE_RMS_BASELINE = 0.0064   # [deg]
         RIPPLE_RMS_LIMIT    = 1.5 * RIPPLE_RMS_BASELINE
 
-        s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
+        s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
             damping_per_stiffness = DAMPING_PER_STIFFNESS,
             depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
             system_yaml = PROJECT, aero_mode = AERO_MODE)
