@@ -51,12 +51,9 @@
   joint's transverse mode, which the chord modes outgrow under flight load until
   the implicit solver stalls; the beam projects fly at `30`. The scale is
   numerical, not material — ζ = 30 is far past anything an inflated tube has — so
-  it stands in for damping the model is missing rather than for a property of the
-  structure. `examples/v3kite_diagnose.jl` measures one candidate for that missing
-  damping, the thin-airfoil flow-curvature moment the panels omit because a
-  section's `va` is the mean of its edge velocities and so carries no pitch rate.
-  Its dissipation is 3% of the Rayleigh damping at scale 30 and about equal to it
-  at scale 3, where the crutch no longer suppresses the motion it feeds on.
+  it stands in for damping the model is missing, such as the thin-airfoil
+  flow-curvature moment the panels omit because a section's `va` is the mean of
+  its edge velocities and so carries no pitch rate.
 - `data/settle_settings_beam.yaml`, a settling schedule of the beam's own, so the
   ramps that quiet a beam do not change how the lattice settles. The shared
   default left every `beam_*_start_damping` at zero, which damps nothing on a beam
