@@ -3,7 +3,7 @@
 kite_settings:
   wing_type: particle_dynamics   # particle_dynamics | rigid_dynamics
   aero_mode: continuous          # direct | continuous | pressure
-  backend: kernel                # monolith | kernel model assembly
+  backend: monolith                # monolith | kernel model assembly
   vsm_interval: 1                # steps between VSM aero solves
 
   body_sim_damping: [0.0, 0.0, 20.0]   # per-axis wing-frame damping in flight
