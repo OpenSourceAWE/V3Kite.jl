@@ -1,6 +1,8 @@
 *geometry_dp*.yaml
 /examples/record_replay.jl
 /LocalPreferences*
+examples/LocalPreferences.toml
+test/LocalPreferences.toml
 processed_data
 ideas.txt
 *.log
