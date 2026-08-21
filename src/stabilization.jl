@@ -191,8 +191,11 @@ function settled_state_path(config::V3SettleConfig, init_row;
         config.beam_body_start_damping, config.beam_world_start_damping,
         config.beam_angular_start_damping)
     all(iszero, beam_damping) || (suffix *= "_bb$(num_tag(beam_damping))")
-    aero_tag = SymbolicAWEModels.aero_mode_tag(config.kite.aero_mode)
-    aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
+    aero_mode = resolve_aero_mode(config.kite)
+    if !isnothing(aero_mode)
+        aero_tag = SymbolicAWEModels.aero_mode_tag(aero_mode)
+        aero_tag == DEFAULT_AERO_TAG || (suffix *= "_aero$(aero_tag)")
+    end
     struc_tag = splitext(basename(
         project_entry(config.project, "structural_geometry"; data_path)))[1]
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")

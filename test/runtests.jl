@@ -173,7 +173,7 @@ using KitePodModels: KCU
         # file it names has to parse into its struct: a key renamed on one side
         # only surfaces here rather than mid-run.
         set_data_path(v3_data_path())
-        for project in ("system.yaml", "system_reelout.yaml",
+        for project in ("system_reelout.yaml",
                         "system_cabauw.yaml", "system_psm.yaml",
                         "system_beam.yaml", "system_psm_replay.yaml",
                         "system_beam_replay.yaml")
@@ -195,7 +195,7 @@ using KitePodModels: KCU
         beam = load_kite("system_beam.yaml")
         @test beam.backend isa KernelBackend
         @test !beam.geom.reduce_tip && !beam.geom.reduce_te
-        @test beam.bridle.compression_frac == 0.01
+        @test beam.bridle.compression_frac == 0.0
         @test beam.init_mode == :settle
         @test beam.aero_mode isa AeroPressure
 

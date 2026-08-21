@@ -16,10 +16,11 @@ isdefined(@__MODULE__, :hold_torque!) ||
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
-    settings = Settings("system.yaml")
+    PROJECT = "system_psm.yaml"
+    settings = Settings(PROJECT)
     settings.v_wind = 10.0
     settings.l_tether = 150.0
-    sam, sys = create_v3_model("system.yaml"; data_path, settings)
+    sam, sys = create_v3_model(PROJECT; data_path, settings)
     sam.set.wind_vec = [10.0, 0.0, 0.0]
     init!(sam; remake=false, remake_vsm=true)
     sys.winches[1].brake = true
@@ -40,7 +41,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
         len = unstretched_length(v3kite)
         @test isfinite(len)
         @test len > 0.0
-        @test len ≈ config.tether_length  # should match configured tether length
+        @test len ≈ settings.l_tether  # should match configured tether length
     end
 
     @testset "v_wind_kite" begin
@@ -48,7 +49,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
         @test length(v) == 3
         @test all(isfinite, v)
         @test norm(v) > 0.0          # non-zero wind
-        @test norm(v) ≈ config.v_wind  # profile_law=0: constant wind, factor=1
+        @test norm(v) ≈ settings.v_wind  # profile_law=0: constant wind, factor=1
     end
 
     @testset "pos_kite" begin

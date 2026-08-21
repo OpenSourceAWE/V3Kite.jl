@@ -42,6 +42,7 @@ try
         AERO_MODE             = ContinuousAero()
         VSM_INTERVAL          = 1
         BODY_START_DAMPING    = [0.0, 0.0, 40.0]
+        BODY_SIM_DAMPING      = 0.8 .* BODY_START_DAMPING
         DAMPING_PER_STIFFNESS = 0.001
 
         # Measured with the parameters above; 1.5x leaves room for the run-to-run
@@ -50,6 +51,7 @@ try
         RIPPLE_RMS_LIMIT    = 1.5 * RIPPLE_RMS_BASELINE
 
         s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
+            body_sim_damping = BODY_SIM_DAMPING,
             damping_per_stiffness = DAMPING_PER_STIFFNESS,
             depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
             system_yaml = PROJECT, aero_mode = AERO_MODE)
