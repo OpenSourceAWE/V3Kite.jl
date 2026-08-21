@@ -802,25 +802,24 @@ function find_frame_syslog_idxs(syslog, frame_csvs)
 end
 
 """
-    build_replay_sys_struct(set, geom, source_struc,
-        vsm_set; aero_mode, backend) -> (sam, sys_struct)
+    build_replay_sys_struct(set, kite_set, source_struc,
+        vsm_set) -> (sam, sys_struct)
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
 adjustments, and call `init!`. Mirrors the `settle: false`
 path of `flight_replay.jl`, so `flight_replay_plots.jl` can
-draw a saved syslog without re-running the replay.
+draw a saved syslog without re-running the replay. Everything
+the model is built from comes from `kite_set`, so a plot cannot
+be drawn against a different one than the replay flew.
 """
-function build_replay_sys_struct(set,
-        geom::V3GeomAdjustConfig, source_struc, vsm_set;
-        aero_mode=SymbolicAWEModels.AeroDirect(),
-        backend=SymbolicAWEModels.MonolithBackend())
+function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
     sys = load_sys_struct_from_yaml(source_struc;
-        system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-        aero_mode)
-    sam = SymbolicAWEModel(set, sys; backend)
-    apply_geom_adjustments!(sys, geom)
+        system_name=v3_model_name(kite_set), set,
+        dynamics_type=kite_set.wing_type, vsm_set,
+        aero_mode=resolve_aero_mode(kite_set))
+    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
+    apply_geom_adjustments!(sys, kite_set.geom)
     SymbolicAWEModels.init!(sam;
         remake=false, ignore_l0=false, remake_vsm=true)
     return sam, sys

@@ -61,11 +61,11 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
-kite = load_kite(PROJECT)
-kite.aero_mode = AERO_MODE
+kite_set = load_kite(PROJECT)
+kite_set.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
     project = PROJECT,
-    kite = kite,
+    kite_set = kite_set,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,

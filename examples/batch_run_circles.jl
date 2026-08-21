@@ -98,14 +98,14 @@ function run_circles(;
     wind_vec = wind_vec_from_angles(
         v_wind, deg2rad(-90.0), 0.0)
 
-    kite = load_kite(PROJECT)
-    kite.aero_mode = AERO_MODE
-    kite.geom = V3GeomAdjustConfig(
+    kite_set = load_kite(PROJECT)
+    kite_set.aero_mode = AERO_MODE
+    kite_set.geom = V3GeomAdjustConfig(
         reduce_te=true, tether_length=tether_length)
-    kite.body_sim_damping = body_sim_damping
+    kite_set.body_sim_damping = body_sim_damping
     settle_config = V3SettleConfig(
         project=PROJECT,
-        kite=kite,
+        kite_set=kite_set,
         v_wind=v_wind,
         tether_length=tether_length,
         g_earth=g_earth,

@@ -312,7 +312,7 @@ load_kite(project; data_path=nothing) =
     V3KiteConfig(project_entry(project, "kite_settings"; data_path); data_path)
 
 """
-    load_settle(project; data_path=nothing, kite=nothing) -> V3SettleConfig
+    load_settle(project; data_path=nothing, kite_set=nothing) -> V3SettleConfig
 
 The [`V3SettleConfig`](@ref) a project file points at with its
 `settle_settings:` key, carrying the project and its kite so the settling
@@ -320,13 +320,13 @@ functions can reach the geometry and the model options from the schedule alone.
 A project with no `settle_settings:` key gets the struct defaults, which is
 enough for a kite that never settles.
 """
-function load_settle(project; data_path=nothing, kite=nothing)
-    isnothing(kite) && (kite = load_kite(project; data_path))
+function load_settle(project; data_path=nothing, kite_set=nothing)
+    isnothing(kite_set) && (kite_set = load_kite(project; data_path))
     filename = project_entry(project, "settle_settings"; data_path, default="")
     config = isempty(filename) ? V3SettleConfig() :
         V3SettleConfig(filename; data_path)
     config.project = project
-    config.kite = kite
+    config.kite_set = kite_set
     return config
 end
 

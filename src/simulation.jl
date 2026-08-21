@@ -10,6 +10,15 @@ const V3_MODEL_NAME = "v3"
 const V3_RIGID_DYNAMICS_MODEL_NAME = "v3_rigid_dynamics"
 
 """
+    v3_model_name(kite_set::V3KiteConfig) -> String
+
+The model name `kite`'s wing type is serialized under, keeping the name and the
+`dynamics_type` a structure is loaded with from ever disagreeing.
+"""
+v3_model_name(kite_set) = kite_set.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
+    V3_RIGID_DYNAMICS_MODEL_NAME : V3_MODEL_NAME
+
+"""
 Aero-mode tag left out of the settled-geometry cache key, so files written
 before the key knew about aerodynamics keep being found. See
 [`settled_state_path`](@ref).
@@ -137,25 +146,26 @@ Base.@kwdef mutable struct V3KiteConfig
     """
     remake_settled_state::Bool = false
     brake::Bool = true
+
 end
 
 export V3KiteConfig
 
 
 """
-    resolve_aero_mode(kite::V3KiteConfig)
+    resolve_aero_mode(kite_set::V3KiteConfig)
 
-`kite.aero_mode` when set, otherwise the default for its wing type: `AeroDirect`
+`kite_set.aero_mode` when set, otherwise the default for its wing type: `AeroDirect`
 for a particle wing, and the model's own for a rigid one.
 """
-function resolve_aero_mode(kite::V3KiteConfig)
-    isnothing(kite.aero_mode) || return kite.aero_mode
-    kite.wing_type == SymbolicAWEModels.RIGID_DYNAMICS && return nothing
+function resolve_aero_mode(kite_set::V3KiteConfig)
+    isnothing(kite_set.aero_mode) || return kite_set.aero_mode
+    kite_set.wing_type == SymbolicAWEModels.RIGID_DYNAMICS && return nothing
     return SymbolicAWEModels.AeroDirect()
 end
 
 """
-    create_v3_model(project::String; data_path=nothing, kite=nothing)
+    create_v3_model(project::String; data_path=nothing, kite_set=nothing)
         -> (sam, sys)
 
 Build the `SymbolicAWEModel` a project file describes: its geometry from the
@@ -168,40 +178,38 @@ at are read from, and becomes the active data path. Pass `settings` to override
 the project's own, which is what rebuilding a structure to match a recorded log
 needs — the log's wind and tether length are not the project's.
 """
-function create_v3_model(project::String; data_path=nothing, kite=nothing,
+function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
                          settings=nothing)
     isnothing(data_path) && (data_path = v3_data_path())
     set_data_path(data_path)
-    isnothing(kite) && (kite = load_kite(project; data_path))
+    isnothing(kite_set) && (kite_set = load_kite(project; data_path))
 
     set = isnothing(settings) ? Settings(project) : settings
     set.v_reel_outs[1] = 0.0
 
     struc_path = struc_geometry_path(project; data_path)
-    @info "Creating V3 kite model" project struc=basename(struc_path) wing_type=kite.wing_type
+    @info "Creating V3 kite model" project struc=basename(struc_path) wing_type=kite_set.wing_type
 
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_settings_path(project; data_path); data_prefix=false)
     vsm_set.wings[1].geometry_file = aero_geometry_path(project;
-        data_path, aero_mode = resolve_aero_mode(kite))
+        data_path, aero_mode = resolve_aero_mode(kite_set))
 
-    model_name = kite.wing_type == SymbolicAWEModels.RIGID_DYNAMICS ?
-        V3_RIGID_DYNAMICS_MODEL_NAME : V3_MODEL_NAME
     sys = load_sys_struct_from_yaml(struc_path;
-        system_name=model_name, set, dynamics_type=kite.wing_type,
-        vsm_set, aero_mode=resolve_aero_mode(kite))
+        system_name=v3_model_name(kite_set), set, dynamics_type=kite_set.wing_type,
+        vsm_set, aero_mode=resolve_aero_mode(kite_set))
 
-    set_body_frame_damping!(sys, kite.body_sim_damping)
-    SymbolicAWEModels.set_world_frame_damping(sys, kite.world_sim_damping)
+    set_body_frame_damping!(sys, kite_set.body_sim_damping)
+    SymbolicAWEModels.set_world_frame_damping(sys, kite_set.world_sim_damping)
     beam_idxs = beam_body_idxs(sys)
-    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite.beam_body_damping,
+    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite_set.beam_body_damping,
                                              beam_idxs)
-    SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite.beam_world_damping,
+    SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite_set.beam_world_damping,
                                               beam_idxs)
-    SymbolicAWEModels.set_angular_damping(sys.bodies, kite.beam_angular_damping,
+    SymbolicAWEModels.set_angular_damping(sys.bodies, kite_set.beam_angular_damping,
                                           beam_idxs)
 
-    sam = SymbolicAWEModel(set, sys; backend = kite.backend)
+    sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
 
     # `l_tethers: [0]` is KiteUtils' "not set" sentinel; overriding with it would
     # collapse the tether the geometry was placed with.
@@ -215,24 +223,24 @@ function create_v3_model(project::String; data_path=nothing, kite=nothing,
 end
 
 """
-    apply_kite_material!(sys, kite::V3KiteConfig) -> sys
+    apply_kite_material!(sys, kite_set::V3KiteConfig) -> sys
 
 Set the bridle material a kite carries onto a loaded structure, scale the beam
-joints' Rayleigh damping by `kite.beam_joint_damping_scale`, and swap the YAML's
+joints' Rayleigh damping by `kite_set.beam_joint_damping_scale`, and swap the YAML's
 linear Breukels bending for the curvature-softening Comer-Levy law when
-`kite.adapter_dir` names the export the beam was built from. All three are no-ops
+`kite_set.adapter_dir` names the export the beam was built from. All three are no-ops
 on a geometry that has neither bridle tethers nor beam joints.
 """
-function apply_kite_material!(sys, kite::V3KiteConfig)
-    if !isnothing(kite.adapter_dir) && isdir(kite.adapter_dir)
-        SurfplanAdapter.apply_comer_bending!(sys, kite.adapter_dir,
-            SurfplanAdapter.V3BeamTopology(bridle = kite.bridle))
+function apply_kite_material!(sys, kite_set::V3KiteConfig)
+    if !isnothing(kite_set.adapter_dir) && isdir(kite_set.adapter_dir)
+        SurfplanAdapter.apply_comer_bending!(sys, kite_set.adapter_dir,
+            SurfplanAdapter.V3BeamTopology(bridle = kite_set.bridle))
         @info "Comer-Levy bending applied" joints=length(sys.timoshenko_joints)
     end
-    SurfplanAdapter.apply_bridle_material!(sys, kite.bridle)
-    if kite.beam_joint_damping_scale != 1.0
+    SurfplanAdapter.apply_bridle_material!(sys, kite_set.bridle)
+    if kite_set.beam_joint_damping_scale != 1.0
         for joint in sys.timoshenko_joints
-            joint.damping *= kite.beam_joint_damping_scale
+            joint.damping *= kite_set.beam_joint_damping_scale
         end
     end
     return sys
@@ -240,7 +248,7 @@ end
 
 """
     build_v3_model(project; data_path=nothing, remake_model=nothing,
-                   remake_settled_state=nothing, kite=nothing,
+                   remake_settled_state=nothing, kite_set=nothing,
                    settle=nothing) -> (sam, sys)
 
 Bring up the model a project file describes, ready to step. Both `remake` flags
@@ -255,32 +263,32 @@ restoring after `init!` rather than before, so the rest lengths stay the ones th
 state was relaxed against.
 """
 function build_v3_model(project; data_path=nothing, remake_model=nothing,
-                        remake_settled_state=nothing, kite=nothing, settle=nothing)
+                        remake_settled_state=nothing, kite_set=nothing, settle=nothing)
     isnothing(data_path) && (data_path = v3_data_path())
     set_data_path(data_path)
-    isnothing(kite) && (kite = load_kite(project; data_path))
-    isnothing(remake_model) && (remake_model = kite.remake_model)
+    isnothing(kite_set) && (kite_set = load_kite(project; data_path))
+    isnothing(remake_model) && (remake_model = kite_set.remake_model)
     isnothing(remake_settled_state) &&
-        (remake_settled_state = kite.remake_settled_state)
+        (remake_settled_state = kite_set.remake_settled_state)
     set = Settings(project)
 
-    kite.init_mode in (:settle, :relaxed_state) ||
+    kite_set.init_mode in (:settle, :relaxed_state) ||
         error("init_mode must be :settle or :relaxed_state, got " *
-              "$(kite.init_mode) in the kite_settings of $project")
+              "$(kite_set.init_mode) in the kite_settings of $project")
 
-    if kite.init_mode === :relaxed_state
-        isnothing(kite.init_state) &&
+    if kite_set.init_mode === :relaxed_state
+        isnothing(kite_set.init_state) &&
             error("init_mode is :relaxed_state but no init_state is set in " *
                   "the kite_settings of $project")
-        sam, sys = create_v3_model(project; data_path, kite)
-        apply_kite_material!(sys, kite)
-        set_depower!(sys, set.depower / 100.0, 0.0, kite.geom)
-        set_steering!(sys, 0.0, kite.geom)
+        sam, sys = create_v3_model(project; data_path, kite_set)
+        apply_kite_material!(sys, kite_set)
+        set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
+        set_steering!(sys, 0.0, kite_set.geom)
         SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
                                 remake_vsm=true)
-        sys.winches[1].brake = kite.brake
+        sys.winches[1].brake = kite_set.brake
 
-        state_path = joinpath(data_path, kite.init_state)
+        state_path = joinpath(data_path, kite_set.init_state)
         start_from_state!(sam, sys, state_path) ||
             error("No relaxed state at $state_path; run " *
                   "examples/relax_bridle.jl for this geometry first")
@@ -288,7 +296,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         return sam, sys
     end
 
-    isnothing(settle) && (settle = load_settle(project; data_path, kite))
+    isnothing(settle) && (settle = load_settle(project; data_path, kite_set))
     settle.v_wind = set.v_wind
     settle.tether_length = set.l_tether
     settle.g_earth = set.g_earth
@@ -302,7 +310,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         data_path, remake_model, remake_settled_state)
     failed && error("Settling failed for $project")
     sys = sam.sys_struct
-    apply_kite_material!(sys, kite)
-    sys.winches[1].brake = kite.brake
+    apply_kite_material!(sys, kite_set)
+    sys.winches[1].brake = kite_set.brake
     return sam, sys
 end

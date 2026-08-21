@@ -116,7 +116,7 @@ using KitePodModels: KCU
                     heading=0.0, steering=0.0, depower=0.25,
                     wind_vec=[10.0, 0.0, 0.0])
         cfg_dir = V3Kite.V3SettleConfig()
-        cfg_cont = V3Kite.V3SettleConfig(kite=V3KiteConfig(
+        cfg_cont = V3Kite.V3SettleConfig(kite_set=V3KiteConfig(
             aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero()))
         path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
         path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
@@ -177,11 +177,11 @@ using KitePodModels: KCU
                         "system_cabauw.yaml", "system_psm.yaml",
                         "system_beam.yaml", "system_psm_replay.yaml",
                         "system_beam_replay.yaml")
-            kite = load_kite(project)
-            @test kite isa V3KiteConfig
-            @test kite.init_mode in (:settle, :relaxed_state)
+            kite_set = load_kite(project)
+            @test kite_set isa V3KiteConfig
+            @test kite_set.init_mode in (:settle, :relaxed_state)
             @test isfile(struc_geometry_path(project))
-            settle = load_settle(project; kite)
+            settle = load_settle(project; kite_set)
             @test settle.project == project
             @test settle.num_steps > 0
         end
@@ -200,9 +200,9 @@ using KitePodModels: KCU
         @test beam.aero_mode isa AeroPressure
 
         # The settling schedule sets the transient, the kite file what flies.
-        beam_settle = load_settle("system_beam.yaml"; kite=beam)
+        beam_settle = load_settle("system_beam.yaml"; kite_set=beam)
         @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
-        @test beam_settle.kite.body_sim_damping == beam.body_sim_damping
+        @test beam_settle.kite_set.body_sim_damping == beam.body_sim_damping
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.

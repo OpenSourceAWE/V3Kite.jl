@@ -48,15 +48,15 @@ PROJECT = select_project(
     prompt = "Which wing model were the flight data replayed on?")
 
 set_data_path(v3_data_path())
-kite = load_kite(PROJECT)
+kite_set = load_kite(PROJECT)
 replay = load_replay(PROJECT)
 SECTION, start_utc, end_utc = replay_maneuver(replay)
 
 datadir = joinpath(artifact"flight_data", "flight_data")
 h5_path = joinpath(datadir, replay.year == 2025 ?
     "ekf_awe_2025-10-09.h5" : "ekf_awe_2019-10-08.h5")
-replay.year == 2019 && (kite.geom.depower_offset = replay.depower_offset_2019)
-depower_offset_pct = kite.geom.depower_offset * 100.0
+replay.year == 2019 && (kite_set.geom.depower_offset = replay.depower_offset_2019)
+depower_offset_pct = kite_set.geom.depower_offset * 100.0
 
 FIGURES_DIR = isabspath(replay.figures_dir) ? replay.figures_dir :
     joinpath(@__DIR__, "..", replay.figures_dir)
@@ -320,8 +320,14 @@ end
 # Main execution
 # =============================================================================
 
-sim_name, data_name = replay_log_names(h5_path, start_utc, end_utc, kite.geom)
+sim_name, data_name = replay_log_names(h5_path, start_utc, end_utc, kite_set.geom)
 @info "Loading replay logs" sim_name data_name
+for name in (sim_name, data_name)
+    isfile(joinpath(v3_data_path(), name * ".arrow")) || error(
+        "No log $name.arrow. A replay that aborts before logging a state " *
+        "writes no log, so re-run flight_replay.jl and check that it " *
+        "reports both logs as saved.")
+end
 syslog  = load_log(sim_name)
 datalog = load_log(data_name)
 
@@ -331,21 +337,18 @@ set.g_earth = 9.81
 set.profile_law = 0
 source_struc = struc_geometry_path(PROJECT; data_path)
 source_aero = aero_geometry_path(PROJECT; data_path,
-    aero_mode = resolve_aero_mode(kite))
+    aero_mode = resolve_aero_mode(kite_set))
 vsm_set = VortexStepMethod.VSMSettings(
     vsm_settings_path(PROJECT; data_path); data_prefix=false)
 vsm_set.wings[1].geometry_file = source_aero
-aero_mode = resolve_aero_mode(kite)
-sam, _ = build_replay_sys_struct(
-    set, kite.geom, source_struc, vsm_set; aero_mode)
-data_sam, _ = build_replay_sys_struct(
-    set, kite.geom, source_struc, vsm_set; aero_mode)
+sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
+data_sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 
 plots = create_replay_plots(;
     sys_struct=sam.sys_struct,
     data_sys_struct=data_sam.sys_struct,
     syslog, datalog,
-    frame_csvs, geom=kite.geom,
+    frame_csvs, geom=kite_set.geom,
     section=SECTION,
     distance_based_steering=replay.distance_based_steering,
     depower_offset_pct=depower_offset_pct,

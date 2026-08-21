@@ -40,14 +40,14 @@ PROJECT = select_project(
     prompt = "Which wing model should the flight data be replayed on?")
 
 set_data_path(v3_data_path())
-kite = load_kite(PROJECT)
+kite_set = load_kite(PROJECT)
 replay = load_replay(PROJECT)
 SECTION, start_utc, end_utc = replay_maneuver(replay)
 
 datadir = joinpath(artifact"flight_data", "flight_data")
 h5_path = joinpath(datadir, replay.year == 2025 ?
     "ekf_awe_2025-10-09.h5" : "ekf_awe_2019-10-08.h5")
-replay.year == 2019 && (kite.geom.depower_offset = replay.depower_offset_2019)
+replay.year == 2019 && (kite_set.geom.depower_offset = replay.depower_offset_2019)
 
 @info "Flight replay" PROJECT SECTION start_utc end_utc
 
@@ -87,9 +87,17 @@ end
 # Main replay function
 # =============================================================================
 
+"""
+    has_samples(logger)
+
+True when `logger` exists and holds at least one logged state, which is what
+decides whether an aborted replay leaves a log worth saving.
+"""
+has_samples(logger) = !isnothing(logger) && logger.index > 1
+
 function run_physics_replay(h5_path;
         start_utc=start_utc, end_utc=end_utc,
-        n_substeps=replay.n_substeps, vsm_interval=kite.vsm_interval)
+        n_substeps=replay.n_substeps, vsm_interval=kite_set.vsm_interval)
 
     full_data = load_flight_data(h5_path)
     limited_data, _ = limit_by_utc(
@@ -174,6 +182,8 @@ function run_physics_replay(h5_path;
             wind_speed_vertical = wv,
             R_b_w = R_b_w,
             v_app = raw.ekf_kite_apparent_windspeed,
+            omega_b = [raw.ekf_roll_rate, raw.ekf_pitch_rate,
+                       raw.ekf_yaw_rate],
             drag_coeff = raw.ekf_wing_drag_coefficient,
             lift_coeff = raw.ekf_wing_lift_coefficient,
             tether_drag_coeff =
@@ -201,7 +211,7 @@ function run_physics_replay(h5_path;
     # Settle wing with first CSV conditions
     row1 = get_row(data, 1)
     tether_len = Float64(row1.tether_len)
-    settle_config = load_settle(PROJECT; kite)
+    settle_config = load_settle(PROJECT; kite_set)
     settle_config.v_wind = row1.v_app
     settle_config.tether_length = tether_len
     settle_config.start_depower = row1.depower * 100.0 + 10.0
@@ -218,7 +228,7 @@ function run_physics_replay(h5_path;
     data_path = v3_data_path()
     source_struc = struc_geometry_path(PROJECT; data_path)
     source_aero = aero_geometry_path(PROJECT; data_path,
-        aero_mode = resolve_aero_mode(kite))
+        aero_mode = resolve_aero_mode(kite_set))
     vsm_set = VortexStepMethod.VSMSettings(
         vsm_settings_path(PROJECT; data_path); data_prefix=false)
     vsm_set.wings[1].geometry_file = source_aero
@@ -239,12 +249,12 @@ function run_physics_replay(h5_path;
         set.l_tether = tether_len
         set.profile_law = 0
 
-        gc = kite.geom
+        gc = kite_set.geom
         sys = load_sys_struct_from_yaml(source_struc;
             system_name=V3_MODEL_NAME, set,
-            dynamics_type=kite.wing_type, vsm_set,
-            aero_mode=resolve_aero_mode(kite))
-        sam = SymbolicAWEModel(set, sys; backend = kite.backend)
+            dynamics_type=kite_set.wing_type, vsm_set,
+            aero_mode=resolve_aero_mode(kite_set))
+        sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
         apply_geom_adjustments!(sys, gc)
         SymbolicAWEModels.init!(sam;
             remake=false, ignore_l0=false,
@@ -263,7 +273,7 @@ function run_physics_replay(h5_path;
     # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
     data_struct = load_settled_struct(
         settle_config, row1; set)
-    data_sam = SymbolicAWEModel(set, data_struct; backend = kite.backend)
+    data_sam = SymbolicAWEModel(set, data_struct; backend = kite_set.backend)
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
     init!(data_sam; remake=false, remake_vsm=true,
         reinit_sys=false)
@@ -275,14 +285,14 @@ function run_physics_replay(h5_path;
     last_report_time = replay_start
     last_report_sim = 0.0
     sys = sam.sys_struct
-    if kite.wing_mass > 0
-        distribute_wing_mass!(sys, kite.wing_mass;
-            dist=kite.wing_mass_le_frac)
+    if kite_set.wing_mass > 0
+        distribute_wing_mass!(sys, kite_set.wing_mass;
+            dist=kite_set.wing_mass_le_frac)
     end
-    if kite.wing_drag_coeff > 0
+    if kite_set.wing_drag_coeff > 0
         distribute_wing_drag!(sys,
             sys.wings[1].vsm_aero.projected_area,
-            kite.wing_drag_coeff)
+            kite_set.wing_drag_coeff)
     end
 
     heading_pid = create_heading_pid(;
@@ -290,7 +300,8 @@ function run_physics_replay(h5_path;
     lateral_pid = create_heading_pid(;
         K=replay.lateral_K, dt)
 
-    # Log full CSV reference independently of sim
+    # Log full CSV reference independently of sim. It is posed, never stepped:
+    # reinit! is what syncs the imposed state through the symbolic getters.
     for step in 1:n_data_steps-1
         row = get_row(data, step)
         update_sys_struct_from_data!(
@@ -384,7 +395,7 @@ function run_physics_replay(h5_path;
         eff_steer, eff_dep =
             update_vel_from_csv!(
                 sam.sys_struct, phys_row,
-                settle_config.kite.geom;
+                settle_config.kite_set.geom;
                 heading_correction=
                     heading_correction +
                     lateral_correction +
@@ -478,7 +489,7 @@ function run_physics_replay(h5_path;
         if is_interrupt
             @warn "Interrupted, stopping sim"
         elseif err isa ErrorException || err isa AssertionError
-            @warn "Sim aborted, keeping partial log" msg=err.msg
+            @warn "Replay aborted, keeping whatever was logged" msg=err.msg
         else
             rethrow(err)
         end
@@ -488,13 +499,9 @@ function run_physics_replay(h5_path;
     @info "Replay done" elapsed
 
     sim_name, data_name = replay_log_names(h5_path, start_utc, end_utc,
-                                           settle_config.kite.geom)
-    if !isnothing(logger) && logger.index > 1
-        save_log(logger, sim_name)
-    end
-    if !isnothing(data_logger) && data_logger.index > 1
-        save_log(data_logger, data_name)
-    end
+                                           settle_config.kite_set.geom)
+    has_samples(logger) && save_log(logger, sim_name)
+    has_samples(data_logger) && save_log(data_logger, data_name)
 
     return sam, logger, data_sam, data_logger, data,
         settle_config, settle_log, dt
@@ -507,8 +514,15 @@ end
 sam, logger, data_sam, data_logger, data,
     settle_config, settle_log, dt = run_physics_replay(h5_path)
 
-sim_name, data_name = replay_log_names(h5_path, start_utc, end_utc, kite.geom)
-@info "Logs saved" sim_name data_name
-@info "Plot them with: include(\"flight_replay_plots.jl\")"
+sim_name, data_name = replay_log_names(h5_path, start_utc, end_utc, kite_set.geom)
+if has_samples(logger) && has_samples(data_logger)
+    @info "Logs saved" sim_name data_name
+    @info "Plot them with: include(\"flight_replay_plots.jl\")"
+else
+    has_samples(logger) && @info "Sim log saved" sim_name
+    has_samples(data_logger) && @info "Data log saved" data_name
+    @warn "flight_replay_plots.jl needs both logs, so it cannot run on this " *
+        "aborted replay"
+end
 
 nothing

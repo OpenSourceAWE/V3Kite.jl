@@ -504,17 +504,17 @@ function init(v_wind_gnd, l_tether;
     wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)
 
     position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
-    kite = load_kite(system_yaml; data_path)
-    isnothing(aero_mode) || (kite.aero_mode = aero_mode)
-    isnothing(gc) || (kite.geom = gc)
+    kite_set = load_kite(system_yaml; data_path)
+    isnothing(aero_mode) || (kite_set.aero_mode = aero_mode)
+    isnothing(gc) || (kite_set.geom = gc)
     isnothing(body_sim_damping) ||
-        (kite.body_sim_damping = collect(Float64, body_sim_damping))
-    isnothing(remake_model) && (remake_model = kite.remake_model)
+        (kite_set.body_sim_damping = collect(Float64, body_sim_damping))
+    isnothing(remake_model) && (remake_model = kite_set.remake_model)
     isnothing(remake_settled_state) &&
-        (remake_settled_state = kite.remake_settled_state)
+        (remake_settled_state = kite_set.remake_settled_state)
     settle_config = V3SettleConfig(
         project = system_yaml,
-        kite = kite,
+        kite_set = kite_set,
         v_wind = v_wind_gnd,
         tether_length = l_tether,
         dt = 0.05,
@@ -571,7 +571,7 @@ function init(v_wind_gnd, l_tether;
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
 
-    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = kite.geom, dt = dt,
+    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = kite_set.geom, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
         wind_vec_mean = wind_vec)
 

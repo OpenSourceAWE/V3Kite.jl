@@ -19,6 +19,7 @@ using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
 using GLMakie
 using MakieControlPlots
+using MakieControlPlots: plot
 using SymbolicAWEModels
 using LinearAlgebra
 using Statistics
@@ -200,7 +201,7 @@ end
 # =============================================================================
 
 function plot_time_series(lg, sam)
-    return Makie.plot(sam.sys_struct, lg;
+    return plot(sam.sys_struct, lg;
         plot_turn_rates=false, plot_reelout=false,
         plot_twist=false,
         plot_yaw_rate_paper=false,

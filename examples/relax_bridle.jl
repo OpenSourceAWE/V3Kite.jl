@@ -53,16 +53,16 @@ STEERING = 0.0        # fraction [-1, 1]
 # =============================================================================
 
 set_data_path(v3_data_path())
-kite = load_kite(PROJECT)
+kite_set = load_kite(PROJECT)
 struc_yaml = basename(struc_geometry_path(PROJECT))
 
-sam, sys = create_v3_model(PROJECT; kite)
-apply_kite_material!(sys, kite)
+sam, sys = create_v3_model(PROJECT; kite_set)
+apply_kite_material!(sys, kite_set)
 
-set_depower!(sys, DEPOWER, STEERING, kite.geom)
-set_steering!(sys, STEERING, kite.geom)
+set_depower!(sys, DEPOWER, STEERING, kite_set.geom)
+set_steering!(sys, STEERING, kite_set.geom)
 
-init!(sam; remake=kite.remake_model, ignore_l0=false, remake_vsm=true)
+init!(sam; remake=kite_set.remake_model, ignore_l0=false, remake_vsm=true)
 sys.winches[1].brake = true
 
 scale, steps, residual = relax_bridle!(sam, sys)

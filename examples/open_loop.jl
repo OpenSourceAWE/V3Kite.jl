@@ -16,6 +16,7 @@ end
 using V3Kite
 using GLMakie
 using MakieControlPlots
+using MakieControlPlots: plot
 using CairoMakie
 GLMakie.activate!()
 using SymbolicAWEModels
@@ -60,11 +61,11 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
-kite = load_kite(PROJECT)
-kite.aero_mode = AERO_MODE
+kite_set = load_kite(PROJECT)
+kite_set.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
     project = PROJECT,
-    kite = kite,
+    kite_set = kite_set,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,
@@ -76,7 +77,7 @@ settle_config = V3SettleConfig(
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
 )
-gc = settle_config.kite.geom
+gc = settle_config.kite_set.geom
 
 @info "Settling V3 model..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
@@ -155,7 +156,7 @@ log_name = "open_loop_lt_$(lt_tag)"
 save_log(logger, log_name)
 syslog = load_log(log_name)
 
-fig = Makie.plot(sam.sys_struct, syslog)
+fig = plot(sam.sys_struct, syslog)
 scene = SymbolicAWEModels.replay(syslog, sam.sys_struct, show_panes=false)
 
 display(fig)

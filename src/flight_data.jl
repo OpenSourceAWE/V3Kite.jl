@@ -326,7 +326,7 @@ using the provided geometry config.
 function update_sys_struct_from_data!(sys, row;
         extra_vel_body_x=0.0,
         config::V3GeomAdjustConfig=V3GeomAdjustConfig())
-    @unpack wings, points, winches, segments, transforms = sys
+    @unpack wings, points, winches, segments, transforms, bodies = sys
     wing = wings[1]
     transform = transforms[1]
 
@@ -343,14 +343,24 @@ function update_sys_struct_from_data!(sys, row;
     # apply vel with optional extra velocity in body x
     data_vel = [row.vx, row.vy, row.vz]
     extra_vel_w = extra_vel_body_x * R_b_w[:, 1]
-    wing.vel_w .= data_vel + extra_vel_w
+    omega_b = hasproperty(row, :omega_b) ? collect(row.omega_b) : zeros(3)
+    omega_w = R_b_w * omega_b
     for point in points
         transform_frac =
             point.pos_w ⋅ normalize(wing.pos_w) /
             norm(wing.pos_w)
         point.vel_w .= transform_frac *
-            (data_vel + extra_vel_w)
+            (data_vel + extra_vel_w +
+             cross(omega_w, point.pos_w - wing.pos_w))
     end
+    # The transform reset zeroed every body, and a beam wing's nodes ride those,
+    # so the imposed state is only consistent once they carry it too.
+    for body in bodies
+        body.vel_w .= data_vel + extra_vel_w +
+            cross(omega_w, body.pos_w - wing.pos_w)
+        body.ω_b .= body.R_b_to_w' * omega_w
+    end
+    SymbolicAWEModels.init_principal_frame!(bodies, points)
 
     # update winch
     winches[1].brake = true

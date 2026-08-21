@@ -21,6 +21,7 @@ end
 using V3Kite
 using GLMakie
 using MakieControlPlots
+using MakieControlPlots: plot
 using SymbolicAWEModels
 
 # =============================================================================
@@ -44,7 +45,7 @@ PERIOD = 30.0         # setpoint period [s]
 @info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
 
 set_data_path(v3_data_path())
-kite = load_kite(PROJECT)
+kite_set = load_kite(PROJECT)
 heading = load_heading(PROJECT)
 set = Settings(PROJECT)
 
@@ -54,7 +55,7 @@ n_steps = Int(round(set.sample_freq * set.sim_time))
 dt = set.sim_time / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
-nominal_steering = V3Kite.get_steering(sys, kite.geom)
+nominal_steering = V3Kite.get_steering(sys, kite_set.geom)
 max_heading_rad = deg2rad(MAX_HEADING)
 angular_freq = 2pi / PERIOD
 
@@ -76,9 +77,9 @@ for step in 1:n_steps
     steer_ctrl = pid(target_rad, measured, 0.0)
     sys_state.bearing = target_rad
 
-    set_steering!(sys, nominal_steering + steer_ctrl, kite.geom)
+    set_steering!(sys, nominal_steering + steer_ctrl, kite_set.geom)
 
-    if !sim_step!(sam; dt, vsm_interval = kite.vsm_interval)
+    if !sim_step!(sam; dt, vsm_interval = kite_set.vsm_interval)
         @error "Simulation failed" step
         break
     end
@@ -101,7 +102,7 @@ syslog = load_log(log_name)
 # =============================================================================
 
 @info "Creating visualization..."
-fig = Makie.plot(sam.sys_struct, syslog;
+fig = plot(sam.sys_struct, syslog;
     plot_tether=true,
     setpoints=Dict(:heading => syslog.syslog.bearing))
 display(GLMakie.Screen(), fig)
