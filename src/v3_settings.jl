@@ -505,6 +505,8 @@ Base.@kwdef mutable struct V3ReplayConfig
     wind_source_dir::Symbol = :lidar
     "Write the figures instead of only displaying them"
     save_figs::Bool = true
+    "Record the animations, which is the slow part of the plotting script"
+    save_videos::Bool = true
     "Directory the figures go to, relative to the repository root when not absolute"
     figures_dir::String = "output"
     "UTC window `[start, end]` of every maneuver, keyed by `\$(section)_\$(year)`"

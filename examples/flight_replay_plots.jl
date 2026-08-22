@@ -8,10 +8,10 @@ Loads the simulation and reference logs flight_replay.jl saved and draws the
 comparison: trajectory, panels, yaw rate against steering, the body-frame and
 twist views at the photogrammetry frames, and animations of all of it.
 
-`save_figs` in the project's `replay_settings:` governs everything written to
-disk — the PDFs and the animations alike — and `figures_dir` says where. With it
-off the figures are still built and displayed, which is the fast path when only
-the numbers matter: recording the animations is the slow part of this script.
+`save_figs` in the project's `replay_settings:` writes the PDFs and
+`save_videos` records the animations; `figures_dir` says where both go. Either
+one off still builds and displays the figures, and turning `save_videos` off is
+the fast path when only the numbers matter: recording is the slow part here.
 
 Run from the REPL after (or instead of, if the logs already exist) running
 flight_replay.jl:
@@ -354,7 +354,7 @@ plots = create_replay_plots(;
     depower_offset_pct=depower_offset_pct,
     figures_dir=FIGURES_DIR, save_figs=replay.save_figs)
 
-if replay.save_figs
+if replay.save_videos
     sim_tape = syslog_to_tape(syslog)
     data_tape = syslog_to_tape(datalog)
     frame_syslog_idxs = find_frame_syslog_idxs(syslog, frame_csvs)

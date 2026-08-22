@@ -24,7 +24,8 @@ replay_settings:
   wind_source_speed: ekf         # ekf | lidar
   wind_source_dir: lidar         # ekf | lidar, also the vertical component
 
-  save_figs: true                # write the PDFs and animations, not just display
+  save_figs: true                # write the PDFs, not just display them
+  save_videos: false             # record the animations, the slow part
   figures_dir: output            # relative to the repository root
 
   maneuvers:
