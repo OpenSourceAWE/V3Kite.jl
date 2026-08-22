@@ -13,6 +13,42 @@ accessors here are siblings for the keys V3Kite adds.
 """
 
 """
+    project_path(project; data_path=nothing) -> String
+
+Absolute path of the project file itself, resolved under `data_path` when
+`project` is a bare filename and [`v3_data_path`](@ref) is where it lives.
+"""
+project_path(project; data_path=nothing) = abspath(isabspath(project) ? project :
+    joinpath(something(data_path, v3_data_path()), project))
+
+"""
+    project_data_path(project, data_path) -> String
+
+Data directory a project is read under: `data_path` when it is given, and the
+directory the project file itself lives in otherwise. A project kept outside the
+package therefore resolves against its own directory instead of the package's.
+"""
+project_data_path(project, data_path) = isnothing(data_path) ?
+    dirname(project_path(project)) : data_path
+
+"""
+    project_file(project, entry; data_path=nothing) -> String
+
+Absolute path of `entry`, one of the filenames a project's `system:` section
+points at. It is looked for beside the project file first and under
+[`v3_data_path`](@ref) after, so a project kept elsewhere still reaches the files
+V3Kite ships while its own copies win. A name found in neither resolves beside
+the project, which is where the error should point.
+"""
+function project_file(project, entry; data_path=nothing)
+    isabspath(entry) && return entry
+    beside = joinpath(dirname(project_path(project; data_path)), entry)
+    isfile(beside) && return beside
+    shipped = joinpath(v3_data_path(), entry)
+    return isfile(shipped) ? shipped : beside
+end
+
+"""
     project_entry(project, key; data_path=nothing, default=nothing) -> String
 
 Filename under `key` in the `system:` section of `project`. This is KiteUtils'
@@ -26,8 +62,7 @@ Errors naming the project file when the key is absent and no `default` is given,
 since a missing pointer is a mistake in the file rather than something to guess.
 """
 function project_entry(project, key; data_path=nothing, default=nothing)
-    isnothing(data_path) && (data_path = v3_data_path())
-    dict = YAML.load_file(joinpath(data_path, project))
+    dict = YAML.load_file(project_path(project; data_path))
     system = get(dict, "system", nothing)
     isnothing(system) && error("$project has no `system:` section")
     if !haskey(system, key)
@@ -44,8 +79,8 @@ end
 Absolute path of the project's `structural_geometry:` file.
 """
 struc_geometry_path(project; data_path=nothing) =
-    joinpath(something(data_path, v3_data_path()),
-        project_entry(project, "structural_geometry"; data_path))
+    project_file(project,
+        project_entry(project, "structural_geometry"; data_path); data_path)
 
 """
     vsm_settings_path(project; data_path=nothing) -> String
@@ -53,8 +88,8 @@ struc_geometry_path(project; data_path=nothing) =
 Absolute path of the project's `vsm_settings:` file.
 """
 vsm_settings_path(project; data_path=nothing) =
-    joinpath(something(data_path, v3_data_path()),
-        project_entry(project, "vsm_settings"; data_path))
+    project_file(project,
+        project_entry(project, "vsm_settings"; data_path); data_path)
 
 """
     has_surface_tables(geometry_path) -> Bool
@@ -89,7 +124,7 @@ has no surface to work on unless the geometry carries
 """
 function aero_geometry_path(project; data_path=nothing, aero_mode=nothing)
     entry = project_entry(project, "aero_geometry"; data_path)
-    path = joinpath(something(data_path, v3_data_path()), entry)
+    path = project_file(project, entry; data_path)
     isfile(path) || error(
         "No aero geometry at $path (from `aero_geometry:` in $project). " *
         "The surface-resolved tables are generated, not tracked — run " *
@@ -308,8 +343,9 @@ end
 The [`V3KiteConfig`](@ref) a project file points at with its `kite_settings:`
 key.
 """
-load_kite(project; data_path=nothing) =
-    V3KiteConfig(project_entry(project, "kite_settings"; data_path); data_path)
+load_kite(project; data_path=nothing) = V3KiteConfig(
+    project_file(project, project_entry(project, "kite_settings"; data_path);
+        data_path); data_path)
 
 """
     load_settle(project; data_path=nothing, kite_set=nothing) -> V3SettleConfig
@@ -324,7 +360,7 @@ function load_settle(project; data_path=nothing, kite_set=nothing)
     isnothing(kite_set) && (kite_set = load_kite(project; data_path))
     filename = project_entry(project, "settle_settings"; data_path, default="")
     config = isempty(filename) ? V3SettleConfig() :
-        V3SettleConfig(filename; data_path)
+        V3SettleConfig(project_file(project, filename; data_path); data_path)
     config.project = project
     config.kite_set = kite_set
     return config
@@ -394,7 +430,7 @@ The [`HeadingSettings`](@ref) a project file points at with its
 function load_heading(project; data_path=nothing)
     filename = project_entry(project, "heading_settings"; data_path, default="")
     return isempty(filename) ? HeadingSettings() :
-        HeadingSettings(filename; data_path)
+        HeadingSettings(project_file(project, filename; data_path); data_path)
 end
 
 """

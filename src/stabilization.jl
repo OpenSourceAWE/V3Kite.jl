@@ -139,9 +139,7 @@ the key knew about them keep being found.
 """
 function settled_state_path(config::V3SettleConfig, init_row;
                             data_path=nothing, cache_path=nothing)
-    if isnothing(data_path)
-        data_path = v3_data_path()
-    end
+    data_path = project_data_path(config.project, data_path)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     gc = config.kite_set.geom
     dp_reduction = gc.reduce_depower ?
@@ -168,7 +166,7 @@ function settled_state_path(config::V3SettleConfig, init_row;
         "_el$(num_tag(round(el_deg, digits=1)))" *
         "_g$(Int(round(config.g_earth * 10)))" *
         "_sys$(splitext(basename(config.project))[1])"
-    yaml_kcu_mass = Settings(joinpath(data_path, config.project)).kcu_mass
+    yaml_kcu_mass = Settings(project_path(config.project; data_path)).kcu_mass
     resolved_kcu_mass = !isnothing(config.kcu_mass) ? config.kcu_mass :
         (yaml_kcu_mass != 0 ? yaml_kcu_mass : nothing)
     if !isnothing(resolved_kcu_mass)
@@ -345,7 +343,7 @@ the state is missing; run [`settle_wing`](@ref) first to create it.
 function load_settled_struct(config::V3SettleConfig, init_row;
                              data_path=nothing, cache_path=nothing,
                              set=nothing)
-    isnothing(data_path) && (data_path = v3_data_path())
+    data_path = project_data_path(config.project, data_path)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     path = settled_state_path(config, init_row; data_path, cache_path)
     sys, yaml_set = build_settling_struct(config; data_path,
@@ -655,9 +653,7 @@ function settle_wing(config::V3SettleConfig, init_row;
                      show_progress=true,
                      remake_model=false,
                      remake_settled_state=false)
-    if isnothing(data_path)
-        data_path = v3_data_path()
-    end
+    data_path = project_data_path(config.project, data_path)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
 
     gc = config.kite_set.geom
@@ -703,7 +699,7 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     # Load model from the settled state, or source
     # YAML if settling failed
-    set = Settings(joinpath(data_path, config.project))
+    set = Settings(project_path(config.project; data_path))
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
@@ -771,7 +767,7 @@ the run flies.
 """
 function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
-    set = Settings(joinpath(data_path, config.project))
+    set = Settings(project_path(config.project; data_path))
     set.g_earth = config.g_earth
     set.v_wind = config.v_wind
     set.l_tether = config.tether_length
@@ -850,7 +846,8 @@ function run_power_zone_settling!(config::V3SettleConfig;
         data_path, source_struc, source_aero, cache_path)
 
     if !isnothing(config.kite_set.init_state)
-        state_path = joinpath(data_path, config.kite_set.init_state)
+        state_path = project_file(config.project, config.kite_set.init_state;
+            data_path)
         start_from_state!(sam, sys, state_path) ||
             error("No relaxed state at $state_path; run the relaxation " *
                   "example for $(basename(source_struc)) first")

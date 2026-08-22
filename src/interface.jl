@@ -389,7 +389,7 @@ end
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
          gc=nothing, body_start_damping=[0.0, 0.0, 40.0],
          body_sim_damping=nothing, damping_per_stiffness=nothing,
-         aero_mode=nothing, data_path=v3_data_path(), cache_path=nothing,
+         aero_mode=nothing, data_path=nothing, cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_torque=nothing,
          remake_model=nothing, remake_settled_state=nothing) -> V3KITE
 
@@ -413,7 +413,7 @@ the aerodynamics and the geometry adjustments of that project's
 `kite_settings:` file; `nothing` (the default) takes both from it.
 
 `data_path` is the directory the geometry/settings YAMLs are READ from,
-defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
+defaulting to the directory `system_yaml` itself lives in; `cache_path` is where
 everything generated is WRITTEN — the settled-geometry cache
 (`settled_*.arrow`), the settling log, and the serialized model binary
 (`model_*.bin`).
@@ -489,14 +489,15 @@ function init(v_wind_gnd, l_tether;
               body_sim_damping = nothing,
               damping_per_stiffness = nothing,
               aero_mode = nothing,
-              data_path = v3_data_path(),
+              data_path = nothing,
               cache_path = nothing,
               use_turbulence = nothing,
               warmup_time = 0.0,
               warmup_torque = nothing,
               remake_model = nothing,
               remake_settled_state = nothing)
-    system_path = joinpath(data_path, system_yaml)
+    data_path = project_data_path(system_yaml, data_path)
+    system_path = project_path(system_yaml; data_path)
     if isnothing(elevation)
         elevation = Settings(system_path).elevation
     end

@@ -143,6 +143,7 @@ export V3ReplayConfig, load_replay, replay_maneuver
 export struc_geometry_path, aero_geometry_path, vsm_settings_path
 export parse_backend, parse_aero_mode, parse_wing_type
 export fill_struct, convert_setting, project_entry
+export project_path, project_file, project_data_path
 
 # Heading-controller settings exports
 export HeadingSettings, load_heading, heading_pid, schedule_heading_pid!

@@ -180,11 +180,11 @@ needs — the log's wind and tether length are not the project's.
 """
 function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
                          settings=nothing)
-    isnothing(data_path) && (data_path = v3_data_path())
+    data_path = project_data_path(project, data_path)
     set_data_path(data_path)
     isnothing(kite_set) && (kite_set = load_kite(project; data_path))
 
-    set = isnothing(settings) ? Settings(project) : settings
+    set = isnothing(settings) ? Settings(project_path(project; data_path)) : settings
     set.v_reel_outs[1] = 0.0
 
     struc_path = struc_geometry_path(project; data_path)
@@ -264,13 +264,13 @@ state was relaxed against.
 """
 function build_v3_model(project; data_path=nothing, remake_model=nothing,
                         remake_settled_state=nothing, kite_set=nothing, settle=nothing)
-    isnothing(data_path) && (data_path = v3_data_path())
+    data_path = project_data_path(project, data_path)
     set_data_path(data_path)
     isnothing(kite_set) && (kite_set = load_kite(project; data_path))
     isnothing(remake_model) && (remake_model = kite_set.remake_model)
     isnothing(remake_settled_state) &&
         (remake_settled_state = kite_set.remake_settled_state)
-    set = Settings(project)
+    set = Settings(project_path(project; data_path))
 
     kite_set.init_mode in (:settle, :relaxed_state) ||
         error("init_mode must be :settle or :relaxed_state, got " *
@@ -288,7 +288,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
                                 remake_vsm=true)
         sys.winches[1].brake = kite_set.brake
 
-        state_path = joinpath(data_path, kite_set.init_state)
+        state_path = project_file(project, kite_set.init_state; data_path)
         start_from_state!(sam, sys, state_path) ||
             error("No relaxed state at $state_path; run " *
                   "examples/relax_bridle.jl for this geometry first")

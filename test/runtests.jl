@@ -215,6 +215,24 @@ using KitePodModels: KCU
             V3BridleConfig, Dict("compresion_frac" => 0.5))
     end
 
+    @testset "Project Outside The Package" begin
+        # A project kept elsewhere reads its own settings files and falls back
+        # to the ones V3Kite ships for what it does not carry.
+        mktempdir() do dir
+            cp(joinpath(v3_data_path(), "system_beam.yaml"),
+               joinpath(dir, "system_beam.yaml"))
+            text = read(joinpath(v3_data_path(), "kite_settings_beam.yaml"), String)
+            write(joinpath(dir, "kite_settings_beam.yaml"),
+                  replace(text, "wing_mass: 0.0" => "wing_mass: 3.0"))
+            project = joinpath(dir, "system_beam.yaml")
+            @test load_kite(project).wing_mass == 3.0
+            @test dirname(struc_geometry_path(project)) == v3_data_path()
+            @test project_data_path(project, nothing) == dir
+            @test project_data_path("system_beam.yaml", nothing) == v3_data_path()
+            @test load_kite("system_beam.yaml").wing_mass == 0.0
+        end
+    end
+
     include("test_ripple_metrics.jl")
 
     include("test_turn_rate_id.jl")
