@@ -235,6 +235,17 @@ function read_state_log(path)
 end
 
 """
+    reinit_integrator!(sam; prn=true)
+
+Reset `sam`'s integrator from the current `SystemStructure`, reusing the solver
+`init!` built it with. `SymbolicAWEModels.reinit!` takes that solver as a required
+argument, and a bare `FBDF()` differentiates forward, which makes the monolith
+backend compile its right-hand side a second time at `ForwardDiff.Dual`.
+"""
+reinit_integrator!(sam; prn=true) =
+    SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn)
+
+"""
     start_from_state!(sam, sys, path) -> Bool
 
 Restore the state logged at `path` onto `sys` and push it onto `sam`'s
@@ -250,7 +261,7 @@ function start_from_state!(sam, sys, path)
     state = read_state_log(path)
     isnothing(state) && return false
     update_from_sysstate!(sys, state)
-    SymbolicAWEModels.reinit!(sam, sam.prob, SymbolicAWEModels.FBDF())
+    reinit_integrator!(sam)
     return true
 end
 
@@ -872,8 +883,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
         set_depower!(sys, config.start_depower / 100.0, 0.0, gc)
     end
 
-    SymbolicAWEModels.reinit!(
-        sam, sam.prob, SymbolicAWEModels.FBDF())
+    reinit_integrator!(sam)
 
     if hasproperty(init_row, :wind_vec)
         @assert isapprox(
@@ -913,8 +923,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
             SymbolicAWEModels.reposition!(
                 sys.transforms, sys)
-            SymbolicAWEModels.reinit!(
-                sam, sam.prob, SymbolicAWEModels.FBDF(); prn=false)
+            reinit_integrator!(sam; prn=false)
 
             for sub in 1:config.num_substeps
                 global_step =

@@ -26,7 +26,7 @@ end
 
 using V3Kite
 using VortexStepMethod
-using SymbolicAWEModels: FBDF
+using V3Kite: reinit_integrator!
 using LinearAlgebra
 using LazyArtifacts
 using OrdinaryDiffEqBDF
@@ -306,8 +306,7 @@ function run_physics_replay(h5_path;
         row = get_row(data, step)
         update_sys_struct_from_data!(
             data_sam.sys_struct, row)
-        SymbolicAWEModels.reinit!(
-            data_sam, data_sam.prob, FBDF(); prn=false)
+        reinit_integrator!(data_sam; prn=false)
         update_sys_state!(data_state, data_sam)
         data_state.winch_force[1] = row.tether_force
         data_state.v_app = row.v_app
@@ -408,8 +407,7 @@ function run_physics_replay(h5_path;
             wind_vec_ekf=row.wind_vec_ekf,
             wind_vec_lidar=row.wind_vec_lidar)
 
-        SymbolicAWEModels.reinit!(
-            sam, sam.prob, FBDF(); prn=false)
+        reinit_integrator!(sam; prn=false)
 
         next_step!(sam; dt, vsm_interval)
         if !isapprox(sam.set.wind_vec,

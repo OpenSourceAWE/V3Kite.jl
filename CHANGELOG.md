@@ -36,6 +36,11 @@
   the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
 
 ### Fixed
+- Settling and the replay reinitialize the integrator with the solver `init!`
+  built, instead of a bare `FBDF()`. That default differentiates forward, so on
+  the monolith backend — which builds with `AutoFiniteDiff` — every `reinit!`
+  compiled the whole right-hand side a second time at `ForwardDiff.Dual`.
+  Settling the PSM wing on a warm model cache: 864 s -> 230 s.
 - Settling applies the kite's bridle material and beam joint damping, through the
   same `apply_kite_material!` the flight model uses. It settled on the geometry
   YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
