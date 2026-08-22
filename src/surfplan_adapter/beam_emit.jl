@@ -438,6 +438,9 @@ plain_point_row(name, pos, type, transform_idx) =
 Write the SymbolicAWEModels beam `struc_geometry.yaml` to `path`. `full=true` writes
 the flying model (bridle, KCU, tapes, pulleys, tether, winch, transform); `full=false`
 writes the wing-only subset placed at CAD with no transform.
+
+`topo.cell_diagonals` decides how the canopy is braced: per cell of the net, or
+with the export's single full-chord `dia` pair per bay.
 """
 function write_model(path, tables, geom, bridle, topo; full)
     tf = full ? 1 : "nothing"
@@ -466,6 +469,8 @@ function write_model(path, tables, geom, bridle, topo; full)
     push_seg! = row -> push!(seg_rows, row)
     for (name, ci, cj) in geom.wing_connections
         (startswith(name, "te") || startswith(name, "dia")) || continue
+        # The per-cell crosses brace every cell, which the full-bay X cannot.
+        topo.cell_diagonals && startswith(name, "dia") && continue
         push_seg!(canopy_seg_row(unique_seg_name(name), wing_pt[ci], wing_pt[cj],
             norm(geom.pos[ci] - geom.pos[cj]), topo))
     end
@@ -476,6 +481,26 @@ function write_model(path, tables, geom, bridle, topo; full)
         neighbour = receivers[i + 1][j]
         push_seg!(canopy_seg_row("spanwise_$(i)_$j", spec.name, neighbour.name,
             norm(spec.pos - neighbour.pos), topo))
+    end
+    """Canopy net nodes down station `i`'s chord, leading to trailing edge."""
+    function net_nodes(i)
+        nodes = [(wing_pt[le_ids[i]], geom.pos[le_ids[i]])]
+        for spec in receivers[i]
+            0.0 < spec.frac < 1.0 && push!(nodes, (spec.name, spec.pos))
+        end
+        push!(nodes, (wing_pt[te_ids[i]], geom.pos[te_ids[i]]))
+        return nodes
+    end
+    if topo.cell_diagonals
+        for i in 1:n - 1
+            here, there = net_nodes(i), net_nodes(i + 1)
+            for k in 1:length(here) - 1
+                push_seg!(canopy_seg_row("cross_$(i)_$(k)a", here[k][1],
+                    there[k + 1][1], norm(here[k][2] - there[k + 1][2]), topo))
+                push_seg!(canopy_seg_row("cross_$(i)_$(k)b", here[k + 1][1],
+                    there[k][1], norm(here[k + 1][2] - there[k][2]), topo))
+            end
+        end
     end
 
     body_ref = full ? 1 : "nothing"

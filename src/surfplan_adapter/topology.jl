@@ -86,6 +86,11 @@ segment to the matching receiver on the neighbouring station, so a strut cannot 
 sideways between its chord ends. Every added fraction therefore costs
 `stations - 1` extra segments in the compiled system, not just an aero receiver.
 
+`cell_diagonals` cross-braces every cell of that net instead of bracing each bay
+with the export's single full-chord `dia` pair. A quadrilateral cell with only
+edge members carries no shear, so without it the fabric resists racking at bay
+scale alone. Costs two segments per cell.
+
 `le_tip_joints` is the number of Timoshenko elements the first and last
 leading-edge sections are split into; the tube bends sharply there, so the default
 `2` adds one intermediate node in each while interior sections keep a single
@@ -121,6 +126,7 @@ Base.@kwdef struct V3BeamTopology
     leading_edge_ids_odd::Bool = true
     frame_offset::Vector{Float64} = V3_ADAPTER_FRAME_OFFSET
     chord_control_fractions::Vector{Float64} = collect(0.0:0.1:1.0)
+    cell_diagonals::Bool = true
     le_tip_joints::Int = 2
     bridle_segments::Int = 1
     pressure_bar::Float64 = 0.3
