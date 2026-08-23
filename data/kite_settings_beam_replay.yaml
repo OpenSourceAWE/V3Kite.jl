@@ -9,11 +9,11 @@ kite_settings:
   world_sim_damping: [0.0, 0.0, 0.0]  # per-axis world-frame damping of the points
 
   # The beam bodies carry the wing mass, so these are what reach it in flight.
-  beam_body_damping: [0.0, 0.0, 20.0]  # per-axis damping on the bodies' own axes
+  beam_body_damping: null      # null follows the points' body_sim_damping
   beam_world_damping: [0.0, 0.0, 0.0] # per-axis damping on the world axes
 
-  beam_angular_damping: [0.0, 0.0, 0.0]  # spin damping on each body's axes
-  beam_joint_damping_scale: 30.0   # multiplies the joints' Rayleigh beta
+  beam_angular_damping: [0.0, 0.0, 0.0]  # brakes the turn rate, so keep it zero
+  beam_joint_damping_scale: 45.0   # multiplies the joints' Rayleigh beta
 
   wing_mass: 0.0                 # [kg] mass redistributed over the wing nodes
   wing_mass_le_frac: 0.75        # leading-edge share of `wing_mass`

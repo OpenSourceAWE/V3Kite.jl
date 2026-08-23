@@ -146,8 +146,7 @@ end
 
 # `sl` is the syslog table of the run just saved, so this measures the same run
 # `aoa_ripple` would see via `KiteUtils.syslog(s.logger)` in simple_parking.jl.
-ripple = aoa_ripple(sl)
-print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
-                                 t_loop, n_steps = steps_done))
+print_ripple_report(sl; stats = s.sam.integrator.stats, t_loop,
+                    n_steps = steps_done)
 
 nothing

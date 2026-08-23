@@ -159,8 +159,7 @@ end
 # still active and the AoA still carries the settling transient.
 rs = RippleSettings("ripple_settings.yaml")
 rs.t_start = HEADING_PERIOD
-ripple = aoa_ripple(sl; rs)
-print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
-                                 t_loop, n_steps = steps_done))
+print_ripple_report(sl; rs, stats = s.sam.integrator.stats, t_loop,
+                    n_steps = steps_done)
 
 nothing

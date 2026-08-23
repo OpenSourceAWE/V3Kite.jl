@@ -383,6 +383,6 @@ if replay.save_videos
         size=(800, 800), framerate=fps)
 end
 
-SymbolicAWEModels.replay(syslog, sam.sys_struct)
+scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
 
 nothing

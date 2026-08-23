@@ -2,13 +2,13 @@
 # damped than settle_settings_default.yaml because it settles onto a recorded
 # flight state.
 settle_settings:
-  num_steps: 69                  # settling steps
+  num_steps: 200                  # settling steps
   num_substeps: 1                # solver steps per settling step
   dt: 0.05                       # [s] solver step
 
-  body_start_damping: [0.0, 0.0, 40.0]  # wing-frame damping settling starts at
+  body_start_damping: [40.0, 40.0, 40.0]  # wing-frame damping settling starts at
   world_start_damping: [0.0, 0.0, 0.0]  # world-frame damping settling starts at
-  decay_steps: 50                # steps over which both decay to the sim damping
+  decay_steps: 150                # steps over which both decay to the sim damping
 
   course_correction_gain: 0.05   # steering gain of the course/heading hold
   course_correction_mode: course   # heading (from rest) | course (from a log)

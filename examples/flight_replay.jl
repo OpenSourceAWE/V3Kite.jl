@@ -235,7 +235,9 @@ function run_physics_replay(h5_path;
 
     if replay.settle
         sam, settle_log, settle_failed =
-            settle_wing(settle_config, row1; remake_settled_state=true)
+            settle_wing(settle_config, row1;
+                remake_model=kite_set.remake_model,
+                remake_settled_state=kite_set.remake_settled_state)
         if settle_failed
             @warn "Settling failed — skipping sim"
             return sam, nothing, nothing, nothing, data,

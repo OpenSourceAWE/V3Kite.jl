@@ -78,9 +78,10 @@ Base.@kwdef mutable struct V3KiteConfig
     mass. Body-frame damping resolves a body's velocity relative to its parent
     wing on the wing's axes, so `[0, 0, 20]` resists motion normal to the wing
     while leaving flight along it alone. Wings are skipped, so a
-    `RIGID_DYNAMICS` kite is never damped by these.
+    `RIGID_DYNAMICS` kite is never damped by these. `nothing` follows the point
+    damping through [`beam_damping`](@ref).
     """
-    beam_body_damping::Vector{Float64} = [0.0, 0.0, 0.0]
+    beam_body_damping::Union{Nothing, Vector{Float64}} = nothing
     beam_world_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
     """
@@ -88,7 +89,7 @@ Base.@kwdef mutable struct V3KiteConfig
     `dω/dt -= c .* ω` [1/s], reaching every leading- and trailing-edge body.
     `[0, 20, 0]` resists rotation about the body `y`, which is the chord-flapping
     axis. It resists *absolute* spin, so unlike the joints' Rayleigh `damping` it
-    brakes rigid rotation of the wing too.
+    brakes rigid rotation of the wing too, which is why it is zero by default.
     """
     beam_angular_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
@@ -96,7 +97,7 @@ Base.@kwdef mutable struct V3KiteConfig
     Scales every Timoshenko joint's Rayleigh β. The geometry emits β for a modal
     damping ratio of 1 at each element's transverse mode, which is not enough to
     hold the chord modes: under the flight loads they grow until the implicit
-    solver stalls. The beam projects fly at `30`; by `5` the chord modes are back
+    solver stalls. The beam projects fly at `45`; by `5` the chord modes are back
     and the wing overshoots its heading setpoint instead of holding it.
     """
     beam_joint_damping_scale::Float64 = 1.0
@@ -202,12 +203,12 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     set_body_frame_damping!(sys, kite_set.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite_set.world_sim_damping)
     beam_idxs = beam_body_idxs(sys)
-    SymbolicAWEModels.set_body_frame_damping(sys.bodies, kite_set.beam_body_damping,
-                                             beam_idxs)
+    beam_body = beam_damping(kite_set.beam_body_damping, kite_set.body_sim_damping)
+    SymbolicAWEModels.set_body_frame_damping(sys.bodies, beam_body, beam_idxs)
     SymbolicAWEModels.set_world_frame_damping(sys.bodies, kite_set.beam_world_damping,
                                               beam_idxs)
-    SymbolicAWEModels.set_angular_damping(sys.bodies, kite_set.beam_angular_damping,
-                                          beam_idxs)
+    SymbolicAWEModels.set_angular_damping(sys.bodies,
+        kite_set.beam_angular_damping, beam_idxs)
 
     sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
 
@@ -310,7 +311,6 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         data_path, remake_model, remake_settled_state)
     failed && error("Settling failed for $project")
     sys = sam.sys_struct
-    apply_kite_material!(sys, kite_set)
     sys.winches[1].brake = kite_set.brake
     return sam, sys
 end

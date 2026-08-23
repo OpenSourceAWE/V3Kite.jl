@@ -97,7 +97,8 @@ export identify_turn_rate_law, format_turn_rate_report
 export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
 
 # AoA-ripple analysis exports
-export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report
+export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report,
+    print_ripple_report
 
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
@@ -160,6 +161,7 @@ export kite_ref_frame, calc_orient_quat, orient_euler
 # Stabilization exports
 export V3SettleConfig, settle_wing
 export settled_state_path, load_settled_struct
+export beam_damping
 export V3RelaxConfig, relax_bridle!
 export save_state_log, read_state_log, start_from_state!, relaxed_state_name
 

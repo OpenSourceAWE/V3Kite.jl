@@ -173,19 +173,20 @@ save_log(s.logger, "tmp_parking"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 
-if F_compr_max > 0
+if steps_done == 0
+    @warn "No step completed, so there is nothing to report on the segment forces."
+elseif F_compr_max > 0
     @info "Peak compression: $(round(F_compr_max, digits=2)) N in segment $F_compr_seg " *
           "at t=$(round(F_compr_t, digits=2)) s"
 else
     @info "No compression: all tether and bridle segments stayed in tension."
 end
-print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
+steps_done > 0 && print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
 
 # ==================== RIPPLE METRICS ===================== #
 
 sl = KiteUtils.syslog(s.logger)
-ripple = aoa_ripple(sl)
-print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
-                                 t_loop, n_steps = steps_done))
+print_ripple_report(sl; stats = s.sam.integrator.stats, t_loop,
+                    n_steps = steps_done)
 
 nothing

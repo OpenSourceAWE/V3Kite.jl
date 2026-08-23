@@ -36,6 +36,10 @@
   the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
 
 ### Fixed
+- A run that aborts in its first seconds no longer dies in the AoA ripple metrics:
+  the parking and sinus examples report through the new `print_ripple_report`,
+  which warns that the log is too short instead of erroring out of the script
+  before the failure is printed.
 - Settling and the replay reinitialize the integrator with the solver `init!`
   built, instead of a bare `FBDF()`. That default differentiates forward, so on
   the monolith backend — which builds with `AutoFiniteDiff` — every `reinit!`
@@ -46,6 +50,12 @@
   YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
   an equilibrium of the model that started from it. Existing `settled_*.arrow`
   files are regenerated.
+- `beam_joint_damping_scale` is applied once instead of twice. Settling ran it
+  over the joints and then `build_v3_model` ran it again over the same structure,
+  and since it multiplies in place the beam settled and flew at the square of the
+  scale rather than the scale itself.
+- `examples/flight_replay.jl` takes `remake_model` and `remake_settled_state` from
+  the kite settings instead of forcing a re-settle on every run.
 - `beam_body_damping` and `beam_world_damping` skip the wing bodies, as
   `beam_angular_damping` already did. On a `RIGID_DYNAMICS` kite the one dynamic
   body is the whole wing, and these settings damped its flight.
@@ -54,8 +64,8 @@
 - `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
   Rayleigh β without regenerating the geometry. The emitted β is ζ = 1 at each
   joint's transverse mode, which the chord modes outgrow under flight load until
-  the implicit solver stalls; the beam projects fly at `30`. The scale is
-  numerical, not material — ζ = 30 is far past anything an inflated tube has — so
+  the implicit solver stalls; the beam projects fly at `45`. The scale is
+  numerical, not material — ζ = 45 is far past anything an inflated tube has — so
   it stands in for damping the model is missing, such as the thin-airfoil
   flow-curvature moment the panels omit because a section's `va` is the mean of
   its edge velocities and so carries no pitch rate.
@@ -75,7 +85,9 @@
   `beam_body_start_damping` / `beam_world_start_damping` in the settle settings:
   the point damping the two already had, now reaching the rigid bodies. A beam
   wing keeps its mass in bodies, and `body_sim_damping` never touched them —
-  its wing nodes are `BODY_STATIC` points riding those bodies. Zero by default.
+  its wing nodes are `BODY_STATIC` points riding those bodies. `beam_body_damping`
+  defaults to `null`, which follows `body_sim_damping`: both resolve on the wing's
+  own axes, so the bodies damp what the points would have.
 - `relax_bridle!` damps the bodies over the ramp as well as the points
   (`V3RelaxConfig.body_damping`), and reports progress every
   `report_every` steps. Without it a beam geometry never reached full stiffness:

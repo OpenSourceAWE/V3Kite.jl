@@ -271,6 +271,8 @@ convert_setting(::Type{Union{Float64, Vector{Float64}}}, value) =
     value isa AbstractVector ? convert(Vector{Float64}, value) : Float64(value)
 convert_setting(::Type{Union{Nothing, Float64}}, value) =
     isnothing(value) ? nothing : Float64(value)
+convert_setting(::Type{Union{Nothing, Vector{Float64}}}, value) =
+    isnothing(value) ? nothing : convert(Vector{Float64}, value)
 convert_setting(::Type{Union{Nothing, String}}, value) =
     isnothing(value) ? nothing : String(value)
 convert_setting(T, value) = convert(T, value)

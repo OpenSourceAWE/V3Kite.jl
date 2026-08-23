@@ -63,9 +63,8 @@ Base.@kwdef mutable struct V3SettleConfig
         MIN_SETTLE_DAMPING_PER_STIFFNESS
 
     """
-    The same for the rigid bodies, floored at `kite_set.beam_body_damping` /
-    `kite_set.beam_world_damping` / `kite_set.beam_angular_damping`. Zero by default:
-    only a beam wing has bodies that carry mass and are not the whole kite.
+    The same for the rigid bodies, floored at the damping they fly with. Zero by
+    default: only a beam wing has bodies that carry mass and are not the whole kite.
     `beam_angular_start_damping` ramps the bodies' spin damping rather than their
     translation.
     """
@@ -184,11 +183,14 @@ function settled_state_path(config::V3SettleConfig, init_row;
         # whole usable range of this ratio onto one or two tags.
         suffix *= "_dps$(num_tag(settle_dps * 1e3))"
     end
-    beam_damping = vcat(config.kite_set.beam_body_damping,
-        config.kite_set.beam_world_damping, config.kite_set.beam_angular_damping,
+    kite_set = config.kite_set
+    beam_tag = vcat(beam_damping(kite_set.beam_body_damping, kite_set.body_sim_damping),
+        kite_set.beam_world_damping, kite_set.beam_angular_damping,
         config.beam_body_start_damping, config.beam_world_start_damping,
         config.beam_angular_start_damping)
-    all(iszero, beam_damping) || (suffix *= "_bb$(num_tag(beam_damping))")
+    all(iszero, beam_tag) || (suffix *= "_bb$(num_tag(beam_tag))")
+    scale = kite_set.beam_joint_damping_scale
+    scale == 1.0 || (suffix *= "_jd$(num_tag(scale))")
     aero_mode = resolve_aero_mode(config.kite_set)
     if !isnothing(aero_mode)
         aero_tag = SymbolicAWEModels.aero_mode_tag(aero_mode)
@@ -281,6 +283,14 @@ relaxed_state_name(struc_yaml, depower) =
     "relaxed_$(splitext(basename(struc_yaml))[1])_dp$(num_tag(depower * 100))"
 
 """
+    beam_damping(beam, point) -> Vector{Float64}
+
+The beam bodies' body-frame damping: `beam` when the kite settings give one,
+otherwise the `point` damping, which both resolve on the wing's own axes.
+"""
+beam_damping(beam, point) = isnothing(beam) ? copy(point) : beam
+
+"""
     beam_body_idxs(sys) -> Vector{Int}
 
 Indices of the structural bodies of `sys`, skipping the wings. A wing is a `Body`
@@ -305,12 +315,12 @@ function apply_decayed_damping!(sys, config::V3SettleConfig, decay)
     set_body_frame_damping!(sys,
         max.(config.body_start_damping .* decay, kite_set.body_sim_damping))
     beam_idxs = beam_body_idxs(sys)
+    flight_body = beam_damping(kite_set.beam_body_damping, kite_set.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys.bodies,
         max.(config.beam_world_start_damping .* decay, kite_set.beam_world_damping),
         beam_idxs)
     SymbolicAWEModels.set_body_frame_damping(sys.bodies,
-        max.(config.beam_body_start_damping .* decay, kite_set.beam_body_damping),
-        beam_idxs)
+        max.(config.beam_body_start_damping .* decay, flight_body), beam_idxs)
     SymbolicAWEModels.set_angular_damping(sys.bodies,
         max.(config.beam_angular_start_damping .* decay, kite_set.beam_angular_damping),
         beam_idxs)
