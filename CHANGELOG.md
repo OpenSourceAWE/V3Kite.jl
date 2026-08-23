@@ -51,6 +51,11 @@
   body is the whole wing, and these settings damped its flight.
 
 ### Added
+- `kite_settings` carry the unsteady-aero corrections and pass them to the wing:
+  `apparent_mass` (the entrained air the wing accelerates, `1` being the
+  thin-plate value; on a beam wing it lands on the beam bodies the nodes ride)
+  and `wagner` with `wagner_gains`/`wagner_rates` (the two-state lift lag). Both
+  are off by default; the beam projects list them so a sweep is a one-line edit.
 - `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
   Rayleigh β without regenerating the geometry. The emitted β is ζ = 1 at each
   joint's transverse mode, which the chord modes outgrow under flight load until

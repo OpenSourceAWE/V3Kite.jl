@@ -132,7 +132,7 @@ export find_frame_syslog_idxs, build_replay_sys_struct
 
 # Simulation exports
 export V3KiteConfig, create_v3_model, build_v3_model, v3_data_path
-export apply_kite_material!
+export apply_kite_material!, apply_unsteady_aero!
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
 export resolve_aero_mode, aero_geometry_path
 

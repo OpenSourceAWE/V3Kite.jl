@@ -114,6 +114,20 @@ function settle_damping_per_stiffness(config::V3SettleConfig)
 end
 
 """
+    flow_curvature_settle(config) -> Bool
+
+Whether the project's VSM solver adds the flow curvature moment, read from the
+settings rather than a built wing so [`settled_state_path`](@ref) can ask before
+anything is constructed.
+"""
+function flow_curvature_settle(config::V3SettleConfig; data_path=nothing)
+    path = vsm_settings_path(config.project; data_path)
+    isfile(path) || return false
+    return VortexStepMethod.VSMSettings(
+        path; data_prefix=false).solver_settings.flow_curvature
+end
+
+"""
     settled_state_path(config, init_row; data_path=nothing,
                        cache_path=nothing) -> String
 
@@ -189,6 +203,8 @@ function settled_state_path(config::V3SettleConfig, init_row;
         config.beam_body_start_damping, config.beam_world_start_damping,
         config.beam_angular_start_damping)
     all(iszero, beam_damping) || (suffix *= "_bb$(num_tag(beam_damping))")
+    # Flow curvature moves the equilibrium; the unsteady corrections do not.
+    flow_curvature_settle(config) && (suffix *= "_fc")
     aero_mode = resolve_aero_mode(config.kite_set)
     if !isnothing(aero_mode)
         aero_tag = SymbolicAWEModels.aero_mode_tag(aero_mode)
@@ -774,7 +790,9 @@ onto it.
 
 The material goes on here and not only in [`create_v3_model`](@ref) because a
 structure settled on the YAML's bridle stiffness is not an equilibrium of the one
-the run flies.
+the run flies. The unsteady-aero settings go on for a blunter reason: a settling
+project never reaches `create_v3_model`, so without them here the wing would fly
+with the corrections silently off.
 """
 function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
@@ -804,6 +822,7 @@ function build_settling_struct(config::V3SettleConfig;
     end
 
     apply_kite_material!(sys, config.kite_set)
+    apply_unsteady_aero!(sys, config.kite_set)
     SymbolicAWEModels.set_world_frame_damping(
         sys, config.world_start_damping)
     set_body_frame_damping!(sys, config.body_start_damping)

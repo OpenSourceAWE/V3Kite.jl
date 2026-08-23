@@ -70,6 +70,7 @@ solver_settings:
   relaxation_factor: 0.01 # [0.001-0.1] Under-relaxation for stability
 
   # --- Numerical Stability ---
+  flow_curvature: false # thin-airfoil pitch-rate moment increment
   artificial_damping: false # Enable artificial damping for unstable cases
   k2: 0.1 # 2nd-order damping coefficient
   k4: 0.0 # 4th-order damping coefficient

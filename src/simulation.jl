@@ -101,6 +101,29 @@ Base.@kwdef mutable struct V3KiteConfig
     """
     beam_joint_damping_scale::Float64 = 1.0
 
+    """
+    Scale on the entrained-air mass the wing carries, `1` being the thin-plate value
+    `ρ·π·c²/4` per unit span and `0` leaving its inertia alone. It resists
+    acceleration without adding weight, and on a beam wing it lands on the beam
+    bodies the nodes ride rather than on the nodes.
+    """
+    apparent_mass::Float64 = 0.0
+
+    "Whether the wing carries the two-state Wagner lift lag"
+    wagner::Bool = false
+
+    """
+    Wagner indicial gains `(A1, A2)`: the share of the steady lift each lag state
+    withholds right after a step, so the wing starts at `1 - A1 - A2` of it.
+    """
+    wagner_gains::Vector{Float64} = [0.165, 0.335]
+
+    """
+    Wagner indicial rates `(b1, b2)` per semi-chord travelled; smaller is a
+    longer-lived lag. The defaults are R. T. Jones' fit to Wagner's function.
+    """
+    wagner_rates::Vector{Float64} = [0.0455, 0.3]
+
     geom::V3GeomAdjustConfig = V3GeomAdjustConfig()
     bridle::V3BridleConfig = V3BridleConfig()
 
@@ -208,6 +231,7 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
                                               beam_idxs)
     SymbolicAWEModels.set_angular_damping(sys.bodies, kite_set.beam_angular_damping,
                                           beam_idxs)
+    apply_unsteady_aero!(sys, kite_set)
 
     sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
 
@@ -220,6 +244,24 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
         (sys.transforms[1].elevation = deg2rad(set.elevation))
 
     return sam, sys
+end
+
+"""
+    apply_unsteady_aero!(sys, kite_set::V3KiteConfig) -> sys
+
+Put the kite settings' unsteady-aero corrections on every VSM wing: the entrained-air
+`apparent_mass` and the two-state Wagner lift lag with its gains and rates. A wing
+without a VSM engine has nowhere to carry them and is skipped.
+"""
+function apply_unsteady_aero!(sys, kite_set::V3KiteConfig)
+    for wing in sys.wings
+        isnothing(SymbolicAWEModels.vsm_engine(wing.aero)) && continue
+        wing.unsteady.apparent_mass = kite_set.apparent_mass
+        wing.unsteady.wagner = kite_set.wagner
+        wing.unsteady.wagner_gains = kite_set.wagner_gains
+        wing.unsteady.wagner_rates = kite_set.wagner_rates
+    end
+    return sys
 end
 
 """

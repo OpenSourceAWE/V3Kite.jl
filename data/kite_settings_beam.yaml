@@ -16,6 +16,13 @@ kite_settings:
   beam_angular_damping: [0.0, 0.0, 0.0]  # spin damping on each body's axes
   beam_joint_damping_scale: 30.0   # multiplies the joints' Rayleigh beta
 
+  # Unsteady aero. apparent_mass is the entrained air the nodes accelerate
+  # (1 = thin-plate value); wagner is the two-state lift lag.
+  apparent_mass: 0.0             # scale on the thin-plate entrained-air mass
+  wagner: false                  # two-state Wagner lift lag
+  wagner_gains: [0.165, 0.335]   # withheld lift share (A1, A2)
+  wagner_rates: [0.0455, 0.3]    # lag rates per semi-chord (b1, b2)
+
   wing_mass: 0.0                 # [kg] mass redistributed over the wing nodes
   wing_mass_le_frac: 0.75        # leading-edge share of `wing_mass`
   wing_drag_coeff: 0.0           # parasitic drag spread over the wing nodes
