@@ -81,3 +81,7 @@ examples_2d/LocalPreferences.toml
 data/*.npz
 data/gui.yaml
 PlanCleanupTests.md
+data/kite.obj
+data/settings_ram.yaml
+data/settings.yaml
+data/system_ram.yaml
