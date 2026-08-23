@@ -59,7 +59,7 @@ VSM_INTERVAL     = 1   # steps between VSM aero solves
 # `BODY_START_DAMPING` only shapes the settling transient, decaying to
 # `BODY_SIM_DAMPING`, which is the damping the parked run actually FLIES with.
 BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis [1/s]
-BODY_SIM_DAMPING   = [0.0, 0.0, 40.0]  # Floor it decays to; what the run FLIES [1/s]
+BODY_SIM_DAMPING   = [0.0, 0.0, 32.0]  # Floor it decays to; what the run FLIES [1/s]
 # Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
 # default in `data/struc_geometry.yaml`. `init` floors it during settling
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
