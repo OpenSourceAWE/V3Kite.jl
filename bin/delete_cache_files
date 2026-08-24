@@ -2,8 +2,8 @@
 # Copyright (c) 2026 Uwe Fechner
 # SPDX-License-Identifier: MIT
 #
-# Delete the V3Kite cache files: the compiled model binary (model_*.bin), the
-# settled-geometry binaries (settled_*.bin) and the settling log
+# Delete the V3Kite cache files from the scratchspace: the compiled model binary
+# (model_*.bin), the settled-geometry binaries (settled_*.bin) and the settling log
 # (settle_particle_dynamics_wing.arrow). They are pure caches - the next run
 # regenerates them, at the price of one model compilation plus one settling run
 # per configuration.
@@ -17,14 +17,11 @@
 #   TypeError: in new, expected DataType, got a value of type
 #     SymbolicUtils.SmallVec{UnitRange{Int64}, Vector{UnitRange{Int64}}}
 #
-# Two locations are cleaned, matching V3Kite's default_cache_path():
-#   - the scratchspace keyed by V3Kite's UUID, used by a Pkg-INSTALLED V3Kite
-#   - data/ of a local V3Kite checkout, used by a `dev`ed V3Kite, plus data/ of
-#     this repository
-# Only the three cache patterns are removed; other .arrow files in those
-# directories are simulation output and are left alone.
+# Cache files live in the scratchspace keyed by V3Kite's UUID. 
+# Only the cache patterns are removed; other files in that
+# directory are left alone.
 #
-# Usage: bin/delete_cache_files [path-to-checkout]
+# Usage: bin/delete_cache_files
 #        bin/delete_cache_files --dry-run     list what would go, delete nothing
 #        bin/delete_cache_files --yes         skip the confirmation prompt
 set -euo pipefail
@@ -39,66 +36,38 @@ V3KITE_UUID=4caac9c8-c726-438f-ab10-3553e918eab1  # V3Kite, see its Project.toml
 
 DRY_RUN=0
 ASSUME_YES=0
-CHECKOUT=""
 # while/shift rather than `for arg in "$@"`: bash before 4.4 (macOS ships 3.2)
 # treats an empty "$@" as unset and aborts under `set -u`.
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1 ;;
         --yes|-y)  ASSUME_YES=1 ;;
-        -h|--help) sed -n '4,29p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '4,26p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)        echo "Unknown option: $1" >&2; exit 1 ;;
-        *)         CHECKOUT=$1 ;;
     esac
     shift
 done
-
-# Where V3Kite is `dev`ed from, so a local checkout's data/ is cleaned too. The
-# [sources] path in examples/Project.toml is stored relative to examples/.
-active_source_path() {
-    local project=examples/Project.toml line dir
-    [[ -f $project ]] || return 0
-    line=$(awk '
-        /^\[/ { in_sources = ($0 ~ /^\[sources\]/) }
-        in_sources && /^V3Kite[[:space:]]*=/ { print; exit }
-    ' "$project")
-    [[ $line =~ path[[:space:]]*= ]] || return 0
-    dir=$(sed -E 's|.*path[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|' <<<"$line")
-    [[ $dir == /* ]] || dir="$PWD/examples/$dir"
-    # cd+pwd rather than `realpath -m`, which is GNU-only; fall back to the
-    # unnormalized path if the checkout is gone (find just won't match there).
-    if [[ -d $dir ]]; then (cd "$dir" && pwd); else printf '%s\n' "$dir"; fi
-}
-
-if [[ -z $CHECKOUT ]]; then
-    CHECKOUT=$(active_source_path)
-elif [[ ! -f "$CHECKOUT/Project.toml" ]]; then
-    echo "No Julia project at $CHECKOUT" >&2
-    exit 1
-fi
 
 # First entry of JULIA_DEPOT_PATH, the depot V3Kite writes its scratchspace to.
 DEPOT=${JULIA_DEPOT_PATH:-}
 DEPOT=${DEPOT%%:*}
 DEPOT=${DEPOT:-$HOME/.julia}
 
-DIRS=("$DEPOT/scratchspaces/$V3KITE_UUID/v3kite_cache" data)
-[[ -n $CHECKOUT ]] && DIRS+=("$CHECKOUT/data")
+DIR="$DEPOT/scratchspaces/$V3KITE_UUID/v3kite_cache"
 
 VICTIMS=()
 # Counted separately: bash before 4.4 errors on ${#VICTIMS[@]} for an empty
 # array under `set -u`, which is exactly the "nothing to delete" case.
 N_VICTIMS=0
-for dir in "${DIRS[@]}"; do
-    [[ -d $dir ]] || continue
+if [[ -d $DIR ]]; then
     while IFS= read -r -d '' f; do
         VICTIMS+=("$f")
         N_VICTIMS=$((N_VICTIMS + 1))
-    done < <(find "$dir" -maxdepth 1 -type f \
+    done < <(find "$DIR" -maxdepth 1 -type f \
         \( -name 'model_*.bin' -o -name 'settled_*.bin' \
            -o -name 'settle_particle_dynamics_wing.arrow' \
            -o -name '*.bin.error.log' \) -print0)
-done
+fi
 
 if [[ $N_VICTIMS -eq 0 ]]; then
     echo "No V3Kite cache files found."
