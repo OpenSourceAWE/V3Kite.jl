@@ -34,6 +34,8 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
+using Timers; tic()
+
 using V3Kite
 using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
@@ -144,6 +146,8 @@ function print_compression_report(s, seg_idxs, peaks, limit)
                 seg.compression_frac, peaks[i])
     end
 end
+
+toc("Initialization took: ")
 
 # ==================== SIMULATION LOOP ==================== #
 
