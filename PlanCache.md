@@ -137,3 +137,10 @@ part of the same change. Otherwise, Option A alone is fine as a narrow fix to
 `bin/delete_cache_files`, but only with the explicit understanding that it
 stops cleaning the dev-checkout cache, not that the dev-checkout cache stops
 existing.
+
+# TODO (done)
+Change `default_cache_path()` itself so
+`precompile.jl` and every runtime caller agree, update the docstring and the
+"Default Cache Path" testset in `test/runtests.jl` together, and clean out
+now-orphaned `data/*.bin`/`data/*.arrow` in every affected dev checkout as
+part of the same change.
