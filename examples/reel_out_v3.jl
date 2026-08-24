@@ -45,7 +45,7 @@ s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
                                 sim_time = STEPS*dt, aero_mode = AERO_MODE,
                                 damping_per_stiffness = 0.001,
                                 remake_model = false)
-toc("Initialized V3KITE instance")
+toc("Initialization took: ")
 
 function simulate(s, steps, plot=false)
     iter = 0
