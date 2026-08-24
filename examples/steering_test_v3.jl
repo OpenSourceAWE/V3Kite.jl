@@ -67,7 +67,7 @@ include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torq
 PROJECT          = "system_reelout.yaml"  # System project (see data/system_*.yaml)
 SIM_TIME         = 200.0    # Simulation time limit [s]; sized so the sweep ends first
                             # (~15 s per amplitude level, plus T_START)
-DT               = 0.05     # Simulation timestep [s]
+DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
@@ -80,7 +80,7 @@ DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
 # stated damping instead of a transient. Both are part of the settling cache key,
 # so the first run with a new pair re-settles the wing.
 BODY_START_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
-BODY_SIM_DAMPING   = [0.0, 0.0, 40.0]   # Floor it decays to; what the sweep FLIES
+BODY_SIM_DAMPING   = [0.0, 0.0, 32.0]   # Floor it decays to; what the sweep FLIES
 
 # Relay controller. The KPS4 original uses a ±5° band; it is widened here
 # because `sin(ψ)` has to leave zero for the gravity term `c2` of the turn-rate
@@ -106,7 +106,7 @@ MAX_REL_STD      = 0.35     # [-]
 # amplitude, so every amplitude level contributes.
 MIN_STEERING_FIT = START_STEERING / 2
 AERO_MODE        = ContinuousAero()
-VSM_INTERVAL     = 1   # steps between VSM aero solves
+VSM_INTERVAL     = 5   # steps between VSM aero solves
 
 # ======================== INIT =========================== #
 
@@ -129,7 +129,7 @@ set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     body_sim_damping = BODY_SIM_DAMPING,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE)
+    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
