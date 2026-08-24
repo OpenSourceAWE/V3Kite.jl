@@ -133,27 +133,17 @@ using KitePodModels: KCU
     end
 
     @testset "Default Cache Path" begin
-        # The decision hinges on V3KITE's OWN install location, not on the
-        # `data_path` argument — a downstream package naming its own project file
-        # (outside V3Kite's tree entirely, as a caller's own `project_file` does)
-        # must be redirected exactly like V3Kite's own `data_path` is.
+        # Every install mode — Pkg-installed or a development checkout — caches
+        # to the same scratchspace, regardless of the `data_path` argument, so
+        # `precompile.jl`'s warm-up artifacts and every runtime caller agree on
+        # where to look.
         dev = v3_data_path()
         foreign = mktempdir()
-        in_depot = any(DEPOT_PATH) do depot
-            startswith(abspath(dev), joinpath(abspath(joinpath(depot, "packages")), ""))
-        end
-        if in_depot
-            # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
-            redirected = V3Kite.default_cache_path(dev)
-            @test redirected != dev
-            @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
-            @test occursin("scratchspaces", redirected)
-            @test V3Kite.default_cache_path(foreign) == redirected
-        else
-            # A development checkout caches in place, keeping the existing data/*.bin.
-            @test V3Kite.default_cache_path(dev) == dev
-            @test V3Kite.default_cache_path(foreign) == foreign
-        end
+        redirected = V3Kite.default_cache_path(dev)
+        @test redirected != dev
+        @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
+        @test occursin("scratchspaces", redirected)
+        @test V3Kite.default_cache_path(foreign) == redirected
     end
 
     @testset "V3GeomAdjustConfig Defaults" begin
