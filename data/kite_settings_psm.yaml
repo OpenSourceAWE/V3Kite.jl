@@ -18,8 +18,8 @@ kite_settings:
   init_mode: settle              # settle | relaxed_state
   init_state: null               # relaxed state settling starts from
 
-  remake_model: true            # true rebuilds the serialized model bin
-  remake_settled_state: false   # true re-runs settling instead of loading the arrow
+  remake_model: false            # true rebuilds the serialized model bin
+  remake_settled_state: false    # true re-runs settling instead of loading the arrow
   brake: true                    # winch brake engaged after bring-up
 
   geom:
