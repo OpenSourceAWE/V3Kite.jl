@@ -133,16 +133,27 @@ using KitePodModels: KCU
     end
 
     @testset "Default Cache Path" begin
-        # A development checkout caches in place, keeping the existing data/*.bin.
+        # The decision hinges on V3KITE's OWN install location, not on the
+        # `data_path` argument — a downstream package naming its own project file
+        # (outside V3Kite's tree entirely, as a caller's own `project_file` does)
+        # must be redirected exactly like V3Kite's own `data_path` is.
         dev = v3_data_path()
-        @test V3Kite.default_cache_path(dev) == dev
-
-        # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
-        installed = joinpath(DEPOT_PATH[1], "packages", "V3Kite", "abc123", "data")
-        redirected = V3Kite.default_cache_path(installed)
-        @test redirected != installed
-        @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
-        @test occursin("scratchspaces", redirected)
+        foreign = mktempdir()
+        in_depot = any(DEPOT_PATH) do depot
+            startswith(abspath(dev), joinpath(abspath(joinpath(depot, "packages")), ""))
+        end
+        if in_depot
+            # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
+            redirected = V3Kite.default_cache_path(dev)
+            @test redirected != dev
+            @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
+            @test occursin("scratchspaces", redirected)
+            @test V3Kite.default_cache_path(foreign) == redirected
+        else
+            # A development checkout caches in place, keeping the existing data/*.bin.
+            @test V3Kite.default_cache_path(dev) == dev
+            @test V3Kite.default_cache_path(foreign) == foreign
+        end
     end
 
     @testset "V3GeomAdjustConfig Defaults" begin

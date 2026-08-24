@@ -624,20 +624,26 @@ num_tag(d::AbstractVector) = join(num_tag.(d), "-")
     default_cache_path(data_path) -> String
 
 Where generated artifacts go when the caller names no `cache_path`: `data_path`
-itself for a development checkout, and a scratch directory next to the depot for
-a Pkg-INSTALLED V3Kite.
+itself when V3KITE ITSELF is a development checkout, and a scratch directory
+next to the depot whenever V3Kite is Pkg-INSTALLED — regardless of `data_path`,
+which is a caller's project directory (possibly its own, outside V3Kite
+entirely) and not a signal of V3Kite's own install status.
 
 A package directory under `DEPOT_PATH/packages` is not ours to write to: it is
 usually read-only, and `Pkg.gc` deletes the whole tree once no environment
 references that version. A `scratchspaces` directory keyed by our UUID survives
 reinstalling. A development checkout keeps caching in place, so `] dev` behaves
-as before and existing `data/settled_*.arrow` states stay in use.
+as before and existing `data/settled_*.arrow` states stay in use. Keying this off
+`data_path` instead of [`v3_data_path`](@ref) would leave a downstream package
+that names its own project file (an absolute path outside V3Kite's tree, as
+`project_file` in a caller's own package does) writing generated `.bin`/`.arrow`
+caches straight into its own `data_path`, Pkg-installed V3Kite or not.
 """
 function default_cache_path(data_path)
-    abs_data = abspath(data_path)
+    abs_v3_data = abspath(v3_data_path())
     in_depot = any(DEPOT_PATH) do depot
         # Trailing separator: a bare prefix also matches a sibling `packages_old`.
-        startswith(abs_data, joinpath(abspath(joinpath(depot, "packages")), ""))
+        startswith(abs_v3_data, joinpath(abspath(joinpath(depot, "packages")), ""))
     end
     in_depot || return data_path
     uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"  # V3Kite, see Project.toml
