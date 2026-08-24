@@ -22,8 +22,8 @@ toc("Loaded packages")
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
 # the following values can be changed to match your interest
-dt    = 0.05
-STEPS = 600
+dt    = 0.05/3
+STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
@@ -33,7 +33,7 @@ TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
 T_MIN =  0.0          # only plot results from T_MIN onwards
 AERO_MODE = ContinuousAero()
-VSM_INTERVAL = 1   # steps between VSM aero solves
+VSM_INTERVAL = 5   # steps between VSM aero solves
 # end of user parameter section #
 
 @info "Initializing model..."
