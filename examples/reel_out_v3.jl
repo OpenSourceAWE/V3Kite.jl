@@ -40,8 +40,11 @@ VSM_INTERVAL = 5   # steps between VSM aero solves
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
+                                body_sim_damping = [0.0, 0.0, 32.0],
                                 depower_setpoint = DEPOWER_SETPOINT, dt,
-                                sim_time = STEPS*dt, aero_mode = AERO_MODE)
+                                sim_time = STEPS*dt, aero_mode = AERO_MODE,
+                                damping_per_stiffness = 0.001,
+                                remake_model = false)
 toc("Initialized V3KITE instance")
 
 function simulate(s, steps, plot=false)
