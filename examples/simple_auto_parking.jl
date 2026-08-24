@@ -100,7 +100,7 @@ heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,
     umin = -MAX_STEERING, umax = MAX_STEERING)
 
-toc("Start simulation loop...")
+toc("Initialization took: ")
 
 # ==================== SIMULATION LOOP ==================== #
 
