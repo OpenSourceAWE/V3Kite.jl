@@ -69,7 +69,7 @@ V_APP_REF        = 13.1     # Reference apparent wind speed for the gain schedul
 V_APP_MIN        = 5.0      # Lower clamp on v_app, limits the gain boost [m/s]
 MAX_STEERING     = 0.175    # Steering command limit [-]
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
-VSM_INTERVAL     = 1   # steps between VSM aero solves
+VSM_INTERVAL     = 5   # steps between VSM aero solves
 # `BODY_START_DAMPING` shapes the settling transient; it decays to the
 # `body_sim_damping:` of the project's kite settings file, the floor the parked
 # run actually flies with — and which the heading gains above were tuned at. Both
@@ -100,7 +100,7 @@ heading_pid = create_heading_pid(;
     K = HEADING_P, Ti = HEADING_I, Td = HEADING_D, dt = s.dt,
     umin = -MAX_STEERING, umax = MAX_STEERING)
 
-toc("Start simulation loop...")
+toc("Initialization took: ")
 
 # ==================== SIMULATION LOOP ==================== #
 

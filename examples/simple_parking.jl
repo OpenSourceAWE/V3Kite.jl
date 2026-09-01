@@ -34,6 +34,8 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
+using Timers; tic()
+
 using V3Kite
 using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
@@ -48,14 +50,14 @@ include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torq
 
 PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
-DT               = 0.05/3     # Simulation timestep [s]
+DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 USE_BRAKE        = true     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
-VSM_INTERVAL     = 1   # steps between VSM aero solves
+VSM_INTERVAL     = 5        # steps between VSM aero solves
 # `BODY_START_DAMPING` only shapes the settling transient, decaying to
 # `BODY_SIM_DAMPING`, which is the damping the parked run actually FLIES with.
 BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis [1/s]
@@ -144,6 +146,8 @@ function print_compression_report(s, seg_idxs, peaks, limit)
                 seg.compression_frac, peaks[i])
     end
 end
+
+toc("Initialization took: ")
 
 # ==================== SIMULATION LOOP ==================== #
 

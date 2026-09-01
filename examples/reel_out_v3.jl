@@ -22,8 +22,8 @@ toc("Loaded packages")
 @info "reel_out_v3.jl: Simulating a simple reel-out maneuver of the V3 kite model."
 
 # the following values can be changed to match your interest
-dt    = 0.05
-STEPS = 600
+dt    = 0.05/3
+STEPS = 600*3
 const PLOT = true
 FRONT_VIEW = false
 ZOOM = false
@@ -33,16 +33,19 @@ TETHER_LENGTH = 150.0 # m
 V_WIND        = 9.51  # m/s
 T_MIN =  0.0          # only plot results from T_MIN onwards
 AERO_MODE = ContinuousAero()
-VSM_INTERVAL = 1   # steps between VSM aero solves
+VSM_INTERVAL = 5   # steps between VSM aero solves
 # end of user parameter section #
 
 @info "Initializing model..."
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
+                                body_sim_damping = [0.0, 0.0, 32.0],
                                 depower_setpoint = DEPOWER_SETPOINT, dt,
-                                sim_time = STEPS*dt, aero_mode = AERO_MODE)
-toc("Initialized V3KITE instance")
+                                sim_time = STEPS*dt, aero_mode = AERO_MODE,
+                                damping_per_stiffness = 0.001,
+                                remake_model = false)
+toc("Initialization took: ")
 
 function simulate(s, steps, plot=false)
     iter = 0

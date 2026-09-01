@@ -22,13 +22,13 @@ using PrecompileTools: @compile_workload
 # the example it mirrors warms a code path no example flies.
 #
 # Both remake flags are pinned false here rather than left to the project file:
-# precompilation must consume the serialized geometry and model in data/, never
-# rebuild them. Wrapped in try/catch: a workload failure must never break
-# `using V3Kite`.
+# precompilation must consume the serialized geometry and model from the cache
+# (default_cache_path's scratchspace), never rebuild them. Wrapped in
+# try/catch: a workload failure must never break `using V3Kite`.
 #
-# If either data/*.bin cache is missing (e.g. right after a SymbolicAWEModels
+# If either cached *.bin is missing (e.g. right after a SymbolicAWEModels
 # or Julia version bump changes the model filename), `init` rebuilds it from
-# scratch and writes it to data/ — turning a few-second workload into a
+# scratch and writes it to the cache — turning a few-second workload into a
 # multi-minute one and making precompilation non-hermetic. Set
 # `precompile_workload = false` under `[V3Kite]` in the project's
 # LocalPreferences.toml to skip the workload entirely in that case.

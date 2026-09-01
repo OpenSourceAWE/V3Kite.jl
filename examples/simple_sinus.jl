@@ -76,7 +76,7 @@ HEADING_I = false
 HEADING_D = 0.15
 MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
 AERO_MODE = ContinuousAero()  # ContinuousAero() or AeroDirect()
-VSM_INTERVAL = 1   # steps between VSM aero solves
+VSM_INTERVAL = 5   # steps between VSM aero solves
 # `BODY_START_DAMPING` only shapes the settling transient, decaying to the
 # `body_sim_damping:` of the project's kite settings file, which is the damping
 # the run actually FLIES with — and which the heading gains above were tuned at.
