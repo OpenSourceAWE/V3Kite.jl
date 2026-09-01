@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MIT
 #
 # Delete the V3Kite cache files from the scratchspace: the compiled model binary
-# (model_*.bin), the settled-geometry binaries (settled_*.bin) and the settling log
-# (settle_particle_dynamics_wing.arrow). They are pure caches - the next run
+# (model_*.bin), the settled-geometry files (settled_*.bin, settled_*.arrow) and
+# the settling log (settle_particle_dynamics_wing.arrow). They are pure caches - the next run
 # regenerates them, at the price of one model compilation plus one settling run
 # per configuration.
 #
@@ -65,6 +65,7 @@ if [[ -d $DIR ]]; then
         N_VICTIMS=$((N_VICTIMS + 1))
     done < <(find "$DIR" -maxdepth 1 -type f \
         \( -name 'model_*.bin' -o -name 'settled_*.bin' \
+           -o -name 'settled_*.arrow' \
            -o -name 'settle_particle_dynamics_wing.arrow' \
            -o -name '*.bin.error.log' \) -print0)
 fi
