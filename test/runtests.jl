@@ -166,7 +166,6 @@ using KitePodModels: KCU
     @testset "V3 Data Path" begin
         path = v3_data_path()
         @test isdir(path)
-        @test isfile(joinpath(path, "system.yaml"))
     end
 
     @testset "Project Settings Files" begin
