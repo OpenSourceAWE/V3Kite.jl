@@ -124,7 +124,7 @@ Base.@kwdef struct V3BeamTopology
     bridle_rotation_deg::Float64 = V3_ADAPTER_CHORD_ALIGN_DEG
     bridle_lift::Float64 = V3_BRIDLE_FILE_LIFT
     leading_edge_ids_odd::Bool = true
-    frame_offset::Vector{Float64} = V3_ADAPTER_FRAME_OFFSET
+    frame_offset::Vector{Float64} = copy(V3_ADAPTER_FRAME_OFFSET)
     chord_control_fractions::Vector{Float64} = collect(0.0:0.1:1.0)
     cell_diagonals::Bool = true
     le_tip_joints::Int = 2
