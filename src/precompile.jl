@@ -21,47 +21,48 @@ using PrecompileTools: @compile_workload
 # the SciML specializations are compiled against, so a workload that drifts from
 # the example it mirrors warms a code path no example flies.
 #
-# `remake=false` (the `init` default) means the serialized settled geometry and
-# model in data/ are consumed, not rebuilt. Wrapped in try/catch: a workload
-# failure must never break `using V3Kite`.
+# Both remake flags are pinned false here rather than left to the project file:
+# precompilation must consume the serialized geometry and model from the cache
+# (default_cache_path's scratchspace), never rebuild them. Wrapped in
+# try/catch: a workload failure must never break `using V3Kite`.
 #
-# If either data/*.bin cache is missing (e.g. right after a SymbolicAWEModels
+# If either cached *.bin is missing (e.g. right after a SymbolicAWEModels
 # or Julia version bump changes the model filename), `init` rebuilds it from
-# scratch and writes it to data/ — turning a few-second workload into a
+# scratch and writes it to the cache — turning a few-second workload into a
 # multi-minute one and making precompilation non-hermetic. Set
-# V3KITE_SKIP_PRECOMPILE_WORKLOAD=1 to skip the workload entirely in that case
-# (e.g. from bin/create_sys_image / bin/install right after `--update`).
-if get(ENV, "V3KITE_SKIP_PRECOMPILE_WORKLOAD", "0") != "1"
-    @compile_workload begin
-        try
-            body_damping = [0.0, 0.0, 40.0]
-            # sim_time only sizes the logger; keep it below the example's 10 s.
-            s = init(9.51, 150.0;
-                depower_setpoint = 0.25, sim_time = 1.0, dt = 0.05/3,
-                system_yaml = "system_reelout.yaml",
-                aero_mode = ContinuousAero(),
-                body_damping, min_damping = 0.8 .* body_damping,
-                damping_per_stiffness = 0.001)
+# `precompile_workload = false` under `[V3Kite]` in the project's
+# LocalPreferences.toml to skip the workload entirely in that case.
+@compile_workload begin
+    try
+        body_start_damping = [0.0, 0.0, 40.0]
+        # sim_time only sizes the logger; keep it below the example's 10 s.
+        s = init(9.51, 150.0;
+            depower_setpoint = 0.25, sim_time = 1.0, dt = 0.05/3,
+            system_yaml = "system_reelout.yaml",
+            aero_mode = ContinuousAero(),
+            body_start_damping,
+            body_sim_damping = 0.8 .* body_start_damping,
+            damping_per_stiffness = 0.001,
+            remake_model = false, remake_settled_state = false)
 
-            s.sys.winches[1].brake = true
+        s.sys.winches[1].brake = true
 
-            for _ in 1:3
-                step!(s; rel_depower = 0.25, rel_steering = 0.0040,
-                      vsm_interval = 1)
-            end
-
-            # Query functions used by the examples.
-            lift_drag(s)
-            total_drag(s)
-            pos_kite(s)
-            winch_force(s)
-            reel_out_speed(s)
-            cl_cd(s)
-            calc_elevation(s)
-            calc_azimuth(s)
-            calc_heading(s)
-        catch e
-            @warn "PrecompileTools workload failed; continuing without it" exception=(e, catch_backtrace())
+        for _ in 1:3
+            step!(s; rel_depower = 0.25, rel_steering = 0.0040,
+                  vsm_interval = 1)
         end
+
+        # Query functions used by the examples.
+        lift_drag(s)
+        total_drag(s)
+        pos_kite(s)
+        winch_force(s)
+        reel_out_speed(s)
+        cl_cd(s)
+        calc_elevation(s)
+        calc_azimuth(s)
+        calc_heading(s)
+    catch e
+        @warn "PrecompileTools workload failed; continuing without it" exception=(e, catch_backtrace())
     end
 end

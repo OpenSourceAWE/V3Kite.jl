@@ -7,6 +7,36 @@ Functions for adjusting tether length, elevation, and other model parameters.
 """
 
 """
+    V3BridleConfig
+
+Material of the bridle lines and the canopy membranes, shared by the geometry
+generator that emits them ([`V3Kite.SurfplanAdapter.V3BeamTopology`](@ref)) and
+the run that loads them ([`apply_bridle_material!`](@ref)), so a sweep needs
+neither a re-export nor a recompile.
+"""
+Base.@kwdef struct V3BridleConfig
+    """
+    Fraction of tensile stiffness a segment keeps under compression, making
+    lines and fabric nearly tension-only. `0` carries no compressive force at all.
+    """
+    compression_frac::Float64 = 0.01
+    """
+    The same for the damping term. The default `1.0` leaves damping unaffected by
+    compression, so a line's damping ratio jumps the moment it goes slack; setting
+    this to `compression_frac` keeps one ratio on both branches.
+    """
+    compression_damping_frac::Float64 = 1.0
+    "`unit_damping` per `unit_stiffness` on the lines and tapes only, not the canopy [s]"
+    bridle_rel_damping::Float64 = 0.01
+    """
+    Fraction of line tension a bridle sheave passes on, the rest opposing rope
+    travel. The default is SymbolicAWEModels' own sealed ball-bearing sheave; no
+    V3 pulley has been measured.
+    """
+    pulley_efficiency::Float64 = 0.95
+end
+
+"""
     V3GeomAdjustConfig
 
 Configuration for wing geometry adjustments (tip reduction, trailing
@@ -36,18 +66,40 @@ end
     apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 
 Apply wing geometry adjustments to a `SystemStructure`:
-tip leading-edge reduction, trailing-edge wire shortening,
-and tether length repositioning.
+tip leading-edge reduction and trailing-edge wire shortening.
+
+Both were fitted against the particle lattice and address segments by position, so
+they are skipped with a warning on a structure whose segments are laid out
+differently — the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) must not
+inherit a correction fitted for another structure. A beam wing is recognised by its
+`TimoshenkoJoint`s; being the larger structure, it has a segment at every one of
+these indices, so an in-range check alone would let the corrections land on canopy
+membranes instead.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
+    in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
+    if !isempty(sys.timoshenko_joints) &&
+            (config.reduce_tip || config.reduce_te)
+        @warn "Skipping the tip/TE reductions on a beam wing: they are indices " *
+              "into the particle lattice, whose wing segments this has none of"
+        return nothing
+    end
     if config.reduce_tip
-        for idx in config.tip_segments
-            sys.segments[idx].l0 -= config.tip_reduction
+        if in_range(config.tip_segments)
+            for idx in config.tip_segments
+                sys.segments[idx].l0 -= config.tip_reduction
+            end
+        else
+            @warn "Skipping tip reduction: no segments at those indices" config.tip_segments
         end
     end
     if config.reduce_te
-        for idx in config.te_segments
-            sys.segments[idx].l0 *= config.te_frac
+        if in_range(config.te_segments)
+            for idx in config.te_segments
+                sys.segments[idx].l0 *= config.te_frac
+            end
+        else
+            @warn "Skipping TE reduction: no segments at those indices" config.te_segments
         end
     end
     return nothing
@@ -87,7 +139,7 @@ function distribute_wing_mass!(sys, mass; dist=0.75)
         "Expected even number of wing points, got $n")
     pairs = [(wing_pts[i], wing_pts[i+1])
              for i in 1:2:n]
-    chords = [norm(le.pos_b - te.pos_b)
+    chords = [norm(le.pos_undeformed_b - te.pos_undeformed_b)
               for (le, te) in pairs]
     total_chord = sum(chords)
     for (i, (le, te)) in enumerate(pairs)
@@ -101,12 +153,15 @@ end
 """
     tether_point_idxs(sys) -> Vector{Int}
 
-Sorted indices of every point belonging to a tether: the endpoints
-of all segments referenced by the system's tethers.
+Sorted indices of every point on a winched tether: the endpoints
+of all segments those tethers reference. A winch-less tether is a
+bridle line that was split into segments, not part of the tether.
 """
 function tether_point_idxs(sys)
     idxs = Set{Int}()
+    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
     for tether in sys.tethers, segment_idx in tether.segment_idxs
+        tether.idx in winched || continue
         i, j = sys.segments[segment_idx].point_idxs
         push!(idxs, i, j)
     end

@@ -16,14 +16,11 @@ isdefined(@__MODULE__, :hold_torque!) ||
 
 @testset "Interface Functions" begin
     data_path = v3_data_path()
-    config = V3SimConfig(
-        struc_yaml_path   = "struc_geometry.yaml",
-        aero_yaml_path    = "aero_geometry.yaml",
-        vsm_settings_path = "vsm_settings.yaml",
-        v_wind            = 10.0,
-        tether_length     = 150.0,
-    )
-    sam, sys = create_v3_model(config; data_path)
+    PROJECT = "system_psm.yaml"
+    settings = Settings(PROJECT)
+    settings.v_wind = 10.0
+    settings.l_tether = 150.0
+    sam, sys = create_v3_model(PROJECT; data_path, settings)
     sam.set.wind_vec = [10.0, 0.0, 0.0]
     init!(sam; remake=false, remake_vsm=true)
     sys.winches[1].brake = true
@@ -44,7 +41,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
         len = unstretched_length(v3kite)
         @test isfinite(len)
         @test len > 0.0
-        @test len ≈ config.tether_length  # should match configured tether length
+        @test len ≈ settings.l_tether  # should match configured tether length
     end
 
     @testset "v_wind_kite" begin
@@ -52,7 +49,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
         @test length(v) == 3
         @test all(isfinite, v)
         @test norm(v) > 0.0          # non-zero wind
-        @test norm(v) ≈ config.v_wind  # profile_law=0: constant wind, factor=1
+        @test norm(v) ≈ settings.v_wind  # profile_law=0: constant wind, factor=1
     end
 
     @testset "pos_kite" begin
@@ -198,7 +195,8 @@ end
     SIM_TIME         = 1.0
 
     s = init(V_WIND, TETHER_LENGTH;
-        depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT)
+        depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, system_yaml = PROJECT,
+        aero_mode = AeroDirect())
 
     @testset "init" begin
         @test s isa V3KITE
@@ -215,11 +213,11 @@ end
         @test s.set.max_acc > 0.0
     end
 
-    @testset "init default min_damping" begin
-        # Settling decays `body_damping` linearly to the `min_damping` floor and
-        # the returned model runs with that floor, so the default `min_damping`
-        # is readable off the settled points: 0.8 .* the default body_damping.
-        expected = 0.8 .* [0.0, 0.0, 40.0]
+    @testset "init default body_sim_damping" begin
+        # Settling decays `body_start_damping` linearly to the flown floor and the
+        # returned model runs with that floor, so the default is readable off the
+        # settled points: the `body_sim_damping:` of the project's kite settings.
+        expected = load_kite(PROJECT).body_sim_damping
         tether_pts = Set(tether_point_idxs(s.sys))
         wing_pts = [i for i in eachindex(s.sys.points) if !(i in tether_pts)]
         @test !isempty(wing_pts)

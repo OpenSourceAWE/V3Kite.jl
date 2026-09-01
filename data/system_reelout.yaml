@@ -1,3 +1,8 @@
 system:
-    sim_settings: "settings_reelout.yaml"
+    sim_settings: "sim_settings_reelout.yaml"
     wc_settings: "wc_settings.yaml"
+    structural_geometry: "struc_geometry.yaml"
+    aero_geometry: "cfd_aero_geometry.yaml"
+    vsm_settings: "vsm_settings.yaml"
+    kite_settings: "kite_settings_psm.yaml"
+    heading_settings: "heading_settings.yaml"

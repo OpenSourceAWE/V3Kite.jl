@@ -21,6 +21,7 @@ using UnPack
 using Rotations
 using Dates
 using DiscretePIDs
+using DiscretePIDs: set_K!, set_Td!
 using HDF5
 using Serialization
 using Parameters
@@ -35,6 +36,7 @@ export SymbolicAWEModel, SystemStructure, Logger, SysState
 export load_sys_struct_from_yaml, set_data_path, get_data_path
 export init!, next_step!, update_sys_state!, log!, save_log, load_log, replay
 export PARTICLE_DYNAMICS, RIGID_DYNAMICS, AeroDirect, ContinuousAero
+export AeroPressure, KernelBackend, MonolithBackend
 export Settings
 export SymbolicAWEModels
 export record, replay
@@ -52,16 +54,21 @@ include("sim_helpers.jl")
 include("simulation.jl")
 include("turbulence_config.jl")
 include("stabilization.jl")
+include("v3_settings.jl")
 include("interface.jl")
+include("surfplan_adapter/SurfplanAdapter.jl")
+using .SurfplanAdapter
 
 # Calibration exports
 # Base values (official KCU measurements)
 export V3_STEERING_L0_BASE, V3_DEPOWER_L0_BASE
 # Gains
 export V3_STEERING_GAIN, V3_DEPOWER_GAIN
-# Segment indices
+# Segment indices and names
 export V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX
 export V3_DEPOWER_IDX
+export V3_STEERING_LEFT_NAME, V3_STEERING_RIGHT_NAME
+export V3_DEPOWER_NAME, tape_segment
 # Conversion functions
 export steering_percentage_to_lengths
 export depower_percentage_to_length
@@ -72,7 +79,7 @@ export get_steering, set_steering!
 export get_depower, set_depower!
 
 # Model setup exports
-export V3GeomAdjustConfig, apply_geom_adjustments!
+export V3GeomAdjustConfig, V3BridleConfig, apply_geom_adjustments!
 export distribute_wing_drag!, distribute_wing_mass!
 export set_v3_body_damping!, set_body_frame_damping!, tether_point_idxs
 export tether_bridle_segments, set_damping_per_stiffness!
@@ -90,7 +97,8 @@ export identify_turn_rate_law, format_turn_rate_report
 export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
 
 # AoA-ripple analysis exports
-export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report
+export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report,
+    print_ripple_report
 
 # Flight data exports
 export parse_time_to_seconds, unix_to_utc_seconds
@@ -112,18 +120,34 @@ export compute_tether_drag_coeff, compute_bridle_drag_coeff
 export compute_kcu_drag_coeff
 export compute_kite_aoa, compute_bridle_euler, span_mean_aoa
 export compute_wing_incidence
+export wing_station_chords, wing_twist_dist
+export differential_twist, aero_moment_z
 export compute_bridle_pitch_angle
 export chord_ref_mid
 export mean_te_segment_force
 export save_and_load_log
 export create_heading_pid, create_winch_pid
 export report_performance
-export build_replay_name
+export build_replay_name, replay_log_names
 export find_frame_syslog_idxs, build_replay_sys_struct
 
 # Simulation exports
-export V3SimConfig, create_v3_model, run_v3_simulation, v3_data_path
+export V3KiteConfig, create_v3_model, build_v3_model, v3_data_path
+export apply_kite_material!
 export V3_MODEL_NAME, V3_RIGID_DYNAMICS_MODEL_NAME
+export resolve_aero_mode, aero_geometry_path
+
+# Project settings exports
+export kite_settings, heading_settings, settle_settings, select_project
+export load_kite, load_settle, settings_block
+export V3ReplayConfig, load_replay, replay_maneuver
+export struc_geometry_path, aero_geometry_path, vsm_settings_path
+export parse_backend, parse_aero_mode, parse_wing_type
+export fill_struct, convert_setting, project_entry
+export project_path, project_file, project_data_path
+
+# Heading-controller settings exports
+export HeadingSettings, load_heading, heading_pid, schedule_heading_pid!
 
 # Persistent turbulence preference (data/gui.yaml)
 export get_default_turbulence, set_default_turbulence
@@ -136,10 +160,18 @@ export kite_ref_frame, calc_orient_quat, orient_euler
 
 # Stabilization exports
 export V3SettleConfig, settle_wing
-export settled_struct_path, load_settled_struct
+export settled_state_path, load_settled_struct
+export beam_damping
+export V3RelaxConfig, relax_bridle!
+export save_state_log, read_state_log, start_from_state!, relaxed_state_name
 
 # Photogrammetry exports
 export load_extra_points
+
+# Beam-wing converter exports (V3Kite.SurfplanAdapter)
+export SurfplanAdapter, V3BeamTopology, V3_ADAPTER_FRAME_OFFSET
+export surfplan_to_struc, read_adapter_geometry, AdapterGeometry
+export apply_comer_bending!, apply_bridle_material!, beam_joint_radii
 
 # Extension exports (provided by V3KiteMakieExt when GLMakie is loaded)
 export plot_body_frame_local, plot_twist_dist

@@ -473,6 +473,95 @@ function span_mean_aoa(sys)
 end
 
 """
+    wing_station_chords(sys, wing=sys.wings[1]) -> Vector{NamedTuple}
+
+Every twist surface's `(y, le, te)` — span position [m] and body-frame leading/
+trailing edge position — sorted from the `-y` tip outboard.
+
+The edges are the surface's extreme points in chordwise CAD x, which is the rule
+SymbolicAWEModels itself maps aero sections onto. Pairing wing nodes off by
+index instead only works on the lattice: a beam station carries eleven chordwise
+control points that are wing nodes too.
+
+Positions are derived from live `pos_w` here rather than read from `point.pos_b`,
+which holds the *undeformed* geometry: the equations take it as the parameter
+that `twist_deformed_offset` rotates by the live twist angle, so writing the
+deformed positions back into it would twist an already-twisted station on the
+next model build.
+"""
+function wing_station_chords(sys, wing=sys.wings[1])
+    R_w_b = calc_R_b_w(sys)'
+    origin = isnothing(wing.origin) ? Vector(wing.pos_w) :
+        SymbolicAWEModels.get_ref_position_from_points(sys.points, wing.origin)
+    body_pos(point) = R_w_b * (point.pos_w - origin)
+    stations = NamedTuple[]
+    for surface_idx in wing.twist_surface_idxs
+        idxs = sys.twist_surfaces[surface_idx].point_idxs
+        length(idxs) < 2 && continue
+        station = [sys.points[i] for i in idxs]
+        le = body_pos(argmin(p -> p.pos_cad[1], station))
+        te = body_pos(argmax(p -> p.pos_cad[1], station))
+        push!(stations, (y=(le[2] + te[2]) / 2, le=le, te=te))
+    end
+    return sort!(stations, by=station -> station.y)
+end
+
+"""
+    wing_twist_dist(sys, wing=sys.wings[1]) -> (span_y, twist)
+
+Span position [m] and local twist [rad] of every wing station, outboard from the
+`-y` tip. A station's twist is the angle of its chord off the body x axis in the
+plane normal to the local spanwise direction.
+"""
+function wing_twist_dist(sys, wing=sys.wings[1])
+    stations = wing_station_chords(sys, wing)
+    n = length(stations)
+    n < 2 && return (Float64[], Float64[])
+    body_x = [1.0, 0.0, 0.0]
+    twist = Float64[]
+    for k in 1:n
+        chord_b = stations[k].te - stations[k].le
+        y_airf = normalize(stations[min(k + 1, n)].le -
+                           stations[max(k - 1, 1)].le)
+        z_loc = normalize(cross(body_x, y_airf))
+        push!(twist, atan(dot(chord_b, z_loc), dot(chord_b, body_x)))
+    end
+    return [station.y for station in stations], twist
+end
+
+"""
+    differential_twist(sys, wing=sys.wings[1]) -> Float64
+
+Mean station twist of the `+y` wing half less that of the `-y` half [rad]: the
+antisymmetric part of the twist distribution, which is what a bridle-steered
+wing turns on. Symmetric deformation gives zero however much overall twist it
+carries, so this separates steering from depower. `NaN` when a half is empty.
+"""
+function differential_twist(sys, wing=sys.wings[1])
+    span_y, twist = wing_twist_dist(sys, wing)
+    right = [t for (y, t) in zip(span_y, twist) if y > 0]
+    left = [t for (y, t) in zip(span_y, twist) if y < 0]
+    (isempty(right) || isempty(left)) && return NaN
+    return mean(right) - mean(left)
+end
+
+"""
+    aero_moment_z(sys, wing=sys.wings[1]) -> Float64
+
+Yaw moment [N·m] of the wing's VSM solution, the z component of its aerodynamic
+moment about the VSM reference point. Read together with
+[`differential_twist`](@ref) it says how much yaw a given twist asymmetry buys.
+
+Under `AeroPressure` the loads the structure feels come from the pressure
+integration rather than from this solution, so it is the aero moment of the same
+deformed geometry, not the applied one. `NaN` without a VSM solver.
+"""
+function aero_moment_z(sys, wing=sys.wings[1])
+    wing.aero isa SymbolicAWEModels.AbstractVSMAero || return NaN
+    return wing.vsm_solver.sol.moment[3]
+end
+
+"""
     compute_bridle_euler(sys) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle
@@ -713,24 +802,24 @@ function find_frame_syslog_idxs(syslog, frame_csvs)
 end
 
 """
-    build_replay_sys_struct(set, geom, source_struc,
-        vsm_set; aero_mode) -> (sam, sys_struct)
+    build_replay_sys_struct(set, kite_set, source_struc,
+        vsm_set) -> (sam, sys_struct)
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
-adjustments, and call `init!`. Mirrors the `SETTLE=false`
-branch of `flight_replay.jl` so plotting can be done after
-deserializing a syslog.
+adjustments, and call `init!`. Mirrors the `settle: false`
+path of `flight_replay.jl`, so `flight_replay_plots.jl` can
+draw a saved syslog without re-running the replay. Everything
+the model is built from comes from `kite_set`, so a plot cannot
+be drawn against a different one than the replay flew.
 """
-function build_replay_sys_struct(set,
-        geom::V3GeomAdjustConfig, source_struc, vsm_set;
-        aero_mode=SymbolicAWEModels.AeroDirect())
+function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
     sys = load_sys_struct_from_yaml(source_struc;
-        system_name=V3_MODEL_NAME, set,
-        dynamics_type=SymbolicAWEModels.PARTICLE_DYNAMICS, vsm_set,
-        aero_mode)
-    sam = SymbolicAWEModel(set, sys)
-    apply_geom_adjustments!(sys, geom)
+        system_name=v3_model_name(kite_set), set,
+        dynamics_type=kite_set.wing_type, vsm_set,
+        aero_mode=resolve_aero_mode(kite_set))
+    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
+    apply_geom_adjustments!(sys, kite_set.geom)
     SymbolicAWEModels.init!(sam;
         remake=false, ignore_l0=false, remake_vsm=true)
     return sam, sys
@@ -765,4 +854,23 @@ function build_replay_name(h5_path, start_utc, end_utc,
         gc.tip_reduction, gc.te_frac)
     suffix = replace(suffix, "." => "")
     return "$(year)_$(start_san)_$(end_san)_$(suffix)"
+end
+
+"""
+    replay_log_names(h5_path, start_utc, end_utc,
+        gc::V3GeomAdjustConfig) -> (sim_name, data_name)
+
+Names of the two logs a replay writes, read from the first data row of the
+window so plotting can find them without re-running the replay.
+"""
+function replay_log_names(h5_path, start_utc, end_utc,
+        gc::V3GeomAdjustConfig)
+    full_data = load_flight_data(h5_path)
+    limited_data, _ = limit_by_utc(full_data, start_utc, end_utc)
+    raw_depower = limited_data.kcu_actual_depower[1]
+    depower = occursin("2019", basename(h5_path)) ?
+        (0.2564 - 0.0768 * raw_depower / 100.0) : raw_depower / 100.0
+    steering = limited_data.kcu_actual_steering[1] / 100.0
+    base = build_replay_name(h5_path, start_utc, end_utc, depower, steering, gc)
+    return base * "_sim", base * "_data"
 end

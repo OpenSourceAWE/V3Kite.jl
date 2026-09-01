@@ -27,8 +27,12 @@ cd V3Kite.jl
 include("examples/menu.jl")
 ```
 
-Pick an example from the menu. See `V3SimConfig` in `src/simulation.jl` for
-the simulation options; bundled geometry and flight data live at
+Pick an example from the menu. An example takes its kite and flight condition
+from a project file — `data/system_*.yaml`, a section of pointers to the
+settings, geometry and kite files it uses — so `v3kite.jl` flies the particle
+lattice or the beam wing depending on which project it names. See
+`data/kite_settings_beam.yaml` for what a kite file holds and `V3KiteConfig` in
+`src/simulation.jl` for the options; bundled geometry and flight data live at
 `v3_data_path()`.
 
 > **First run is slow** (compilation + system build). Subsequent runs are
@@ -97,19 +101,22 @@ Legend — color marks which parameter was swept away from the baseline:
 `flight_replay.jl` slices a maneuver from an EKF H5 by UTC, settles the wing
 into the recorded conditions, then steps the simulator while feeding recorded
 steering/depower/tether inputs. A second `SymbolicAWEModel` driven straight
-from the EKF state is replayed alongside. Outputs land in `processed_data/`;
-PDFs go to `output/` when `SAVE_FIGS=true`. Toggles for maneuver, year,
-feedback gains, and tape reductions are at the top of the script.
+from the EKF state is replayed alongside. Both runs are saved as logs;
+`flight_replay_plots.jl` draws them, and its PDFs go to `output/` when
+`save_figs` is set. Maneuver, year, feedback gains, and tape reductions are the
+project's `replay_settings:` key, not constants in the script.
 
 <p align="center"><img src="docs/figures/coupled_model_replay.png" width="60%" alt="Coupled model replay"></p>
 
 ```julia
 include("examples/flight_replay.jl")
+include("examples/flight_replay_plots.jl")
 ```
 
 The default run replays a 9 s straight-to-right-turn segment (V3 kite, Oct.
-2025), the validation case from the paper ([Citation](#citation)). Stay in the
-REPL afterwards: the script leaves a `plots` named tuple, so
+2025), the validation case from the paper ([Citation](#citation)). The plotting
+half can be re-run on its own against the saved logs. Stay in the
+REPL afterwards: it leaves a `plots` named tuple, so
 evaluating a field opens that figure (GLMakie). In every plot the **continuous
 line is the open-loop simulation** and the **dotted line is the flight data**.
 

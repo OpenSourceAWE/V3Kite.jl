@@ -35,7 +35,8 @@ try
 
         # `sim_time` only sizes the logger here; the loops below count the steps themselves.
         fresh_model() = init(V_WIND, L_TETHER; depower_setpoint = DEPOWER,
-                             sim_time = 5.0, system_yaml = PROJECT)
+                             sim_time = 5.0, system_yaml = PROJECT,
+                             aero_mode = AeroDirect())
 
         function fly(perturb!)
             s = fresh_model()

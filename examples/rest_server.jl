@@ -239,23 +239,23 @@ function run_init(session::Session, params)
     collector = CollectLogger(Logging.Info, msg -> push_message!(session, msg))
     tee = TeeLogger(global_logger(), collector)
     try
-        kite = with_logger(tee) do
+        kite_set = with_logger(tee) do
             init(params.v_wind, params.l_tether;
                  depower_setpoint = params.depower_setpoint, sim_time = params.sim_time,
                  system_yaml = params.system_yaml, aero_mode = AERO_MODE)
         end
         lock(session.lock) do
-            session.s = kite
-            session.wpc = winch_pos_controller(kite)
+            session.s = kite_set
+            session.wpc = winch_pos_controller(kite_set)
             session.step_count = 0
             session.result = Dict{String, Any}(
-                "l0"    => kite.sys_state.l_tether[1],
-                "steps" => kite.steps,
-                "dt"    => kite.dt,
+                "l0"    => kite_set.sys_state.l_tether[1],
+                "steps" => kite_set.steps,
+                "dt"    => kite_set.dt,
             )
             session.state = "ready"
         end
-        @info "Model ready: $(kite.steps) steps at dt=$(kite.dt)s"
+        @info "Model ready: $(kite_set.steps) steps at dt=$(kite_set.dt)s"
     catch e
         errstr = sprint(showerror, e, catch_backtrace())
         lock(session.lock) do
@@ -340,11 +340,11 @@ end
             return json_response(409, Dict("error" => "session not ready",
                                            "state" => SESSION.state))
         end
-        kite = SESSION.s
-        remaining = kite.steps - SESSION.step_count
+        kite_set = SESSION.s
+        remaining = kite_set.steps - SESSION.step_count
         if remaining <= 0
             return json_response(409, Dict("error" => "step budget exhausted; re-init with a larger sim_time",
-                                           "steps" => kite.steps))
+                                           "steps" => kite_set.steps))
         end
         if !haskey(payload, :rel_depower) || !haskey(payload, :set_length)
             return json_response(400, Dict("error" => "rel_depower and set_length are required"))
@@ -389,8 +389,8 @@ end
         # preserved in the saved run while the response stays small.
         try
             for _ in 1:nsteps
-                step!(kite; rel_depower, rel_steering,
-                      set_torque = winch_torque!(SESSION.wpc, kite, set_length))
+                step!(kite_set; rel_depower, rel_steering,
+                      set_torque = winch_torque!(SESSION.wpc, kite_set, set_length))
                 SESSION.step_count += 1
             end
         catch e
@@ -404,9 +404,9 @@ end
         # steering value used. By default this is the compact `KiteState`
         # projection; with `full_state=true` it is every `SysState` field.
         resp = if full_state
-            full_state_dict(kite.sys_state)
+            full_state_dict(kite_set.sys_state)
         else
-            ks = KiteState(kite.sys_state)
+            ks = KiteState(kite_set.sys_state)
             Dict{String, Any}(string(f) => getfield(ks, f) for f in fieldnames(KiteState))
         end
         resp["n"]            = nsteps

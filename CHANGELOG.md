@@ -1,5 +1,302 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- `examples/flight_replay.jl` runs the replay and saves the logs; the plotting
+  moved to `examples/flight_replay_plots.jl`, which draws them from disk. This
+  retires the `LOAD_FROM_DISK` toggle — running the plots alone is what it did.
+- BREAKING: the replay's maneuver, feedback gains and figure options moved from
+  constants at the top of `flight_replay.jl` into a `replay_settings:` key on the
+  replay projects, loaded with `load_replay` into a `V3ReplayConfig`. The UTC
+  windows are `maneuvers:` entries in `data/replay_settings.yaml` rather than an
+  `if`/`elseif` chain in the script.
+- The replay kite settings carry the same damping as the wings they replay:
+  `kite_settings_psm_replay.yaml` gains the kernel backend and `body_sim_damping`
+  of 20 about z, and `kite_settings_beam_replay.yaml` gains that plus
+  `beam_body_damping`, `beam_world_damping`, `beam_angular_damping` and
+  `beam_joint_damping_scale`. Both had drifted from their flying configuration
+  without being corrections fitted to the flights, which is what those files are
+  for; a beam replay was flying with no beam damping at all.
+- BREAKING: the beam bodies in `data/struc_geometry_beam*.yaml` carry a `wing`
+  column naming the wing each belongs to, which is what lets the body damping
+  resolve a body's velocity against its parent wing. Regenerate with
+  `examples/v3beam_geometry.jl`.
+- The beam's four rigidities all come from `tube_linear_rigidities` at the tube
+  pressure, so `EA`, `GA`, `EI0` and `GJ` share one Breukels provenance instead of
+  taking `EA`/`GA`/`EI0` from the membrane laws. `EA` roughly doubles and `GA`
+  drops by a fifth. `V3BeamTopology.pressure_bar` is now the V3 bridle file's
+  measured `0.3` bar rather than 4.5 psi, which it was within 3% of anyway.
+- BREAKING: the beam joints in `data/struc_geometry_beam*.yaml` carry a single
+  `damping` column (Rayleigh β in seconds) instead of `damping_trans`/
+  `damping_rot`. `V3BeamTopology.damping_ratio` is now converted to β via
+  `β = 2ζ/ω` at the element's axial mode `ω = sqrt(EA/(L·m))`, following
+  `ζ = βω/2`. The old dashpot on relative node velocity also braked rigid
+  rotation of the whole wing — 15332 N·m·s/rad about yaw — which is what made
+  the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
+
+### Fixed
+- A run that aborts in its first seconds no longer dies in the AoA ripple metrics:
+  the parking and sinus examples report through the new `print_ripple_report`,
+  which warns that the log is too short instead of erroring out of the script
+  before the failure is printed.
+- Settling and the replay reinitialize the integrator with the solver `init!`
+  built, instead of a bare `FBDF()`. That default differentiates forward, so on
+  the monolith backend — which builds with `AutoFiniteDiff` — every `reinit!`
+  compiled the whole right-hand side a second time at `ForwardDiff.Dual`.
+  Settling the PSM wing on a warm model cache: 864 s -> 230 s.
+- Settling applies the kite's bridle material and beam joint damping, through the
+  same `apply_kite_material!` the flight model uses. It settled on the geometry
+  YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
+  an equilibrium of the model that started from it. Existing `settled_*.arrow`
+  files are regenerated.
+- `beam_joint_damping_scale` is applied once instead of twice. Settling ran it
+  over the joints and then `build_v3_model` ran it again over the same structure,
+  and since it multiplies in place the beam settled and flew at the square of the
+  scale rather than the scale itself.
+- `examples/flight_replay.jl` takes `remake_model` and `remake_settled_state` from
+  the kite settings instead of forcing a re-settle on every run.
+- `beam_body_damping` and `beam_world_damping` skip the wing bodies, as
+  `beam_angular_damping` already did. On a `RIGID_DYNAMICS` kite the one dynamic
+  body is the whole wing, and these settings damped its flight.
+
+### Added
+- `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
+  Rayleigh β without regenerating the geometry. The emitted β is ζ = 1 at each
+  joint's transverse mode, which the chord modes outgrow under flight load until
+  the implicit solver stalls; the beam projects fly at `45`. The scale is
+  numerical, not material — ζ = 45 is far past anything an inflated tube has — so
+  it stands in for damping the model is missing, such as the thin-airfoil
+  flow-curvature moment the panels omit because a section's `va` is the mean of
+  its edge velocities and so carries no pitch rate.
+- `data/settle_settings_beam.yaml`, a settling schedule of the beam's own, so the
+  ramps that quiet a beam do not change how the lattice settles. The shared
+  default left every `beam_*_start_damping` at zero, which damps nothing on a beam
+  wing — its wing nodes are `BODY_STATIC` points that the point damping cannot
+  reach — so the run began by flying a ringing structure.
+- `beam_angular_damping` in the kite settings and `beam_angular_start_damping`
+  in the settle settings: per-axis spin damping on every leading- and
+  trailing-edge body of a beam wing, `dω/dt -= c .* ω` [1/s] about the body's own
+  axes. `[0, 20, 0]` resists rotation about `y`, the chord-flapping axis. It damps
+  absolute spin, so unlike the joints' Rayleigh `damping` it brakes rigid wing
+  rotation too. Zero by default, and it skips the wing bodies, whose angular
+  damping carries the `y_damping` their constructor seeded.
+- `beam_body_damping` / `beam_world_damping` in the kite settings and
+  `beam_body_start_damping` / `beam_world_start_damping` in the settle settings:
+  the point damping the two already had, now reaching the rigid bodies. A beam
+  wing keeps its mass in bodies, and `body_sim_damping` never touched them —
+  its wing nodes are `BODY_STATIC` points riding those bodies. `beam_body_damping`
+  defaults to `null`, which follows `body_sim_damping`: both resolve on the wing's
+  own axes, so the bodies damp what the points would have.
+- `relax_bridle!` damps the bodies over the ramp as well as the points
+  (`V3RelaxConfig.body_damping`), and reports progress every
+  `report_every` steps. Without it a beam geometry never reached full stiffness:
+  nothing damped the rigid-body motion of the 22 tube bodies, so the ramp
+  diverged at `scale = 1.8e-4`. It now reaches `scale = 1.0` in 291 steps, and
+  the beam project flies a full 60 s heading maneuver on the state it writes.
+- `wing_twist_dist`, `differential_twist` and `aero_moment_z` for diagnosing
+  steering: the per-station twist along the span, the antisymmetric part of it
+  (the `+y` half mean less the `-y` half mean) and the VSM yaw moment to read it
+  against. `wing_station_chords` finds each station's leading and trailing edge
+  as the twist surface's extremes in chordwise CAD x, the rule SymbolicAWEModels
+  itself maps aero sections onto.
+- `V3Kite.SurfplanAdapter`, which turns a SurfplanAdapter export of the V3 into a
+  Timoshenko-beam `struc_geometry.yaml`: the leading edge and the struts become
+  `Body` chains joined by `TimoshenkoJoint`s, and every bridle branch end rides
+  the nearest node body as a `BODY_STATIC` point. The bridle itself comes from
+  the measured 2025 line system in `data/bridle_geometry_full_fem.yaml`, not from
+  the export, so the KCU, the pulleys, the M-line and the three tapes are the
+  flown ones. `V3BeamTopology` carries everything the emission depends on,
+  `surfplan_to_struc` writes the file, `apply_comer_bending!` swaps the constant
+  Breukels bending YAML can hold for the curvature-softening Comer-Levy law, and
+  `apply_bridle_material!` sets the compression and damping knobs on a loaded
+  structure so they can be swept without re-emitting. The emitted wing is a
+  `PARTICLE_DYNAMICS` wing following `BODY_STATIC` points, which makes
+  `data/struc_geometry_beam.yaml` a drop-in replacement for the particle
+  `struc_geometry.yaml`.
+- `relax_bridle!` and `V3RelaxConfig`. The measured bridle lengths and the
+  measured node coordinates come from different upstream files and disagree, so
+  several lines start above 100 % strain and no implicit solver can take a first
+  step. Relaxation integrates the structure with every segment stiffness scaled
+  down and hands it back as the residual falls, then holds at full stiffness
+  while the settling damping decays away.
+- `save_state_log`, `read_state_log` and `start_from_state!`, which write and
+  restore the one-row state log the settled-state cache already used, and
+  `relaxed_state_name`, which names the relaxed state of a geometry at a depower.
+- `V3KiteConfig.init_state` starts a settling from a relaxed state instead of
+  from the placed geometry. The state is restored before the flight state is
+  applied, so the relaxed bridle shape rides along into the target pose; that
+  makes a geometry whose bridle rest lengths disagree with its node positions
+  settleable at all, and one that agrees settle faster.
+- `V3KiteConfig.backend`, so a settling can run on the `KernelBackend`. Settling
+  built its model without one, and the monolithic build is the dominant cost on a
+  beam wing. `build_replay_sys_struct` takes one for the same reason.
+- `flight_replay.jl` replays on the beam wing as well, picked from its menu:
+  `system_beam_replay.yaml` brings the `KernelBackend` and none of the
+  wing-lattice corrections. The beam does not settle yet:
+  `update_sys_struct_from_data!` assigns the flight velocity point by point,
+  which leaves the beam's rigid bodies at rest.
+- The beam wing flies `AeroPressure` only. `data/kite_settings_beam.yaml` carries the
+  surface-traction transfer the wing is built for, and the `ContinuousAero`
+  variant is gone rather than kept as a second file. A project naming a
+  pressure kite now needs the surface-resolved aero geometry, and
+  `aero_geometry_path` says so at load time instead of letting the model build
+  fail on a missing surface contour.
+- `examples/v3beam_aero_geometry.jl`, which slices `V3_25.obj` into the
+  surface-resolved aero geometry `AeroPressure` needs — airfoil contours, polars
+  and the per-node `Cp`/`cf` tables — where the stock `aero_geometry.yaml`
+  carries lift/drag/moment polars alone. It slices VortexStepMethod's copy of the
+  mesh, which is already rotated into slicer convention and raised by 7.3 m and
+  is what `aero_geometry.yaml` came from, because `obj_to_yaml` rotates but does
+  not translate. The output is not in git, being derived and regenerable.
+- `examples/v3beam_geometry.jl` emits the beam geometry and
+  `examples/relax_bridle.jl` relaxes a geometry and logs the state. Both write
+  files that are in git — `data/struc_geometry_beam.yaml` and
+  `data/relaxed_*.arrow` — so no other example regenerates or relaxes anything,
+  and a beam run costs nothing but the run. `relax_bridle.jl` is
+  geometry-agnostic and gives the particle model a relaxed start too.
+
+- `HeadingSettings` and `data/heading_settings.yaml`, the sibling of
+  `WC_Settings` for the steering loop. The heading PID was retuned in every
+  example that closed it — K between 1.0 and 1.2, `Td` 0 or 0.15, `max_steering`
+  0.15 or 0.175 — with only `simple_sinus.jl` documenting its tuning, so the
+  numbers now live in a file where the divergence is visible. The struct also
+  carries the two things the examples did to the PID after building it, the
+  `1/v_app` gain schedule and the `Td` ramp, so `heading_pid` plus
+  `schedule_heading_pid!` covers all of them. The setpoint stays in the example,
+  being the maneuver rather than the controller.
+
+### Changed
+- BREAKING: the `sim_settings:` files are named for the key that points at them
+  and for the run they describe: `sim_settings_default.yaml` (was
+  `settings.yaml`), `sim_settings_v3kite.yaml`,
+  `sim_settings_reelout.yaml`, `sim_settings_cabauw.yaml`. `settings.yaml`
+  against `settings_v3kite.yaml` said nothing about which held what; the new
+  names line up with `kite_settings_*`, `settle_settings_*` and `wc_settings`.
+
+### Fixed
+- `setup_settling_model` honours the project's `remake_model` instead of
+  hardcoding `remake=false`. With `remake_model: true` a run settled on the
+  serialized model and only rebuilt afterwards, so the settled state every
+  later stage starts from was produced by the previous right-hand side.
+  `settle_wing` then reuses that rebuild for the settled model rather than
+  compiling the kernels a second time; the bin's structure hash rebuilds
+  anyway if the settled structure is not the one settling built.
+- `examples/relax_bridle.jl` rebuilt nothing: it called `init!(remake=false)`, so
+  it read back the serialized model and ran the old right-hand side whenever the
+  equations had changed. It now honours the project's `remake_model`, as
+  `build_v3_model` does.
+- The two replay projects flew different conditions: `system_psm_replay.yaml`
+  read `settings.yaml` while `system_beam_replay.yaml` read
+  `settings_v3kite.yaml`, so the pair differed in `sim_time` and depower as well
+  as in wing model. Both now read `sim_settings_default.yaml`.
+
+### Changed
+- BREAKING: the two aero geometries are named for the solver they came from and
+  sit side by side: `cfd_aero_geometry.yaml` (was `aero_geometry.yaml`) and
+  `nf_aero_geometry.yaml`, the NeuralFoil sweep `v3beam_aero_geometry.jl` writes.
+  Its per-node tables stay under `data/polars_neuralfoil/` while the geometry
+  itself moves beside its sibling, using the `geometry_path` keyword
+  `obj_to_yaml` gained. What a dataset can drive is still read off the file by
+  `has_surface_tables`, not off its name.
+- BREAKING: the kite and settling settings files are named for the project key
+  that points at them — `kite_settings_psm.yaml`, `kite_settings_beam.yaml`,
+  `settle_settings_default.yaml`, `settle_settings_replay.yaml` — and each now
+  states every field of its struct explicitly, one line of comment per key,
+  rather than leaving defaults implicit. The beam files omit the tip and
+  trailing-edge reductions, which address lattice segments by index.
+- A run now takes its kite and flight condition from a KiteUtils **project
+  file** — `data/system_*.yaml`, a `system:` section of pointers — instead of
+  from constants in the example script. Most of the mechanism already existed
+  and was going unused: `structural_geometry:`, `aero_geometry:` and
+  `vsm_settings:` are KiteUtils keys with KiteUtils accessors, and `Settings`
+  already carried `sim_time`, `sample_freq`, `l_tether`, `elevation`, `depower`
+  and `v_wind`. Two keys are new, `kite_settings:` and `settle_settings:`, and
+  each points at a file loaded into a struct the way `wc_settings.yaml` and
+  `ripple_settings.yaml` already were. Every key is choosable on its own, so
+  examples share the files they agree on and differ only where they must.
+- `V3KiteConfig` holds what KiteUtils has no concept of: the backend, the aero
+  mode, the VSM interval, the damping, the geometry adjustments, the bridle
+  material and how the model is brought up. `V3BridleConfig` splits the line and
+  membrane material out of `V3BeamTopology`, so the generator that emits a
+  bridle and the run that loads it share one definition.
+- `V3SettleConfig` keeps only the settling schedule and embeds the kite it
+  settles; its geometry paths, `system_yaml`, `aero_mode` and `backend` are gone,
+  having duplicated `V3SimConfig`'s. It gets its own project key because the
+  schedule is per-example while the kite is not.
+- `build_v3_model(project)` brings up either kite from a project file, covering
+  both the settling and the relaxed-state paths and applying the bridle material
+  and bending law that the examples applied by hand.
+- `create_v3_model` takes a project filename rather than a config struct. Pass
+  `settings` to override the project's own, which is what rebuilding a structure
+  to match a recorded log needs.
+- `init`'s `aero_mode` and `gc` now default to `nothing`, taking both from the
+  project's kite settings; pass either to override it.
+- `examples/v3kite.jl` and `examples/flight_replay.jl` open a menu for the wing
+  to run — `select_project` — and fly either kite through the same code.
+  `examples/v3beam.jl` and `examples/v3beam_replay.jl` are gone, each having been
+  its PSM counterpart with another project file's worth of constants. Without a
+  terminal the menu takes its default instead of asking, so a scripted run is
+  unaffected.
+- `V3KiteConfig.wing_mass`, `wing_mass_le_frac` and `wing_drag_coeff` carry the
+  lattice corrections `flight_replay.jl` applied by hand. Both redistribute over
+  wing nodes, which a beam wing does not have mass or drag on, so the beam
+  project turns them off by leaving them out.
+
+### Removed
+- `V3SimConfig` and `run_v3_simulation`. Nothing called `run_v3_simulation`
+  outside its own kwargs forwarder, and everything `V3SimConfig` carried has a
+  home: the geometry paths are project-file keys, the flight condition is
+  `Settings`, and the model options are `V3KiteConfig`.
+
+### Fixed
+- The settling schedule no longer overrides the damping the kite file asks for.
+  `min_damping` named the same quantity as `V3KiteConfig.body_damping` and won,
+  so a kite settling to `[0, 0, 0]` flew at the schedule's `[0, 0, 20]`. The
+  floor is now the kite's own, and both names say which phase they belong to:
+  `body_start_damping`/`world_start_damping` in the settling schedule,
+  `body_sim_damping`/`world_sim_damping` in the kite file.
+  BREAKING: `settle_settings:` no longer accepts `min_damping`, and
+  `body_damping`/`world_damping` are renamed in both files.
+- `plot_twist_dist` paired wing nodes off two at a time, which holds only on the
+  lattice. A beam station carries eleven chordwise control points that are wing
+  nodes too, so the plot read one real station in six and made chords out of
+  pairs of control points. It now reads the twist surfaces.
+- `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a
+  beam wing, as its docstring always said it would. Both address segments by
+  index into the particle lattice, and the beam is the larger structure, so the
+  in-range check they were guarded by passed and the corrections landed on canopy
+  membranes — 0.2 m off a 1.31 m `spanwise_2_9` and its neighbours.
+
+### Changed
+- The settled state is cached as a one-row `Float64` log rather than a rewritten
+  geometry YAML: `settled_struct_path` became `settled_state_path` and the
+  structure is rebuilt from the source YAML with that state restored onto it. A
+  `Float32` state does not reproduce `integrator.u` on a bridle this stiff.
+- The source geometry enters the settled-state cache key, a state logged for one
+  having the wrong number of points for another. Left out at the default
+  `struc_geometry.yaml`, so existing cache files keep being found.
+- `KiteUtils` 0.12, whose `SysState` carries a complete differential state — the
+  point velocities, body turn rates and pulley lengths a single logged row needs
+  to restart a simulation.
+- Structural YAMLs carry a `variables` block instead of a `materials` table,
+  which SymbolicAWEModels removed. `dyneema` is now a multi-variable filling
+  `youngs_modulus`, `damping_per_stiffness` and `density` wherever it is
+  written, so the segment and tether tables name those three columns instead
+  of `material`. The hardcoded wing stiffnesses of `struc_geometry.yaml` moved
+  to `wing_tube` and `wing_wire` variables, which give the same `unit_stiffness`
+  (`youngs_modulus * area`, at the 1 mm diameter every wing row uses) and the
+  same damping as the numbers they replace.
+- Pulley rows carry an `efficiency`, SymbolicAWEModels having replaced the fixed
+  pulley damping with a sheave friction that scales with line tension rather than
+  with rope speed. Every V3 pulley is written at `0.95`, a sealed ball-bearing
+  sheave, none of them having been measured; the artificial `damping` that sits
+  next to it is a debugging aid and stays zero.
+- Body- and world-frame damping are applied to every point. The tether-skipping
+  `set_body_frame_damping!`, the `set_v3_body_damping!` two-region pattern and
+  `V3SettleConfig.body_damping_overrides` are gone, along with the override
+  suffix in the settled-geometry cache key; `V3SimConfig` gained
+  `world_damping_pattern` next to `damping_pattern`.
 ## V3Kite v1.2.0 17-08-2026
 
 ### Changed
@@ -164,8 +461,8 @@
   is dead on a `PARTICLE_DYNAMICS` wing, whose aero force is a per-point VSM
   solve that never reads it.
 - `v_wind_gnds`/`rel_turbs` extended to `[3.483, 5.324, 8.163, 9.51]` /
-  `[0.342, 0.465, 0.583, 0.626]` in `settings.yaml`, `settings_reelout.yaml`
-  and `settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
+  `[0.342, 0.465, 0.583, 0.626]` in `sim_settings_default.yaml`, `sim_settings_reelout.yaml`
+  and `sim_settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
   an unlisted ground wind speed to a neighbour's turbulence intensity. The
   `0.626` point extends the log fit `rel_turb = 0.342 + 0.283*(ln v - 1.248)`
   fitted to the three Cabauw-calibrated points (turbulence intensity I₉₉ at
@@ -241,7 +538,7 @@
   `simple_parking_client.m` / `simple_sinus_client.m` backed by a new
   `examples/rest_server.jl` and `bin/run_server`.
 - New system/settings projects for the above: `data/system_cabauw.yaml`,
-  `data/system_reelout.yaml`, `data/settings_reelout.yaml`,
+  `data/system_reelout.yaml`, `data/sim_settings_reelout.yaml`,
   `data/wc_settings.yaml`.
 - Optional precompilation workload (`src/precompile.jl`, previously
   disabled): brings TTFX down from ~28 s to ~2 s at the cost of ~90 s longer

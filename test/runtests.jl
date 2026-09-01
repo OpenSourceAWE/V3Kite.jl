@@ -116,37 +116,34 @@ using KitePodModels: KCU
                     heading=0.0, steering=0.0, depower=0.25,
                     wind_vec=[10.0, 0.0, 0.0])
         cfg_dir = V3Kite.V3SettleConfig()
-        cfg_cont = V3Kite.V3SettleConfig(
-            aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero())
-        path_dir = V3Kite.settled_struct_path(cfg_dir, init_row)
-        path_cont = V3Kite.settled_struct_path(cfg_cont, init_row)
+        cfg_cont = V3Kite.V3SettleConfig(kite_set=V3KiteConfig(
+            aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero()))
+        path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
+        path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
         @test path_dir != path_cont
         @test occursin("_aerocont", path_cont)
-        # The default adds nothing, so caches predating the aero tag stay in use.
         @test !occursin("_aero", path_dir)
+        @test endswith(path_dir, ".arrow")
 
-        # Guards a file written before the tag existed, or renamed by hand.
-        cont_wing = (aero=V3Kite.SymbolicAWEModels.ContinuousAero(),)
-        @test V3Kite.aero_mode_matches((wings=[cont_wing],),
-            V3Kite.SymbolicAWEModels.ContinuousAero())
-        @test !V3Kite.aero_mode_matches((wings=[cont_wing],),
-            V3Kite.SymbolicAWEModels.AeroDirect())
-        # A wing without aerodynamics cannot disagree.
-        @test V3Kite.aero_mode_matches((wings=[(aero=nothing,)],),
-            V3Kite.SymbolicAWEModels.AeroDirect())
+        # A state logged for one geometry has the wrong point count for another.
+        cfg_beam = V3Kite.V3SettleConfig(project="system_beam.yaml")
+        path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
+        @test path_beam != path_dir
+        @test occursin("_struc_geometry_beam", path_beam)
     end
 
     @testset "Default Cache Path" begin
-        # A development checkout caches in place, keeping the existing data/*.bin.
+        # Every install mode — Pkg-installed or a development checkout — caches
+        # to the same scratchspace, regardless of the `data_path` argument, so
+        # `precompile.jl`'s warm-up artifacts and every runtime caller agree on
+        # where to look.
         dev = v3_data_path()
-        @test V3Kite.default_cache_path(dev) == dev
-
-        # A Pkg-installed copy must not be written to: Pkg.gc deletes that tree.
-        installed = joinpath(DEPOT_PATH[1], "packages", "V3Kite", "abc123", "data")
-        redirected = V3Kite.default_cache_path(installed)
-        @test redirected != installed
+        foreign = mktempdir()
+        redirected = V3Kite.default_cache_path(dev)
+        @test redirected != dev
         @test !startswith(redirected, joinpath(DEPOT_PATH[1], "packages"))
         @test occursin("scratchspaces", redirected)
+        @test V3Kite.default_cache_path(foreign) == redirected
     end
 
     @testset "V3GeomAdjustConfig Defaults" begin
@@ -169,18 +166,71 @@ using KitePodModels: KCU
     @testset "V3 Data Path" begin
         path = v3_data_path()
         @test isdir(path)
-        @test isfile(joinpath(path, "system.yaml"))
     end
 
-    @testset "V3SimConfig Defaults" begin
-        config = V3SimConfig()
-        @test config.sim_time == 60.0
-        @test config.fps == 60
-        @test config.v_wind == 10.0
-        @test config.up == 40.0
-        @test config.us == 0.0
-        @test config.tether_length == 250.0
-        @test config.brake == true
+    @testset "Project Settings Files" begin
+        # Every project file has to name what a run needs, and every settings
+        # file it names has to parse into its struct: a key renamed on one side
+        # only surfaces here rather than mid-run.
+        set_data_path(v3_data_path())
+        for project in ("system_reelout.yaml",
+                        "system_cabauw.yaml", "system_psm.yaml",
+                        "system_beam.yaml", "system_psm_replay.yaml",
+                        "system_beam_replay.yaml")
+            kite_set = load_kite(project)
+            @test kite_set isa V3KiteConfig
+            @test kite_set.init_mode in (:settle, :relaxed_state)
+            @test isfile(struc_geometry_path(project))
+            settle = load_settle(project; kite_set)
+            @test settle.project == project
+            @test settle.num_steps > 0
+        end
+
+        # The beam is flown from a state relaxed at one depower, so the
+        # project's depower is not free to disagree with it.
+        beam_set = Settings("system_beam.yaml")
+        @test occursin("dp$(Int(beam_set.depower))",
+            load_kite("system_beam.yaml").init_state)
+
+        beam = load_kite("system_beam.yaml")
+        @test beam.backend isa KernelBackend
+        @test !beam.geom.reduce_tip && !beam.geom.reduce_te
+        @test beam.bridle.compression_frac == 0.0
+        @test beam.init_mode == :settle
+        @test beam.aero_mode isa AeroPressure
+
+        # The settling schedule sets the transient, the kite file what flies.
+        beam_settle = load_settle("system_beam.yaml"; kite_set=beam)
+        @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
+        @test beam_settle.kite_set.body_sim_damping == beam.body_sim_damping
+
+        # A geometry carrying polars alone cannot fly `pressure`, and says so
+        # when the project loads rather than inside the model build.
+        @test_throws ErrorException aero_geometry_path("system_psm.yaml";
+            aero_mode=AeroPressure())
+
+        # A typo in a settings file is caught when it loads, not silently
+        # defaulted.
+        @test_throws ErrorException V3Kite.fill_struct(
+            V3BridleConfig, Dict("compresion_frac" => 0.5))
+    end
+
+    @testset "Project Outside The Package" begin
+        # A project kept elsewhere reads its own settings files and falls back
+        # to the ones V3Kite ships for what it does not carry.
+        mktempdir() do dir
+            cp(joinpath(v3_data_path(), "system_beam.yaml"),
+               joinpath(dir, "system_beam.yaml"))
+            text = read(joinpath(v3_data_path(), "kite_settings_beam.yaml"), String)
+            write(joinpath(dir, "kite_settings_beam.yaml"),
+                  replace(text, "wing_mass: 0.0" => "wing_mass: 3.0"))
+            project = joinpath(dir, "system_beam.yaml")
+            @test load_kite(project).wing_mass == 3.0
+            @test dirname(struc_geometry_path(project)) == v3_data_path()
+            @test project_data_path(project, nothing) == dir
+            @test project_data_path("system_beam.yaml", nothing) == v3_data_path()
+            @test load_kite("system_beam.yaml").wing_mass == 0.0
+        end
     end
 
     include("test_ripple_metrics.jl")

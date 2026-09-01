@@ -41,8 +41,7 @@ followed by circular flight.
 function run_zenith_circles(;
         sim_time_zenith = 10.0, fps_zenith = 1,
         sim_time_circles = 0.0, fps_circles = 1,
-        body_damping = [0.0, 0.0, 20.0],
-        point_37_38_damping = [0.0, 0.0, 20.0],
+        body_sim_damping = [0.0, 0.0, 20.0],
         up = 0.4,
         ramp_time_us = 25.0,
         max_us_zenith = 0.1, us = 0.1,
@@ -68,25 +67,25 @@ function run_zenith_circles(;
         v_wind, deg2rad(-90.0), 0.0
     )
 
+    kite_set = load_kite(PROJECT)
+    kite_set.aero_mode = AERO_MODE
+    kite_set.geom = V3GeomAdjustConfig(
+        reduce_te = true, tether_length = tether_length)
+    kite_set.body_sim_damping = body_sim_damping
     settle_config = V3SettleConfig(
-        source_struc_path = "struc_geometry.yaml",
-        source_aero_path = "aero_geometry.yaml",
-        vsm_settings_path = "vsm_settings.yaml",
+        project = PROJECT,
+        kite_set = kite_set,
         v_wind = v_wind,
         tether_length = tether_length,
         g_earth = g_earth,
         kcu_mass = kcu_mass,
-        body_damping = [0.0, 0.0, 40.0],
+        body_start_damping = [0.0, 0.0, 40.0],
         decay_steps = 30,
-        geom = V3GeomAdjustConfig(
-            reduce_te = true, tether_length = tether_length
-        ),
         num_steps = 40, num_substeps = 1, dt = 0.05,
         start_depower = 40.0,
         course_correction_gain = 0.0,
         course_correction_mode = :heading,
-        world_damping = 0.0, min_damping = [0.0, 0.0, 20.0],
-        aero_mode = AERO_MODE,
+        world_start_damping = 0.0,
     )
     sam, _settle_log, settle_failed = settle_wing(
         settle_config;
@@ -94,19 +93,13 @@ function run_zenith_circles(;
         velocity = [0.0, 0.0, 0.0],
         heading = 0.0,
         steering = 0.0, depower = up,
-        wind_vec = wind_vec,
-        remake = false
+        wind_vec = wind_vec
     )
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
             "v_wind=$v_wind, lt=$tether_length"
     )
     sys = sam.sys_struct
-
-    set_v3_body_damping!(
-        sys, body_damping,
-        point_37_38_damping
-    )
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -304,8 +297,8 @@ ramp_time_us = 2
 fps_zenith = 20
 fps_circles = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
-body_damping = [0.0, 0.0, 20.0]
-point_37_38_damping = [0.0, 0.0, 20.0]
+body_sim_damping = [0.0, 0.0, 20.0]
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 const failed_runs = NamedTuple[]
@@ -325,7 +318,7 @@ for (run_id, (elev, g, us, up, vw, lt, kcu_mass_val)) in enumerate(
             elevation = elev, g_earth = g,
             kcu_mass = kcu_mass_val,
             sim_time_zenith, fps_zenith,
-            body_damping, point_37_38_damping,
+            body_sim_damping,
             max_us_zenith, target_azimuth = 0.0,
             sim_time_circles, fps_circles,
             ramp_time_us, us = us,

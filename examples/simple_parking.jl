@@ -34,6 +34,8 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
     Pkg.activate(joinpath(@__DIR__))
 end
 
+using Timers; tic()
+
 using V3Kite
 using V3Kite: init, step!
 import KiteUtils   # for KiteUtils.syslog; V3Kite does not re-export it, and the
@@ -48,18 +50,18 @@ include(joinpath(@__DIR__, "winch_adapter.jl"))  # winch_torque!: V3Kite is torq
 
 PROJECT =        "system_reelout.yaml"  # System project to use (see data/system_*.yaml)
 SIM_TIME         = 10.0     # Total simulation time [s]
-DT               = 0.05/3     # Simulation timestep [s]
+DT               = 0.05/3   # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
 USE_BRAKE        = true     # use the brake of the winch (or not)
 DEPOWER_SETPOINT = 0.25     # Depower setting held during parking [-]
 REL_STEERING     = 0.0040   # Fixed steering trim, tuned so |heading(end)| < 10 degrees
 AERO_MODE        = ContinuousAero() # ContinuousAero() or AeroDirect()
-VSM_INTERVAL     = 1   # steps between VSM aero solves
-# `INITIAL_BODY_DAMPING` shapes the settling transient; it decays to
-# `FLOWN_BODY_DAMPING`, the floor the parked run actually flies with.
-INITIAL_BODY_DAMPING = [0.0, 0.0, 40.0]             # Damping settling starts from, per axis [1/s]
-FLOWN_BODY_DAMPING   = 0.8 .* INITIAL_BODY_DAMPING  # Damping floor the parked run flies with, per axis [1/s]
+VSM_INTERVAL     = 5        # steps between VSM aero solves
+# `BODY_START_DAMPING` only shapes the settling transient, decaying to
+# `BODY_SIM_DAMPING`, which is the damping the parked run actually FLIES with.
+BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis [1/s]
+BODY_SIM_DAMPING   = [0.0, 0.0, 32.0]  # Floor it decays to; what the run FLIES [1/s]
 # Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
 # default in `data/struc_geometry.yaml`. `init` floors it during settling
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
@@ -70,10 +72,11 @@ COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are rep
 
 # `init` leaves the data path alone, so `save_log` below needs it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = INITIAL_BODY_DAMPING,
-    min_damping = FLOWN_BODY_DAMPING, damping_per_stiffness = DAMPING_PER_STIFFNESS,
+s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
+    body_sim_damping = BODY_SIM_DAMPING,
+    damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE)
+    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
 
 # `init` leaves the winch un-braked; brake it to park at constant tether length.
 s.sys.winches[1].brake = USE_BRAKE
@@ -144,6 +147,8 @@ function print_compression_report(s, seg_idxs, peaks, limit)
     end
 end
 
+toc("Initialization took: ")
+
 # ==================== SIMULATION LOOP ==================== #
 
 steps_done = 0
@@ -172,19 +177,20 @@ save_log(s.logger, "tmp_parking"; path=OUTPUT_DIR, colmeta=timestamp_colmeta())
 
 @info "Wind speed at kite height: $(round(norm(v_wind_kite(s)), digits=2)) m/s"
 
-if F_compr_max > 0
+if steps_done == 0
+    @warn "No step completed, so there is nothing to report on the segment forces."
+elseif F_compr_max > 0
     @info "Peak compression: $(round(F_compr_max, digits=2)) N in segment $F_compr_seg " *
           "at t=$(round(F_compr_t, digits=2)) s"
 else
     @info "No compression: all tether and bridle segments stayed in tension."
 end
-print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
+steps_done > 0 && print_compression_report(s, line_segs, compr_peaks, COMPRESSION_LIMIT)
 
 # ==================== RIPPLE METRICS ===================== #
 
 sl = KiteUtils.syslog(s.logger)
-ripple = aoa_ripple(sl)
-print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
-                                 t_loop, n_steps = steps_done))
+print_ripple_report(sl; stats = s.sam.integrator.stats, t_loop,
+                    n_steps = steps_done)
 
 nothing

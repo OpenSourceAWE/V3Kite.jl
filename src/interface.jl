@@ -9,7 +9,7 @@ torque. What remains is the plant side they read: `drum_params`, `winch_force`,
 `reel_out_speed`, `unstretched_length` and `force_to_torque`.
 
 The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
-of `data/settings.yaml`, loaded like any other `Settings` field.
+of `data/sim_settings_default.yaml`, loaded like any other `Settings` field.
 """
 @with_kw mutable struct V3KITE <: AbstractKiteModel
     "Reference to the settings struct"
@@ -387,11 +387,11 @@ end
 """
     init(v_wind_gnd, l_tether; elevation=nothing, upwind_dir=-π/2,
          depower_setpoint=0.25, dt=nothing, sim_time=nothing,
-         gc=V3GeomAdjustConfig(), body_damping=[0.0, 0.0, 40.0],
-         min_damping=0.8 .* body_damping, damping_per_stiffness=nothing,
-         aero_mode=AeroDirect(), data_path=v3_data_path(), cache_path=nothing,
+         gc=nothing, body_start_damping=[0.0, 0.0, 40.0],
+         body_sim_damping=nothing, damping_per_stiffness=nothing,
+         aero_mode=nothing, data_path=nothing, cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_torque=nothing,
-         remake=false) -> V3KITE
+         remake_model=nothing, remake_settled_state=nothing) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -401,22 +401,24 @@ for a `step!` simulation loop (see `examples/simple_parking.jl`).
 settings value; `upwind_dir` [rad] sets the wind direction. `depower_setpoint`
 is the initial `rel_depower` in `[0, 1]` (not meters). `dt` [s] and `sim_time`
 [s] size the logger and step count, falling back to `1/set.sample_freq` and
-`set.sim_time`. `gc` holds the geometry adjustments; `remake=true` forces
-re-settling (ignoring the `data/settled_*.bin` cache). There is no winch-gain
-argument: V3Kite owns no winch controller (see [`step!`](@ref)).
-`system_yaml` names the system-YAML file (default `"system.yaml"`) that points
-at the active settings/wc-settings files; pass e.g. `"system2.yaml"` to use an
-alternate config. `aero_mode` selects the aerodynamics model used for settling
-and the returned model (default `AeroDirect()`).
+`set.sim_time`. `gc` holds the geometry adjustments;
+`remake_settled_state=true` forces re-settling (ignoring the
+`data/settled_*.arrow` state) and `remake_model=true` rebuilds the serialized
+equations, both defaulting to the project's own flags.
+`system_yaml` names the project file (default `"system_psm.yaml"`) that points at
+the settings, geometry and kite-settings files; pass e.g.
+`"system_beam.yaml"` to fly another kite. `aero_mode` and `gc` override
+the aerodynamics and the geometry adjustments of that project's
+`kite_settings:` file; `nothing` (the default) takes both from it.
 
 `data_path` is the directory the geometry/settings YAMLs are READ from,
-defaulting to the bundled [`v3_data_path`](@ref); `cache_path` is where
+defaulting to the directory `system_yaml` itself lives in; `cache_path` is where
 everything generated is WRITTEN — the settled-geometry cache
-(`settled_*.bin`), the settling log, and the serialized model binary
+(`settled_*.arrow`), the settling log, and the serialized model binary
 (`model_*.bin`).
 
 Redirecting `data_path` as well means that directory must hold the source
-geometry too (`struc_geometry.yaml`, `aero_geometry.yaml`, `vsm_settings.yaml`,
+geometry too (`struc_geometry.yaml`, `cfd_aero_geometry.yaml`, `vsm_settings.yaml`,
 the system YAML and the settings file it names), since the settling stage reads
 all of them from it.
 
@@ -429,15 +431,25 @@ V3Kite uses to keep the preference in its OWN `data/`, since `data_path` must
 be the directory holding the model geometry and is read-only for an installed
 V3Kite.
 
-`body_damping` is the per-axis body-frame damping `[x, y, z]` in the wing frame,
-applied to every point during settling. It acts on point velocity *relative to
-the wing*, so it damps bridle vibration without slowing the kite's global motion
-(unlike world-frame damping). It is the value settling *starts* from: over
-`decay_steps` it decays linearly to the `min_damping` floor, and that floor is
-what the returned model runs with. It is baked into the settled geometry and
-carries over into the returned model, so it also forms part of the settling
-cache key — changing it produces a different `data/settled_*.bin` rather than silently
-reusing the old one.
+`body_start_damping` is the per-axis body-frame damping `[x, y, z]` in the wing
+frame, applied to every point during settling. It acts on point velocity
+*relative to the wing*, so it damps bridle vibration without slowing the kite's
+global motion (unlike world-frame damping). It is the value settling *starts*
+from: over `decay_steps` it decays linearly to `body_sim_damping`. It is baked
+into the settled geometry, so it forms part of the settling cache key — changing
+it produces a different `data/settled_*.arrow` rather than silently reusing the
+old one.
+
+`body_sim_damping` overrides the `body_sim_damping:` of the project's
+`kite_settings:` file, and is the damping the RETURNED MODEL FLIES WITH —
+`body_start_damping` only shapes the settling transient above it. Two
+consequences: any `body_start_damping` above it gives the same flown damping and
+differs only in the settled geometry it converges to, and an in-plane
+`body_start_damping` decays to zero in flight unless `body_sim_damping` carries
+the in-plane terms too. It is part of the cache key as well. Runs identified
+before 2026-08-08 saw no floor at all (`[0, 0, 0]`) and settled 400 steps of a
+2000-step ramp, ending at `0.8 * body_start_damping`; reproducing such a run
+means passing `body_sim_damping = 0.8 .* body_start_damping`.
 
 The default damps only normal to the wing surface. The in-plane (x, y) terms
 trade accuracy for solver cost: `[10, 10, ...]` cuts parked AoA ripple and solver
@@ -470,19 +482,21 @@ function init(v_wind_gnd, l_tether;
               depower_setpoint = 0.25,
               dt = nothing,
               sim_time = nothing,
-              gc = V3GeomAdjustConfig(),
-              system_yaml = "system.yaml",
-              body_damping = [0.0, 0.0, 40.0],
-              min_damping = 0.8 .* body_damping,
+              gc = nothing,
+              system_yaml = "system_psm.yaml",
+              body_start_damping = [0.0, 0.0, 40.0],
+              body_sim_damping = nothing,
               damping_per_stiffness = nothing,
-              aero_mode = SymbolicAWEModels.AeroDirect(),
-              data_path = v3_data_path(),
+              aero_mode = nothing,
+              data_path = nothing,
               cache_path = nothing,
               use_turbulence = nothing,
               warmup_time = 0.0,
               warmup_torque = nothing,
-              remake = false)
-    system_path = joinpath(data_path, system_yaml)
+              remake_model = nothing,
+              remake_settled_state = nothing)
+    data_path = project_data_path(system_yaml, data_path)
+    system_path = project_path(system_yaml; data_path)
     if isnothing(elevation)
         elevation = Settings(system_path).elevation
     end
@@ -490,28 +504,34 @@ function init(v_wind_gnd, l_tether;
     wind_vec = wind_vec_from_angles(v_wind_gnd, upwind_dir, 0.0)
 
     position = [cos(el_rad) * l_tether, 0.0, sin(el_rad) * l_tether]
+    kite_set = load_kite(system_yaml; data_path)
+    isnothing(aero_mode) || (kite_set.aero_mode = aero_mode)
+    isnothing(gc) || (kite_set.geom = gc)
+    isnothing(body_sim_damping) ||
+        (kite_set.body_sim_damping = collect(Float64, body_sim_damping))
+    isnothing(remake_model) && (remake_model = kite_set.remake_model)
+    isnothing(remake_settled_state) &&
+        (remake_settled_state = kite_set.remake_settled_state)
     settle_config = V3SettleConfig(
+        project = system_yaml,
+        kite_set = kite_set,
         v_wind = v_wind_gnd,
         tether_length = l_tether,
         dt = 0.05,
         num_steps = 40,
         num_substeps = 1,
         decay_steps = 30,
-        body_damping = body_damping,
-        min_damping = min_damping,
+        body_start_damping = body_start_damping,
         damping_per_stiffness = damping_per_stiffness,
         start_depower = depower_setpoint * 100.0 + 10.0,
         course_correction_mode = :heading,
         course_correction_gain = 0.05,
-        geom = gc,
-        system_yaml = system_yaml,
-        aero_mode = aero_mode,
     )
     @info "init: settling V3 model at rel_depower = $depower_setpoint..."
     sam, _, settle_failed = settle_wing(settle_config;
         position, velocity = [0.0, 0.0, 0.0], heading = 0.0,
         steering = 0.0, depower = depower_setpoint, wind_vec,
-        data_path, cache_path, remake)
+        data_path, cache_path, remake_model, remake_settled_state)
     settle_failed && error("Settling failed")
     sys = sam.sys_struct
 
@@ -551,7 +571,7 @@ function init(v_wind_gnd, l_tether;
     steps = Int(round(sim_time / dt))
     logger, sys_state = create_logger(sam, steps)
 
-    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = gc, dt = dt,
+    s = V3KITE(set = set, kcu = kcu, sam = sam, gc = kite_set.geom, dt = dt,
         sys_state = sys_state, logger = logger, steps = steps,
         wind_vec_mean = wind_vec)
 

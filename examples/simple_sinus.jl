@@ -59,12 +59,12 @@ HEADING_PERIOD   = 30.0     # Heading setpoint period [s]
 
 # Heading PID gains (output is rel_steering, dimensionless, -1..1)
 # The tracking error is almost pure phase lag, so it scales with 1/loop gain,
-# but only below the stability boundary. Sweep at the BODY_DAMPING set below,
-# [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
+# but only below the stability boundary. Sweep at the current `init` default
+# body_start_damping = [0, 0, 40] (RMS over t ≥ HEADING_PERIOD, u_s peak-to-peak in
 # the same window): K = 1.2 keeps a
 # ~1.6x margin to the boundary at K ≈ 1.9; K = 1.6 tracks better (0.52°) but
 # sits right at the edge.
-HEADING_P = 1.2
+HEADING_P = 1.2*0.8
 HEADING_I = false
 # Sustained derivative action damps the fast mode — it keeps even K = 2.0 stable
 # (RMS 1.18°) — but it floors the settled RMS at ~1.2° regardless of K (K = 1.6
@@ -75,14 +75,14 @@ HEADING_I = false
 # the settled RMS is unaffected.
 HEADING_D = 0.15
 MAX_STEERING = 0.175        # settled |u_s| peaks at 0.028, so this is not binding
-AERO_MODE = AeroDirect()    # ContinuousAero() or AeroDirect()
-VSM_INTERVAL = 1   # steps between VSM aero solves
-# `BODY_DAMPING` only shapes the settling transient, decaying to the `min_damping`
-# floor of `init` (0.8 x this by default), which is the damping the run actually
-# FLIES with — and which the heading gains above were tuned at. Both are part of
-# the settling cache key, so changing this re-settles instead of reusing the
-# cached geometry.
-BODY_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
+AERO_MODE = ContinuousAero()  # ContinuousAero() or AeroDirect()
+VSM_INTERVAL = 5   # steps between VSM aero solves
+# `BODY_START_DAMPING` only shapes the settling transient, decaying to the
+# `body_sim_damping:` of the project's kite settings file, which is the damping
+# the run actually FLIES with — and which the heading gains above were tuned at.
+# Both are part of the settling cache key, so changing this re-settles instead of
+# reusing the cached state.
+BODY_START_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
 # Structural damping of the tether and bridle lines, given as the ratio of the
 # damping to the stiffness of a segment: unit_damping = ratio * unit_stiffness [s].
 # It overrides the `damping_per_stiffness` of the `dyneema` material in
@@ -91,16 +91,16 @@ BODY_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis [1/s]
 # settling run only (below that settling diverges) and set unfloored on the
 # settled structure. 0.002 is the material value the bridles already carry; the
 # tether carries none by default. See simple_parking.jl for the details.
-DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
+DAMPING_PER_STIFFNESS = 0.002  # Damping per stiffness of tether and bridles [s]
 
 # ======================== INIT =========================== #
 
 # `init` leaves the data path alone, so `save_log`/`load_log` below need it set here.
 set_data_path(v3_data_path())
-s = init(V_WIND, TETHER_LENGTH; body_damping = BODY_DAMPING,
+s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE)
+    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
@@ -159,8 +159,7 @@ end
 # still active and the AoA still carries the settling transient.
 rs = RippleSettings("ripple_settings.yaml")
 rs.t_start = HEADING_PERIOD
-ripple = aoa_ripple(sl; rs)
-print("\n", format_ripple_report(ripple; sl, stats = s.sam.integrator.stats,
-                                 t_loop, n_steps = steps_done))
+print_ripple_report(sl; rs, stats = s.sam.integrator.stats, t_loop,
+                    n_steps = steps_done)
 
 nothing

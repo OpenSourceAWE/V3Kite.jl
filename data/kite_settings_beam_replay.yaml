@@ -1,0 +1,46 @@
+# kite_settings_beam.yaml plus the KCU calibration of the recorded 2025 campaign.
+kite_settings:
+  wing_type: particle_dynamics   # particle_dynamics | rigid_dynamics
+  aero_mode: pressure            # direct | continuous | pressure
+  backend: kernel                # monolith | kernel model assembly
+  vsm_interval: 1                # steps between VSM aero solves
+
+  body_sim_damping: [0.0, 0.0, 20.0]   # per-axis wing-frame damping of the points
+  world_sim_damping: [0.0, 0.0, 0.0]  # per-axis world-frame damping of the points
+
+  # The beam bodies carry the wing mass, so these are what reach it in flight.
+  beam_body_damping: null      # null follows the points' body_sim_damping
+  beam_world_damping: [0.0, 0.0, 0.0] # per-axis damping on the world axes
+
+  beam_angular_damping: [0.0, 0.0, 0.0]  # brakes the turn rate, so keep it zero
+  beam_joint_damping_scale: 45.0   # multiplies the joints' Rayleigh beta
+
+  wing_mass: 0.0                 # [kg] mass redistributed over the wing nodes
+  wing_mass_le_frac: 0.75        # leading-edge share of `wing_mass`
+  wing_drag_coeff: 0.0           # parasitic drag spread over the wing nodes
+
+  adapter_dir: null              # SurfplanAdapter export for Comer-Levy bending
+
+  init_mode: settle              # settle | relaxed_state
+  init_state: relaxed_struc_geometry_beam_dp20.arrow  # settling starts here
+
+  remake_model: false           # true rebuilds the serialized model bin
+  remake_settled_state: false   # true re-runs settling instead of loading the arrow
+  brake: true                    # winch brake engaged after bring-up
+
+  # The tip and trailing-edge reductions address lattice segments by index and
+  # have no beam counterpart, so they are absent here.
+  geom:
+    reduce_depower: false        # shorten the depower tape
+    depower_reduction: 0.2       # [m] taken off the depower tape
+    depower_offset: -0.07        # added to every depower command (0..1)
+    steering_dp_offset: 0.0      # extra depower per unit |steering|
+    reduce_steering: true        # shorten the steering tapes
+    steering_reduction: 0.2      # [m] taken off each steering tape
+    tether_length: null          # [m] overrides the settings tether length
+
+  bridle:
+    compression_frac: 0.01           # stiffness a segment keeps in compression
+    compression_damping_frac: 1.0    # the same for the damping term
+    bridle_rel_damping: 0.001        # [s] damping per stiffness on lines/tapes
+    pulley_efficiency: 0.95          # line tension a sheave passes on

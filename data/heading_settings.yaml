@@ -1,0 +1,26 @@
+# Gains of the heading PID, loaded into a `HeadingSettings` struct via the
+# `heading_settings:` key of a project file. The output is a steering fraction
+# in [-1, 1], fed to `set_steering!`. Any key omitted here falls back to the
+# struct default, so this file is also the list of what is tunable.
+#
+# Tuned on examples/simple_sinus.jl (sinusoidal heading tracking) at the current
+# body_start_damping = [0, 0, 40], measured as RMS heading error over t >= one period.
+# The tracking error is almost pure phase lag, so it scales with 1/loop gain, but
+# only below the stability boundary at K ~ 1.9: K = 1.6 tracks better (0.52 deg)
+# but sits right at the edge, so K = 1.2 keeps a ~1.6x margin.
+heading_settings:
+  K:  1.2      # proportional gain [-]
+  Ti: false    # integral time [s]; false disables integral action
+  Td: 0.15     # derivative time [s]
+  N:  10.0     # max gain of the derivative filter [-]
+  max_steering: 0.175  # steering command limit [-]; settled |u_s| peaks at 0.028
+
+  # Gain schedule: turn rate goes roughly with u_s * v_app, so K is scaled by
+  # v_app_ref / v_app to keep the closed loop invariant. 0 disables it.
+  v_app_ref: 0.0
+  v_app_min: 5.0
+
+  # Sustained derivative action damps the fast mode but floors the settled RMS at
+  # ~1.2 deg regardless of K; ramping Td away over the first period keeps the
+  # initial u_s swing damped without paying for it afterwards. 0 holds Td.
+  td_ramp_time: 0.0

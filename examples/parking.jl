@@ -61,26 +61,27 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
+kite_set = load_kite(PROJECT)
+kite_set.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
-    system_yaml = PROJECT,
+    project = PROJECT,
+    kite_set = kite_set,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,
     num_steps = 80,
     num_substeps = 1,
     decay_steps = 30,
-    body_damping = [0.0, 0.0, 40.0],
+    body_start_damping = [0.0, 0.0, 40.0],
     start_depower = REL_DEPOWER * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
-    geom = V3GeomAdjustConfig(),
-    aero_mode = AERO_MODE,
 )
 
 @info "Settling V3 model at rel_depower = $REL_DEPOWER..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = REL_DEPOWER, wind_vec, remake = false)
+    steering = 0.0, depower = REL_DEPOWER, wind_vec)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 

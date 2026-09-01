@@ -1,3 +1,4 @@
+# Flight condition of the Cabauw measurement campaign.
 system:
   log_file:
     'data/base' # filename without extension  [replay only]
@@ -75,11 +76,11 @@ environment:
   use_turbulence: 0.0 # turbulence intensity relative to Cabau, NL
   v_wind_gnds: [3.483, 5.324, 8.163, 9.51] # wind speeds at ref height for calculating the turbulent wind field [m/s]
   avg_height: 200.0 # average height during reel out          [m]
-  rel_turbs: [0.342, 0.465, 0.583, 0.626] # relative turbulence at the v_wind_gnds, see settings.yaml
+  rel_turbs: [0.342, 0.465, 0.583, 0.626] # relative turbulence at the v_wind_gnds, see sim_settings_default.yaml
   i_ref: 0.14 # is the expected value of the turbulence intensity at 15 m/s.
   v_ref:
     42.9 # five times the average wind speed in m/s at hub height over the full year    [m/s]
     # Cabauw: 8.5863 m/s * 5.0 = 42.9 m/s
-  grid: [100, 4050, 500, 70] # grid size nx, ny, nz and minimal height z_min, see settings.yaml   [m]
+  grid: [100, 4050, 500, 70] # grid size nx, ny, nz and minimal height z_min, see sim_settings_default.yaml   [m]
   height_step: 2.0 # use a grid with 2m resolution in z direction                                 [m]
   grid_step: 2.0 # grid resolution in x and y direction                                         [m]

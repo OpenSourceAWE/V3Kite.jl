@@ -36,6 +36,28 @@ const V3_STEERING_RIGHT_IDX = 87
 """Depower tape segment index"""
 const V3_DEPOWER_IDX = 88
 
+"""Left steering tape segment name"""
+const V3_STEERING_LEFT_NAME = :steering_left
+
+"""Right steering tape segment name"""
+const V3_STEERING_RIGHT_NAME = :steering_right
+
+"""Depower tape segment name"""
+const V3_DEPOWER_NAME = :power_tape
+
+"""
+    tape_segment(sys, name, idx) -> Segment
+
+The steering or depower tape called `name`, falling back to position `idx`.
+
+The beam geometry emitted by [`V3Kite.SurfplanAdapter`](@ref) names its segments, so
+the tapes are found by name whatever their position; the hand-written particle
+geometry numbers them, so there the fixed index applies. Resolving both here is what
+lets a run switch between the two by changing only the struc geometry filename.
+"""
+tape_segment(sys, name::Symbol, idx::Int) =
+    haskey(sys.segments, name) ? sys.segments[name] : sys.segments[idx]
+
 """
     steering_percentage_to_lengths(percentage;
         l0_base=V3_STEERING_L0_BASE,
@@ -182,9 +204,9 @@ function set_steering!(sys, steering,
     L_left, L_right = steering_percentage_to_lengths(
         steering * 100.0;
         l0_base=V3_STEERING_L0_BASE - reduction)
-    sys.segments[V3_STEERING_LEFT_IDX].l0 =
+    tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).l0 =
         max(min_l0, L_left)
-    sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+    tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).l0 =
         max(min_l0, L_right)
     return nothing
 end
@@ -202,8 +224,8 @@ Get the current steering value as a normalized input.
 - Relative steering in range -1.0 .. 1.0
 """
 function get_steering(sys, ::V3GeomAdjustConfig)
-    L_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    L_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    L_left = tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).l0
+    L_right = tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).l0
     return steering_length_to_percentage(
         L_left, L_right) / 100.0
 end
@@ -233,7 +255,7 @@ function set_depower!(sys, depower, steering,
     L_depower = depower_percentage_to_length(
         dp * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - reduction)
-    sys.segments[V3_DEPOWER_IDX].l0 = L_depower
+    tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).l0 = L_depower
     return dp
 end
 
@@ -252,7 +274,7 @@ Get the current depower value as a normalized input.
 function get_depower(sys, config::V3GeomAdjustConfig)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
-    L_depower = sys.segments[V3_DEPOWER_IDX].l0
+    L_depower = tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).l0
     return depower_length_to_percentage(
         L_depower;
         l0_base=V3_DEPOWER_L0_BASE - reduction) / 100.0

@@ -7,6 +7,7 @@ if [[ $(basename $(pwd)) == "bin" ]]; then
 fi
 
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
+export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-auto}"
 
 julia_extra_args=()
 for arg in "$@"; do
@@ -14,6 +15,10 @@ for arg in "$@"; do
         force_kaimon=true
     elif [[ "$arg" == "--nosysimage" ]]; then
         no_sysimage=true
+    elif [[ "$arg" == "--psm" ]]; then
+        export V3KITE_PROJECT=psm
+    elif [[ "$arg" == "--beam" ]]; then
+        export V3KITE_PROJECT=beam
     else
         julia_extra_args+=("$arg")
     fi

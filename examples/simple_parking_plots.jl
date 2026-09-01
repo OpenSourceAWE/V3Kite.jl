@@ -102,7 +102,6 @@ else
     @info "No compression: all tether and bridle segments stayed in tension."
 end
 
-ripple = aoa_ripple(sl)
-print("\n", format_ripple_report(ripple; sl))
+print_ripple_report(sl)
 
 nothing

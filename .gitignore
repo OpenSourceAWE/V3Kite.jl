@@ -1,6 +1,8 @@
 *geometry_dp*.yaml
 /examples/record_replay.jl
 /LocalPreferences*
+examples/LocalPreferences.toml
+test/LocalPreferences.toml
 processed_data
 ideas.txt
 *.log
@@ -10,6 +12,9 @@ ideas.txt
 .helix
 *.arrow
 !data/reel_out_4p_torque_control.arrow
+!data/relaxed_*.arrow
+data/polars_neuralfoil/
+data/nf_aero_geometry.yaml
 *.bin
 *.bin.xz
 *.tar.gz
@@ -76,3 +81,7 @@ examples_2d/LocalPreferences.toml
 data/*.npz
 data/gui.yaml
 PlanCleanupTests.md
+data/kite.obj
+data/settings_ram.yaml
+data/settings.yaml
+data/system_ram.yaml

@@ -45,15 +45,10 @@ end
 # =============================================================================
 
 function build_sys(; v_wind=10.0, tether_length=150.0)
-    config = V3SimConfig(
-        struc_yaml_path="struc_geometry.yaml",
-        aero_yaml_path="aero_geometry.yaml",
-        vsm_settings_path="vsm_settings.yaml",
-        v_wind=v_wind,
-        tether_length=tether_length,
-        wing_type=PARTICLE_DYNAMICS,
-    )
-    _, sys = create_v3_model(config)
+    settings = Settings("system_psm.yaml")
+    settings.v_wind = v_wind
+    settings.l_tether = tether_length
+    _, sys = create_v3_model("system_psm.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
         reduce_te=true))
     return sys

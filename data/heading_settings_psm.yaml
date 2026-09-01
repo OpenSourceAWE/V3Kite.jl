@@ -1,0 +1,9 @@
+# Heading gains of examples/v3kite.jl. These are the untuned originals, kept as
+# they were so that moving them out of the script changed nothing; the tuned set
+# is data/heading_settings.yaml, whose K = 1.2 and Td = 0.15 were measured on
+# simple_sinus.jl. Adopting them here is a behaviour change and wants a run.
+heading_settings:
+  K:  1.0
+  Ti: false
+  Td: false
+  max_steering: 0.15

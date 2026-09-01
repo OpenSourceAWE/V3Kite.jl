@@ -713,51 +713,11 @@ function V3Kite.plot_twist_dist(sys_structs;
         color = PLOT_COLORS[
             mod1(s_idx, length(PLOT_COLORS))]
 
-        # Update pos_b for PARTICLE_DYNAMICS wing points
-        for wing in sys_struct.wings
-            if wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS
-                R_w_b = V3Kite.calc_R_b_w(sys_struct)'
-                wing.pos_w .= points[1].pos_w
-                for point in points
-                    if point.wing_idx == wing.idx
-                        point.pos_b .= R_w_b * (
-                            point.pos_w - wing.pos_w)
-                    end
-                end
-            end
-        end
-
-        wing_pts = sort(
-            [p for p in points if p.is_wing_node],
-            by=p -> p.idx)
-        le_pos = [wing_pts[i].pos_b
-                  for i in 1:2:length(wing_pts)]
-        n_le = length(le_pos)
-        body_x = [1.0, 0.0, 0.0]
-        span_ys = Float64[]
-        aoas = Float64[]
-        k_range = wingtips ? (1:n_le) :
-            (2:(n_le - 1))
-        for k in k_range
-            le = wing_pts[2k - 1]
-            te = wing_pts[2k]
-            chord_b = te.pos_b - le.pos_b
-            y_airf = if k == 1
-                normalize(le_pos[2] - le_pos[1])
-            elseif k == n_le
-                normalize(
-                    le_pos[n_le] - le_pos[n_le-1])
-            else
-                normalize(
-                    le_pos[k+1] - le_pos[k-1])
-            end
-            z_loc = normalize(cross(body_x, y_airf))
-            push!(aoas, rad2deg(atan(
-                dot(chord_b, z_loc),
-                dot(chord_b, body_x))))
-            push!(span_ys,
-                (le.pos_b[2] + te.pos_b[2]) / 2)
-        end
+        span_ys, twist = V3Kite.wing_twist_dist(sys_struct)
+        keep = wingtips ? (1:length(span_ys)) :
+            (2:(length(span_ys) - 1))
+        span_ys = span_ys[keep]
+        aoas = rad2deg.(twist[keep])
         perm = sortperm(span_ys)
         lines!(ax, span_ys[perm], aoas[perm];
             color, linewidth=2, label=labels[s_idx])

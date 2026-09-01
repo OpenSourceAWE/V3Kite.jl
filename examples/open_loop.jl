@@ -16,6 +16,7 @@ end
 using V3Kite
 using GLMakie
 using MakieControlPlots
+using MakieControlPlots: plot
 using CairoMakie
 GLMakie.activate!()
 using SymbolicAWEModels
@@ -42,6 +43,7 @@ RAMP_END_US = 5.0
 SIM_TIME = 60.0
 FPS = 20
 VSM_INTERVAL = 1   # steps between VSM aero solves
+PROJECT = "system_psm.yaml"   # project file: geometry, settings and kite
 AERO_MODE = ContinuousAero()
 
 # =============================================================================
@@ -59,26 +61,28 @@ velocity = [0.0, 0.0, 0.0]
 heading = 0.0
 wind_vec = [V_WIND, 0.0, 0.0]
 
+kite_set = load_kite(PROJECT)
+kite_set.aero_mode = AERO_MODE
 settle_config = V3SettleConfig(
+    project = PROJECT,
+    kite_set = kite_set,
     v_wind = V_WIND,
     tether_length = TETHER_LENGTH,
     dt = 0.05,
     num_steps = 80,
     num_substeps = 1,
     decay_steps = 30,
-    body_damping = [0.0, 0.0, 40.0],
+    body_start_damping = [0.0, 0.0, 40.0],
     start_depower = UP * 100.0 + 10.0,
     course_correction_mode = :heading,
     course_correction_gain = 0.05,
-    geom = V3GeomAdjustConfig(),
-    aero_mode = AERO_MODE,
 )
-gc = settle_config.geom
+gc = settle_config.kite_set.geom
 
 @info "Settling V3 model..."
 sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
-    steering = 0.0, depower = UP, wind_vec, remake=false)
+    steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
 sys = sam.sys_struct
 sys.winches[1].brake = true
@@ -152,7 +156,7 @@ log_name = "open_loop_lt_$(lt_tag)"
 save_log(logger, log_name)
 syslog = load_log(log_name)
 
-fig = Makie.plot(sam.sys_struct, syslog)
+fig = plot(sam.sys_struct, syslog)
 scene = SymbolicAWEModels.replay(syslog, sam.sys_struct, show_panes=false)
 
 display(fig)

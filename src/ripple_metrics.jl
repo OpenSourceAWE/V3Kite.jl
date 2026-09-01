@@ -125,10 +125,11 @@ function ripple_metrics(time::AbstractVector, y::AbstractVector, rs::RippleSetti
     i0 = searchsortedfirst(time, rs.t_start)
     i0 > length(time) && error("analysis window starts after the end of the log " *
                                "(t_start = $(rs.t_start) s, log ends at $(last(time)) s)")
-win = i0:length(time)
-length(win) < 2 && error("analysis window must contain at least 2 samples to estimate fs")
-dt = (time[end] - time[i0]) / (length(win) - 1)
-fs = 1 / dt
+    win = i0:length(time)
+    length(win) < 2 &&
+        error("analysis window must contain at least 2 samples to estimate fs")
+    dt = (time[end] - time[i0]) / (length(win) - 1)
+    fs = 1 / dt
     # The moving average is taken over the whole record so that the start of the
     # analysis window still sees a full, centred window.
     resid = view(y, win) .- view(centred_ma(y, round(Int, 0.5 * rs.detrend_window * fs)), win)
@@ -153,6 +154,24 @@ returned `mean`, `rms` and `pkpk` are therefore in degrees.
 """
 aoa_ripple(sl; rs::RippleSettings = RippleSettings("ripple_settings.yaml")) =
     ripple_metrics(sl.time, rad2deg.(sl.AoA), rs)
+
+"""
+    print_ripple_report(sl; rs=RippleSettings("ripple_settings.yaml"), kwargs...)
+
+Print the AoA ripple report of the syslog table `sl`, or a warning naming the
+window and the log length when the log ends before the analysis window
+`rs.t_start` holds two samples — which is what a run that aborted early leaves
+behind. `kwargs` are passed on to [`format_ripple_report`](@ref).
+"""
+function print_ripple_report(sl;
+        rs::RippleSettings = RippleSettings("ripple_settings.yaml"), kwargs...)
+    if count(>=(rs.t_start), sl.time) < 2
+        t_end = isempty(sl.time) ? NaN : last(sl.time)
+        @warn "Log too short for the AoA ripple metrics" t_start = rs.t_start t_end
+        return nothing
+    end
+    print("\n", format_ripple_report(aoa_ripple(sl; rs); sl, kwargs...))
+end
 
 """
     format_ripple_report(r; sl=nothing, stats=nothing, t_loop=nothing, n_steps=nothing) -> String
