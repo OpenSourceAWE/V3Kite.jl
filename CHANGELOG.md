@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.3.0 02-09-2026
 
 ### Changed
 - `examples/flight_replay.jl` runs the replay and saves the logs; the plotting
@@ -297,6 +297,53 @@
   `V3SettleConfig.body_damping_overrides` are gone, along with the override
   suffix in the settled-geometry cache key; `V3SimConfig` gained
   `world_damping_pattern` next to `damping_pattern`.
+### Changed
+- BREAKING: `default_cache_path(data_path)` now always resolves to the depot
+  scratchspace keyed by V3Kite's own UUID, regardless of whether V3Kite itself
+  is Pkg-installed or a development checkout, and regardless of what
+  `data_path` names — a caller's own project directory outside V3Kite's tree
+  included. A development checkout used to cache `settled_*.arrow`/
+  `model_*.bin` straight into `data/`; it now lands in
+  `$DEPOT/scratchspaces/<uuid>/v3kite_cache`, the same place
+  `precompile.jl`'s workload writes, so every caller — dev'ed, installed, or a
+  downstream package naming its own project file — agrees on where the cache
+  lives. `data/system.yaml`, a stray top-level project file the old in-place
+  cache location left behind, is removed along with the `isfile` test that
+  pinned it.
+- `bin/run_julia` activates `examples/` (`--project=examples`) rather than the
+  root project, so a REPL started this way gets GLMakie and the other
+  example-only dependencies without a manual `Pkg.activate`.
+- `data/kite_settings_psm.yaml` changes its defaults: `backend: kernel` (was
+  `monolith`), `vsm_interval: 5` (was `1`) and `remake_model: false` (was
+  `true`) — matching what the examples already overrode by hand, so a run
+  started from the file alone now flies the same configuration.
+- `VortexStepMethod` compat capped at `~4.1.1` (was `4.1.0`, unbounded above);
+  the resolved version is `4.1.2`.
+- The V3-flying examples integrate at a 3x finer timestep (`dt = 0.05/3`, was
+  `0.05`) in `reel_out_v3.jl` and `steering_test_v3.jl` while holding the VSM
+  aero solve to every 5th step (`VSM_INTERVAL = 5`, was `1`) across all five
+  V3 examples (`reel_out_v3`, `simple_auto_parking`, `simple_parking`,
+  `simple_sinus`, `steering_test_v3`). `BODY_SIM_DAMPING`'s flown floor drops
+  to `[0, 0, 32]` (was `[0, 0, 40]`), matching the `0.8 * body_damping` floor
+  `init` has computed since v1.1.1. `simple_parking.jl` and
+  `simple_auto_parking.jl` also time initialization with `Timers.tic()`/`toc()`.
+
+### Fixed
+- `V3BeamTopology.frame_offset`'s default now `copy`s
+  `V3_ADAPTER_FRAME_OFFSET` instead of aliasing it. A `Base.@kwdef` default is
+  evaluated once and shared by every instance that takes it, so mutating one
+  topology's `frame_offset` in place mutated the constant every later
+  `V3BeamTopology()` silently inherited.
+
+### Added
+- `bin/delete_cache_files`, which removes V3Kite's cached `model_*.bin`,
+  `settled_*.bin`/`.arrow` and settling-log files from the scratchspace
+  `default_cache_path` now always uses. Cache names are version-stamped, so
+  most upgrades are a plain cache miss; this is for the case a serialized
+  type's layout changed without a version bump in the tag, and `deserialize`
+  throws instead. `--dry-run` lists without deleting, `--yes` skips the
+  confirmation prompt.
+
 ## V3Kite v1.2.0 17-08-2026
 
 ### Changed
