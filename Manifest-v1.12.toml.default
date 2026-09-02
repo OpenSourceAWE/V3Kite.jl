@@ -2,7 +2,7 @@
 
 julia_version = "1.12.7"
 manifest_format = "2.0"
-project_hash = "f75383ffc8bdda2f19853c1f9349f9bb294133f7"
+project_hash = "66ab32e4840e41c027bbaf893e2d1f5ce52ecd98"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -2581,9 +2581,9 @@ version = "0.5.2+0"
 
 [[deps.Roots]]
 deps = ["Accessors", "CommonSolve", "Printf"]
-git-tree-sha1 = "13a9e0164267bb9ebc55c1c5d72fceea8f09555b"
+git-tree-sha1 = "4db094d5e079abbda658acfe1c4d098430417717"
 uuid = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
-version = "3.0.7"
+version = "3.0.8"
 
     [deps.Roots.extensions]
     RootsChainRulesCoreExt = "ChainRulesCore"
@@ -3266,9 +3266,9 @@ weakdeps = ["GLMakie"]
 
 [[deps.VortexStepMethod]]
 deps = ["Arrow", "Colors", "DefaultApplication", "DelimitedFiles", "DifferentiationInterface", "FiniteDiff", "ForwardDiff", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "Measures", "NPZ", "NonlinearSolve", "Parameters", "Pkg", "PreallocationTools", "PrecompileTools", "Printf", "RecursiveArrayTools", "SciMLBase", "Serialization", "StaticArrays", "Statistics", "StructMapping", "Timers", "Xfoil", "YAML"]
-git-tree-sha1 = "62230b9edd1de6b82af073ce49c58264081f0953"
+git-tree-sha1 = "cf92a455a6e164d4ffb44dcffbec2bc03f8ba0dc"
 uuid = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
-version = "4.3.1"
+version = "4.1.2"
 weakdeps = ["MakieControlPlots"]
 
     [deps.VortexStepMethod.extensions]
