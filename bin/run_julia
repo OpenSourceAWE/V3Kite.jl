@@ -40,7 +40,7 @@ fi
 
 if [[ -z "${no_sysimage:-}" ]] && test -f "bin/kps-image-${julia_major}.so"; then
     echo "Found system image!"
-    julia --project -J "bin/kps-image-${julia_major}.so" "${JULIA_ARGS[@]}"
+    julia --project=examples -J "bin/kps-image-${julia_major}.so" "${JULIA_ARGS[@]}"
 else
-    julia --project "${JULIA_ARGS[@]}"
+    julia --project=examples "${JULIA_ARGS[@]}"
 fi
