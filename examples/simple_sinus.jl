@@ -92,6 +92,8 @@ BODY_START_DAMPING = [0.0, 0.0, 40.0]   # Damping settling starts from, per axis
 # settled structure. 0.002 is the material value the bridles already carry; the
 # tether carries none by default. See simple_parking.jl for the details.
 DAMPING_PER_STIFFNESS = 0.002  # Damping per stiffness of tether and bridles [s]
+REMAKE_MODEL         = true   # true rebuilds the serialized model bin
+REMAKE_SETTLED_STATE = true   # true re-runs settling instead of loading the arrow
 
 # ======================== INIT =========================== #
 
@@ -100,7 +102,9 @@ set_data_path(v3_data_path())
 s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
+    system_yaml = PROJECT, aero_mode = AERO_MODE,
+    remake_model = REMAKE_MODEL,
+    remake_settled_state = REMAKE_SETTLED_STATE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
