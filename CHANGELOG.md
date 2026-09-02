@@ -494,7 +494,7 @@
 - `v_wind_gnds`/`rel_turbs` extended to `[3.483, 5.324, 8.163, 9.51]` /
   `[0.342, 0.465, 0.583, 0.626]` in `sim_settings_default.yaml`, `sim_settings_reelout.yaml`
   and `sim_settings_cabauw.yaml`, closing the gap where `load_windfield` snapped
-  an unlisted ground wind speed to a neighbour's turbulence intensity. The
+  an unlisted ground wind speed to a neighbor's turbulence intensity. The
   `0.626` point extends the log fit `rel_turb = 0.342 + 0.283*(ln v - 1.248)`
   fitted to the three Cabauw-calibrated points (turbulence intensity I₉₉ at
   99 m):
