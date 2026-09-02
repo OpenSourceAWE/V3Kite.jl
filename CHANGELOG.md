@@ -2,64 +2,6 @@
 
 ## V3Kite v1.3.0 02-09-2026
 
-### Changed
-- `examples/flight_replay.jl` runs the replay and saves the logs; the plotting
-  moved to `examples/flight_replay_plots.jl`, which draws them from disk. This
-  retires the `LOAD_FROM_DISK` toggle — running the plots alone is what it did.
-- BREAKING: the replay's maneuver, feedback gains and figure options moved from
-  constants at the top of `flight_replay.jl` into a `replay_settings:` key on the
-  replay projects, loaded with `load_replay` into a `V3ReplayConfig`. The UTC
-  windows are `maneuvers:` entries in `data/replay_settings.yaml` rather than an
-  `if`/`elseif` chain in the script.
-- The replay kite settings carry the same damping as the wings they replay:
-  `kite_settings_psm_replay.yaml` gains the kernel backend and `body_sim_damping`
-  of 20 about z, and `kite_settings_beam_replay.yaml` gains that plus
-  `beam_body_damping`, `beam_world_damping`, `beam_angular_damping` and
-  `beam_joint_damping_scale`. Both had drifted from their flying configuration
-  without being corrections fitted to the flights, which is what those files are
-  for; a beam replay was flying with no beam damping at all.
-- BREAKING: the beam bodies in `data/struc_geometry_beam*.yaml` carry a `wing`
-  column naming the wing each belongs to, which is what lets the body damping
-  resolve a body's velocity against its parent wing. Regenerate with
-  `examples/v3beam_geometry.jl`.
-- The beam's four rigidities all come from `tube_linear_rigidities` at the tube
-  pressure, so `EA`, `GA`, `EI0` and `GJ` share one Breukels provenance instead of
-  taking `EA`/`GA`/`EI0` from the membrane laws. `EA` roughly doubles and `GA`
-  drops by a fifth. `V3BeamTopology.pressure_bar` is now the V3 bridle file's
-  measured `0.3` bar rather than 4.5 psi, which it was within 3% of anyway.
-- BREAKING: the beam joints in `data/struc_geometry_beam*.yaml` carry a single
-  `damping` column (Rayleigh β in seconds) instead of `damping_trans`/
-  `damping_rot`. `V3BeamTopology.damping_ratio` is now converted to β via
-  `β = 2ζ/ω` at the element's axial mode `ω = sqrt(EA/(L·m))`, following
-  `ζ = βω/2`. The old dashpot on relative node velocity also braked rigid
-  rotation of the whole wing — 15332 N·m·s/rad about yaw — which is what made
-  the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
-
-### Fixed
-- A run that aborts in its first seconds no longer dies in the AoA ripple metrics:
-  the parking and sinus examples report through the new `print_ripple_report`,
-  which warns that the log is too short instead of erroring out of the script
-  before the failure is printed.
-- Settling and the replay reinitialize the integrator with the solver `init!`
-  built, instead of a bare `FBDF()`. That default differentiates forward, so on
-  the monolith backend — which builds with `AutoFiniteDiff` — every `reinit!`
-  compiled the whole right-hand side a second time at `ForwardDiff.Dual`.
-  Settling the PSM wing on a warm model cache: 864 s -> 230 s.
-- Settling applies the kite's bridle material and beam joint damping, through the
-  same `apply_kite_material!` the flight model uses. It settled on the geometry
-  YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
-  an equilibrium of the model that started from it. Existing `settled_*.arrow`
-  files are regenerated.
-- `beam_joint_damping_scale` is applied once instead of twice. Settling ran it
-  over the joints and then `build_v3_model` ran it again over the same structure,
-  and since it multiplies in place the beam settled and flew at the square of the
-  scale rather than the scale itself.
-- `examples/flight_replay.jl` takes `remake_model` and `remake_settled_state` from
-  the kite settings instead of forcing a re-settle on every run.
-- `beam_body_damping` and `beam_world_damping` skip the wing bodies, as
-  `beam_angular_damping` already did. On a `RIGID_DYNAMICS` kite the one dynamic
-  body is the whole wing, and these settings damped its flight.
-
 ### Added
 - `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
   Rayleigh β without regenerating the geometry. The emitted β is ζ = 1 at each
@@ -155,7 +97,6 @@
   `data/relaxed_*.arrow` — so no other example regenerates or relaxes anything,
   and a beam run costs nothing but the run. `relax_bridle.jl` is
   geometry-agnostic and gives the particle model a relaxed start too.
-
 - `HeadingSettings` and `data/heading_settings.yaml`, the sibling of
   `WC_Settings` for the steering loop. The heading PID was retuned in every
   example that closed it — K between 1.0 and 1.2, `Td` 0 or 0.15, `max_steering`
@@ -165,33 +106,52 @@
   `1/v_app` gain schedule and the `Td` ramp, so `heading_pid` plus
   `schedule_heading_pid!` covers all of them. The setpoint stays in the example,
   being the maneuver rather than the controller.
+- `bin/delete_cache_files`, which removes V3Kite's cached `model_*.bin`,
+  `settled_*.bin`/`.arrow` and settling-log files from the scratchspace
+  `default_cache_path` now always uses. Cache names are version-stamped, so
+  most upgrades are a plain cache miss; this is for the case a serialized
+  type's layout changed without a version bump in the tag, and `deserialize`
+  throws instead. `--dry-run` lists without deleting, `--yes` skips the
+  confirmation prompt.
 
 ### Changed
+- `examples/flight_replay.jl` runs the replay and saves the logs; the plotting
+  moved to `examples/flight_replay_plots.jl`, which draws them from disk. This
+  retires the `LOAD_FROM_DISK` toggle — running the plots alone is what it did.
+- BREAKING: the replay's maneuver, feedback gains and figure options moved from
+  constants at the top of `flight_replay.jl` into a `replay_settings:` key on the
+  replay projects, loaded with `load_replay` into a `V3ReplayConfig`. The UTC
+  windows are `maneuvers:` entries in `data/replay_settings.yaml` rather than an
+  `if`/`elseif` chain in the script.
+- The replay kite settings carry the same damping as the wings they replay:
+  `kite_settings_psm_replay.yaml` gains the kernel backend and `body_sim_damping`
+  of 20 about z, and `kite_settings_beam_replay.yaml` gains that plus
+  `beam_body_damping`, `beam_world_damping`, `beam_angular_damping` and
+  `beam_joint_damping_scale`. Both had drifted from their flying configuration
+  without being corrections fitted to the flights, which is what those files are
+  for; a beam replay was flying with no beam damping at all.
+- BREAKING: the beam bodies in `data/struc_geometry_beam*.yaml` carry a `wing`
+  column naming the wing each belongs to, which is what lets the body damping
+  resolve a body's velocity against its parent wing. Regenerate with
+  `examples/v3beam_geometry.jl`.
+- The beam's four rigidities all come from `tube_linear_rigidities` at the tube
+  pressure, so `EA`, `GA`, `EI0` and `GJ` share one Breukels provenance instead of
+  taking `EA`/`GA`/`EI0` from the membrane laws. `EA` roughly doubles and `GA`
+  drops by a fifth. `V3BeamTopology.pressure_bar` is now the V3 bridle file's
+  measured `0.3` bar rather than 4.5 psi, which it was within 3% of anyway.
+- BREAKING: the beam joints in `data/struc_geometry_beam*.yaml` carry a single
+  `damping` column (Rayleigh β in seconds) instead of `damping_trans`/
+  `damping_rot`. `V3BeamTopology.damping_ratio` is now converted to β via
+  `β = 2ζ/ω` at the element's axial mode `ω = sqrt(EA/(L·m))`, following
+  `ζ = βω/2`. The old dashpot on relative node velocity also braked rigid
+  rotation of the whole wing — 15332 N·m·s/rad about yaw — which is what made
+  the beam kite refuse to steer. Regenerate with `examples/v3beam_geometry.jl`.
 - BREAKING: the `sim_settings:` files are named for the key that points at them
   and for the run they describe: `sim_settings_default.yaml` (was
   `settings.yaml`), `sim_settings_v3kite.yaml`,
   `sim_settings_reelout.yaml`, `sim_settings_cabauw.yaml`. `settings.yaml`
   against `settings_v3kite.yaml` said nothing about which held what; the new
   names line up with `kite_settings_*`, `settle_settings_*` and `wc_settings`.
-
-### Fixed
-- `setup_settling_model` honours the project's `remake_model` instead of
-  hardcoding `remake=false`. With `remake_model: true` a run settled on the
-  serialized model and only rebuilt afterwards, so the settled state every
-  later stage starts from was produced by the previous right-hand side.
-  `settle_wing` then reuses that rebuild for the settled model rather than
-  compiling the kernels a second time; the bin's structure hash rebuilds
-  anyway if the settled structure is not the one settling built.
-- `examples/relax_bridle.jl` rebuilt nothing: it called `init!(remake=false)`, so
-  it read back the serialized model and ran the old right-hand side whenever the
-  equations had changed. It now honours the project's `remake_model`, as
-  `build_v3_model` does.
-- The two replay projects flew different conditions: `system_psm_replay.yaml`
-  read `settings.yaml` while `system_beam_replay.yaml` read
-  `settings_v3kite.yaml`, so the pair differed in `sim_time` and depower as well
-  as in wing model. Both now read `sim_settings_default.yaml`.
-
-### Changed
 - BREAKING: the two aero geometries are named for the solver they came from and
   sit side by side: `cfd_aero_geometry.yaml` (was `aero_geometry.yaml`) and
   `nf_aero_geometry.yaml`, the NeuralFoil sweep `v3beam_aero_geometry.jl` writes.
@@ -242,33 +202,6 @@
   lattice corrections `flight_replay.jl` applied by hand. Both redistribute over
   wing nodes, which a beam wing does not have mass or drag on, so the beam
   project turns them off by leaving them out.
-
-### Removed
-- `V3SimConfig` and `run_v3_simulation`. Nothing called `run_v3_simulation`
-  outside its own kwargs forwarder, and everything `V3SimConfig` carried has a
-  home: the geometry paths are project-file keys, the flight condition is
-  `Settings`, and the model options are `V3KiteConfig`.
-
-### Fixed
-- The settling schedule no longer overrides the damping the kite file asks for.
-  `min_damping` named the same quantity as `V3KiteConfig.body_damping` and won,
-  so a kite settling to `[0, 0, 0]` flew at the schedule's `[0, 0, 20]`. The
-  floor is now the kite's own, and both names say which phase they belong to:
-  `body_start_damping`/`world_start_damping` in the settling schedule,
-  `body_sim_damping`/`world_sim_damping` in the kite file.
-  BREAKING: `settle_settings:` no longer accepts `min_damping`, and
-  `body_damping`/`world_damping` are renamed in both files.
-- `plot_twist_dist` paired wing nodes off two at a time, which holds only on the
-  lattice. A beam station carries eleven chordwise control points that are wing
-  nodes too, so the plot read one real station in six and made chords out of
-  pairs of control points. It now reads the twist surfaces.
-- `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a
-  beam wing, as its docstring always said it would. Both address segments by
-  index into the particle lattice, and the beam is the larger structure, so the
-  in-range check they were guarded by passed and the corrections landed on canopy
-  membranes — 0.2 m off a 1.31 m `spanwise_2_9` and its neighbours.
-
-### Changed
 - The settled state is cached as a one-row `Float64` log rather than a rewritten
   geometry YAML: `settled_struct_path` became `settled_state_path` and the
   structure is rebuilt from the source YAML with that state restored onto it. A
@@ -297,7 +230,6 @@
   `V3SettleConfig.body_damping_overrides` are gone, along with the override
   suffix in the settled-geometry cache key; `V3SimConfig` gained
   `world_damping_pattern` next to `damping_pattern`.
-### Changed
 - BREAKING: `default_cache_path(data_path)` now always resolves to the depot
   scratchspace keyed by V3Kite's own UUID, regardless of whether V3Kite itself
   is Pkg-installed or a development checkout, and regardless of what
@@ -329,20 +261,72 @@
   `simple_auto_parking.jl` also time initialization with `Timers.tic()`/`toc()`.
 
 ### Fixed
+- A run that aborts in its first seconds no longer dies in the AoA ripple metrics:
+  the parking and sinus examples report through the new `print_ripple_report`,
+  which warns that the log is too short instead of erroring out of the script
+  before the failure is printed.
+- Settling and the replay reinitialize the integrator with the solver `init!`
+  built, instead of a bare `FBDF()`. That default differentiates forward, so on
+  the monolith backend — which builds with `AutoFiniteDiff` — every `reinit!`
+  compiled the whole right-hand side a second time at `ForwardDiff.Dual`.
+  Settling the PSM wing on a warm model cache: 864 s -> 230 s.
+- Settling applies the kite's bridle material and beam joint damping, through the
+  same `apply_kite_material!` the flight model uses. It settled on the geometry
+  YAML's stiffness and then flew `kite.bridle`'s, so the "settled" state was not
+  an equilibrium of the model that started from it. Existing `settled_*.arrow`
+  files are regenerated.
+- `beam_joint_damping_scale` is applied once instead of twice. Settling ran it
+  over the joints and then `build_v3_model` ran it again over the same structure,
+  and since it multiplies in place the beam settled and flew at the square of the
+  scale rather than the scale itself.
+- `examples/flight_replay.jl` takes `remake_model` and `remake_settled_state` from
+  the kite settings instead of forcing a re-settle on every run.
+- `beam_body_damping` and `beam_world_damping` skip the wing bodies, as
+  `beam_angular_damping` already did. On a `RIGID_DYNAMICS` kite the one dynamic
+  body is the whole wing, and these settings damped its flight.
+- `setup_settling_model` honours the project's `remake_model` instead of
+  hardcoding `remake=false`. With `remake_model: true` a run settled on the
+  serialized model and only rebuilt afterwards, so the settled state every
+  later stage starts from was produced by the previous right-hand side.
+  `settle_wing` then reuses that rebuild for the settled model rather than
+  compiling the kernels a second time; the bin's structure hash rebuilds
+  anyway if the settled structure is not the one settling built.
+- `examples/relax_bridle.jl` rebuilt nothing: it called `init!(remake=false)`, so
+  it read back the serialized model and ran the old right-hand side whenever the
+  equations had changed. It now honours the project's `remake_model`, as
+  `build_v3_model` does.
+- The two replay projects flew different conditions: `system_psm_replay.yaml`
+  read `settings.yaml` while `system_beam_replay.yaml` read
+  `settings_v3kite.yaml`, so the pair differed in `sim_time` and depower as well
+  as in wing model. Both now read `sim_settings_default.yaml`.
+- The settling schedule no longer overrides the damping the kite file asks for.
+  `min_damping` named the same quantity as `V3KiteConfig.body_damping` and won,
+  so a kite settling to `[0, 0, 0]` flew at the schedule's `[0, 0, 20]`. The
+  floor is now the kite's own, and both names say which phase they belong to:
+  `body_start_damping`/`world_start_damping` in the settling schedule,
+  `body_sim_damping`/`world_sim_damping` in the kite file.
+  BREAKING: `settle_settings:` no longer accepts `min_damping`, and
+  `body_damping`/`world_damping` are renamed in both files.
+- `plot_twist_dist` paired wing nodes off two at a time, which holds only on the
+  lattice. A beam station carries eleven chordwise control points that are wing
+  nodes too, so the plot read one real station in six and made chords out of
+  pairs of control points. It now reads the twist surfaces.
+- `apply_geom_adjustments!` now skips the tip and trailing-edge reductions on a
+  beam wing, as its docstring always said it would. Both address segments by
+  index into the particle lattice, and the beam is the larger structure, so the
+  in-range check they were guarded by passed and the corrections landed on canopy
+  membranes — 0.2 m off a 1.31 m `spanwise_2_9` and its neighbours.
 - `V3BeamTopology.frame_offset`'s default now `copy`s
   `V3_ADAPTER_FRAME_OFFSET` instead of aliasing it. A `Base.@kwdef` default is
   evaluated once and shared by every instance that takes it, so mutating one
   topology's `frame_offset` in place mutated the constant every later
   `V3BeamTopology()` silently inherited.
 
-### Added
-- `bin/delete_cache_files`, which removes V3Kite's cached `model_*.bin`,
-  `settled_*.bin`/`.arrow` and settling-log files from the scratchspace
-  `default_cache_path` now always uses. Cache names are version-stamped, so
-  most upgrades are a plain cache miss; this is for the case a serialized
-  type's layout changed without a version bump in the tag, and `deserialize`
-  throws instead. `--dry-run` lists without deleting, `--yes` skips the
-  confirmation prompt.
+### Removed
+- `V3SimConfig` and `run_v3_simulation`. Nothing called `run_v3_simulation`
+  outside its own kwargs forwarder, and everything `V3SimConfig` carried has a
+  home: the geometry paths are project-file keys, the flight condition is
+  `Settings`, and the model options are `V3KiteConfig`.
 
 ## V3Kite v1.2.0 17-08-2026
 
