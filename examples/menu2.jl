@@ -18,6 +18,8 @@ end
 using REPL.TerminalMenus
 using V3Kite: set_default_turbulence
 
+const CACHE_SCRIPT = normpath(joinpath(@__DIR__, "..", "bin", "delete_cache_files"))
+
 files = sort(filter(f -> startswith(f, "simple_") && endswith(f, ".jl"), readdir(@__DIR__)))
 options = [string(f[1:end-3], " = include(\"", f, "\")") for f in files]
 # A bare call, not an assignment: `set_default_turbulence = set_default_turbulence()` would
@@ -27,6 +29,7 @@ push!(options, "reel_out_v3 = include(\"reel_out_v3.jl\")")
 push!(options, "reel_out_v3_plots = include(\"reel_out_v3_plots.jl\")")
 push!(options, "steering_test_v3 = include(\"steering_test_v3.jl\")")
 push!(options, "steering_test_v3_plots = include(\"steering_test_v3_plots.jl\")")
+push!(options, "delete_cache_files = run(`$CACHE_SCRIPT`)")
 push!(options, "quit")
 
 function example_menu()
