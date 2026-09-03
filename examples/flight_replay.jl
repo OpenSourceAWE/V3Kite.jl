@@ -258,9 +258,11 @@ function run_physics_replay(h5_path;
             aero_mode=resolve_aero_mode(kite_set))
         sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
         apply_geom_adjustments!(sys, gc)
-        SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false,
-            remake_vsm=true)
+        V3Kite.with_model_cache(V3Kite.default_cache_path()) do
+            SymbolicAWEModels.init!(sam;
+                remake=false, ignore_l0=false,
+                remake_vsm=true)
+        end
         settle_log = nothing
     end
     set = sam.set
@@ -277,8 +279,10 @@ function run_physics_replay(h5_path;
         settle_config, row1; set)
     data_sam = SymbolicAWEModel(set, data_struct; backend = kite_set.backend)
     data_sam.sys_struct.tethers[1].init_stretched_len = tether_len
-    init!(data_sam; remake=false, remake_vsm=true,
-        reinit_sys=false)
+    V3Kite.with_model_cache(V3Kite.default_cache_path()) do
+        init!(data_sam; remake=false, remake_vsm=true,
+            reinit_sys=false)
+    end
     data_state = SysState(data_sam)
     data_logger = Logger(data_sam, n_data_steps)
 
