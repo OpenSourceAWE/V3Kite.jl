@@ -67,6 +67,8 @@ BODY_SIM_DAMPING   = [0.0, 0.0, 32.0]  # Floor it decays to; what the run FLIES 
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
 DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
 COMPRESSION_LIMIT = 10.0  # segments whose peak compression exceeds this are reported [N]
+REMAKE_MODEL         = true   # true rebuilds the serialized model bin
+REMAKE_SETTLED_STATE = true   # true re-runs settling instead of loading the arrow
 
 # ======================== INIT =========================== #
 
@@ -76,7 +78,9 @@ s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     body_sim_damping = BODY_SIM_DAMPING,
     damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
+    system_yaml = PROJECT, aero_mode = AERO_MODE,
+    remake_model = REMAKE_MODEL,
+    remake_settled_state = REMAKE_SETTLED_STATE)
 
 # `init` leaves the winch un-braked; brake it to park at constant tether length.
 s.sys.winches[1].brake = USE_BRAKE

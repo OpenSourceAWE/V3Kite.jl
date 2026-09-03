@@ -243,6 +243,9 @@ using KitePodModels: KCU
 
     include("test-turbulence-injection.jl")
 
+    # Before the parking run: it forces the model rebuild, which that one reuses.
+    include("test_settling.jl")
+
     # Slowest of the lot: a 600-step parking run (see the file header).
     include("test_parking_ripple.jl")
 

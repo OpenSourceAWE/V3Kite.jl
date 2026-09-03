@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `test/test_settling.jl` settles the wing of `examples/simple_sinus.jl` from
+  scratch, forcing both a model rebuild and a re-settle, so CI covers the path a
+  machine with no cache takes and a settling divergence fails the suite rather
+  than only the examples.
+
+### Fixed
+- `remake_model=true` rebuilds the model again. Settling built its own model from
+  the project's `remake_model:` flag rather than the argument, and then reported
+  the rebuild as done, so the argument reached neither the settling build nor the
+  one after it: an `init(...; remake_model=true)` silently reused a `model_*.bin`
+  written under an older dependency.
+
 ## V3Kite v1.3.0 02-09-2026
 
 ### Added

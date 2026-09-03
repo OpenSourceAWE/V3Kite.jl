@@ -692,7 +692,7 @@ function settle_wing(config::V3SettleConfig, init_row;
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,
                 source_struc, source_aero, dest_struc,
-                log_path = cache_path, cache_path, init_row)
+                log_path = cache_path, cache_path, init_row, remake_model)
             settling_rebuilt = remake_model
         catch err
             is_interrupt = err isa InterruptException ||
@@ -831,7 +831,8 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero, cache_path=data_path)
+        data_path, source_struc, source_aero, cache_path=data_path,
+        remake_model=config.kite_set.remake_model)
     gc = config.kite_set.geom
     sys, set = build_settling_struct(config;
         data_path, source_struc, source_aero)
@@ -840,7 +841,7 @@ function setup_settling_model(config::V3SettleConfig;
     apply_geom_adjustments!(sys, gc)
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do
-        SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
+        SymbolicAWEModels.init!(sam; remake=remake_model,
             ignore_l0=false, remake_vsm=true)
     end
 
@@ -858,9 +859,9 @@ function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
         dest_struc, cache_path=data_path, log_path=cache_path,
-        init_row)
+        init_row, remake_model=config.kite_set.remake_model)
     sam, sys, gc = setup_settling_model(config;
-        data_path, source_struc, source_aero, cache_path)
+        data_path, source_struc, source_aero, cache_path, remake_model)
 
     if !isnothing(config.kite_set.init_state)
         state_path = project_file(config.project, config.kite_set.init_state;
