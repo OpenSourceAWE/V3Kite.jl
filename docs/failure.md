@@ -134,13 +134,21 @@ divergence.
    (a cache outliving the versions it was written against) is only ever
    exercised on a developer machine. Seeding a cache before the wipe would make
    the test mean something on CI.
-2. **`bin/delete_cache_files` misses the `data/` folder.** A
-   `model_v0.15.1_..._kernel.bin` and a `settle_particle_dynamics_wing.arrow`
-   also accumulate in `data/` (both gitignored; the model bin was written there
-   at 19:24, distinct in content from the scratchspace copy). Some code path is
-   still caching to `data_path` rather than to `default_cache_path`, and the
-   script cleans only the scratchspace. Not the cause of this failure, but it
-   leaves exactly the kind of stale artifact the script's own header warns about.
+2. **Model binaries leaked into `data/`** — *fixed*.
+   `SymbolicAWEModels.init!` serializes the model under the global
+   `KiteUtils.get_data_path()` and takes no path argument, which is why
+   `with_model_cache` exists. Several callers skipped that wrapper and so wrote
+   the binary into `data/`, where `bin/delete_cache_files` — which sweeps only
+   the scratchspace — never reaches it: exactly the kind of stale artifact that
+   caused this failure. Wrapped in `with_model_cache(default_cache_path(...))`:
+   `simulation.jl` (`build_v3_model`, `:relaxed_state` branch),
+   `sim_helpers.jl` (`build_replay_sys_struct`), `test/test-interface.jl`,
+   `examples/relax_bridle.jl` and `examples/flight_replay.jl` (two sites).
+   `setup_settling_model` and `run_power_zone_settling!` defaulted
+   `cache_path=data_path`, which was dead (`settle_wing` always passes the
+   scratchspace explicitly) but pointed the wrong way; both now default to
+   `nothing` and resolve through `default_cache_path`, which gained an optional
+   argument for callers with no `data_path` to hand.
 
 ## Reproducing
 
