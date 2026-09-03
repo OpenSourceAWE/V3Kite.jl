@@ -29,6 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Use pinned manifest
+        run: cp "Manifest-v${{ matrix.version }}.toml.default" "Manifest-v${{ matrix.version }}.toml"
+
       - name: Install GLMakie system dependencies
         run: |
           sudo apt-get update
