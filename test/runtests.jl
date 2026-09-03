@@ -8,6 +8,10 @@ using KitePodModels: KCU
 
 @testset "V3Kite.jl" begin
 
+    # Runs first: wipes the shared cache scratchspace, so every other test
+    # below it rebuilds from a clean cache rather than reusing a stale one.
+    include("test_delete_cache_parking.jl")
+
     @testset "Calibration Constants" begin
         @test V3_STEERING_L0_BASE == 1.6
         @test V3_DEPOWER_L0_BASE == 0.2
