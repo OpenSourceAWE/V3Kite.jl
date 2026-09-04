@@ -22,7 +22,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
     settings.l_tether = 150.0
     sam, sys = create_v3_model(PROJECT; data_path, settings)
     sam.set.wind_vec = [10.0, 0.0, 0.0]
-    # Model binary to the cache, not into `data_path` (see `with_model_cache`).
+    # Cache the model binary in the cache dir, not into `data_path` (see `with_model_cache`).
     V3Kite.with_model_cache(V3Kite.default_cache_path(data_path)) do
         init!(sam; remake=false, remake_vsm=true)
     end
