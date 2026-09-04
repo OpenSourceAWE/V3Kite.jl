@@ -77,12 +77,12 @@ try
 
         # `init` sizes the logger to `steps + 1` rows: one at t=0 plus one per
         # completed step (see `warmup!`'s docstring in `src/interface.jl`).
-        # `output/` (gitignored), not the package data path, mirroring
-        # `examples/simple_parking.jl`.
-        OUTPUT_DIR = joinpath(@__DIR__, "..", "output")
-        mkpath(OUTPUT_DIR)
-        syslog = save_and_load_log(s.logger, "tmp_delete_cache_parking"; path=OUTPUT_DIR)
-        @test length(syslog.syslog) == s.steps + 1
+        # Saved to a temp directory so the test stays self-contained and
+        # leaves no artifacts behind.
+        mktempdir() do output_dir
+            syslog = save_and_load_log(s.logger, "tmp_delete_cache_parking"; path=output_dir)
+            @test length(syslog.syslog) == s.steps + 1
+        end
     end
 finally
     set_data_path(_old_data_path)
