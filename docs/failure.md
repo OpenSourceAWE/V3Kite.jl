@@ -1,14 +1,19 @@
 # Local test failures on `bump_vsm`: `ContinuousAero` diverges at t = 0
 
-**Branch:** `bump_vsm` (`038f8a9`) · **Investigated:** 2026-09-03, reopened 2026-09-04
-**Status: open.** The 2026-09-03 "stale cache" resolution below does NOT hold on a
-second machine — see "2026-09-04: resolution retracted" at the end. Use
-`AeroDirect` as a workaround; `ContinuousAero` still diverges at t = 0 even with
-a clean cache and package versions byte-identical to CI's.
+**Branch:** `bump_vsm` · **Investigated:** 2026-09-03, reopened and resolved 2026-09-04
 
-Local `Pkg.test()`:
+**Status: root-caused and worked around.** The analytical Jacobian of the
+`aero_panel` kernel evaluates to NaN under `ContinuousAero`, which breaks
+FBDF's Newton iteration on the first implicit step. Setting
+`analytic_jacobian: false` in the `continuous` kite-settings files fixes it;
+the full suite now passes **405/405**. Reported upstream as
+[SymbolicAWEModels.jl#289](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl/issues/289).
+Read the last section first — the earlier ones are a record of the search,
+including **two** wrong "stale cache" conclusions.
 
-```
+The failure this started from, local `Pkg.test()`:
+
+```text
 Test Summary:                     | Pass  Fail  Error  Total
 V3Kite.jl                         |  387     1      3    391
   Delete Cache Files Then Parking |    1            1      2
@@ -17,7 +22,15 @@ V3Kite.jl                         |  387     1      3    391
   Parking AoA Ripple              |                 1      1
 ```
 
-CI run 33782052364 on the same commit: **success**.
+All four were the same bug, and all four pass now.
+
+**Still unexplained:** CI run 33782052364 on the same commit was **green**, and
+even ran the `ContinuousAero` parking test to completion. The defect is
+deterministic and state-independent on this machine, so why a CI runner did not
+hit it is not accounted for by anything established here. The SII 0.3.54 vs.
+0.3.55 split once offered as the explanation is dead — this machine now resolves
+0.3.55 and still fails. Do not treat the green CI as evidence that a given
+environment is safe.
 
 ## Confirmed: one bug, not four
 
@@ -437,7 +450,19 @@ both point at. The `pressure` (beam) files are left on `nothing`; whether
 Note it keys its own model cache (`..._sparse_kernel.bin`, without `analytic`),
 so switching it costs one model rebuild.
 
-**Still worth fixing upstream.** A local dev checkout is available at
-`~/repos/SymbolicAWEModels` (v0.15.2 vs. the v0.15.1 in use), though
-`examples/Project.toml` is not yet pointed at it. Until then `AeroDirect`
-remains the other option.
+**Reported upstream** as
+[SymbolicAWEModels.jl#289](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl/issues/289).
+That issue also supersedes
+[#282](https://github.com/OpenSourceAWE/SymbolicAWEModels.jl/issues/282)
+("SimpleKiteControllers crashes in kernel mode"), which is the same failure —
+same `dt_epsilon` at `t = 0`, same `_sparse_analytic_kernel.bin`, same
+`ContinuousAero` — closed in 2026-08 as a misplaced cache file. Its
+"monolith works, kernel crashes" signature is explained by
+`default_analytic_jacobian`: `false` for `MonolithBackend`, `true` for
+`KernelBackend`, so the monolith path never touched the broken Jacobian.
+Note the cache misdiagnosis has now happened twice on this bug — once there
+and once in the 2026-09-03 entry at the top of this file.
+
+A local dev checkout is available at `~/repos/SymbolicAWEModels` (main, v0.15.2)
+for a fix, though `examples/Project.toml` is not yet pointed at it. Until then
+`analytic_jacobian: false` is the fix in use and `AeroDirect` the other option.
