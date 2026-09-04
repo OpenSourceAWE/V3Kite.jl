@@ -1,8 +1,10 @@
 # Local test failures on `bump_vsm`: `ContinuousAero` diverges at t = 0
 
-**Branch:** `bump_vsm` (`038f8a9`) · **Investigated:** 2026-09-03
-**Status: resolved.** A stale cached model binary. Clearing the V3Kite cache
-fixes it; see "Resolution" below.
+**Branch:** `bump_vsm` (`038f8a9`) · **Investigated:** 2026-09-03, reopened 2026-09-04
+**Status: open.** The 2026-09-03 "stale cache" resolution below does NOT hold on a
+second machine — see "2026-09-04: resolution retracted" at the end. Use
+`AeroDirect` as a workaround; `ContinuousAero` still diverges at t = 0 even with
+a clean cache and package versions byte-identical to CI's.
 
 Local `Pkg.test()`:
 
@@ -165,3 +167,44 @@ init(10.0, 150.0; depower_setpoint=0.25, sim_time=1.0,
 init(10.0, 150.0; depower_setpoint=0.25, sim_time=1.0,
      system_yaml="system_cabauw.yaml", aero_mode=AeroDirect())
 ```
+
+## 2026-09-04: resolution retracted
+
+Same failure hit a second, different machine (desktop, AMD Ryzen 9 7950X /
+Zen4, LLVM codegen target `znver4`) after pulling `bump_vsm`. Applying the
+2026-09-03 fix — `bin/delete_cache_files --yes` — did **not** resolve it.
+
+Reproduced from a fully clean state on that machine:
+
+| control | value |
+| --- | --- |
+| scratchspace | wiped, single freshly-rebuilt `.bin`, no leaked binaries under `data/` |
+| SymbolicIndexingInterface | 0.3.55 (matches the CI column above) |
+| VortexStepMethod / SymbolicAWEModels / MTK / SciMLBase / KiteUtils | all identical to the CI column above |
+| Julia | 1.12.7 (matches CI) |
+| `ContinuousAero` | **diverges at t = 0**, same `dt_epsilon` abort |
+| `AeroDirect` | settles cleanly in 40 steps, same as before |
+
+This rules out both explanations the 2026-09-03 entry gave: it is not a stale
+serialized binary (cache was empty before the run) and not a package-version
+mismatch (every resolved version matches CI exactly). The only variable left
+uncontrolled between this machine, the original laptop, and the CI runner is
+the **CPU microarchitecture** — `znver4` (AVX-512) here vs. presumably a
+generic x86-64 GitHub Actions runner for CI and a different chip on the
+laptop. Since the RHS is JIT-compiled per machine, different FMA-contraction
+or vectorization choices at that target could plausibly change rounding
+enough to tip an already-marginal `ContinuousAero` integration past the `dt`
+floor — consistent with the SciMLBase warning text itself ("or it cannot be
+represented in Float64 precision").
+
+Not yet tested: forcing a non-AVX-512 codegen target (`JULIA_CPU_TARGET=generic`
+or `-C x86-64-v3` at Julia startup) to see whether settling then succeeds,
+which would confirm or rule out the microarchitecture theory directly. If
+confirmed, the real fix is almost certainly loosening/adapting the
+integrator's `abstol`/`reltol` (or picking a more robust algorithm) for the
+`ContinuousAero` RHS, not a cache workaround — the underlying dynamics are
+apparently right at the edge of what the current tolerances can integrate
+reliably.
+
+**Current workaround:** use `AeroDirect`. It has been reliable on every
+machine tried so far.
