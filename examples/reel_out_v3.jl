@@ -43,8 +43,7 @@ s = init(V_WIND, TETHER_LENGTH; system_yaml = "system_reelout.yaml",
                                 body_sim_damping = [0.0, 0.0, 32.0],
                                 depower_setpoint = DEPOWER_SETPOINT, dt,
                                 sim_time = STEPS*dt, aero_mode = AERO_MODE,
-                                damping_per_stiffness = 0.001,
-                                remake_model = false)
+                                damping_per_stiffness = 0.001)
 toc("Initialization took: ")
 
 function simulate(s, steps, plot=false)

@@ -391,7 +391,7 @@ end
          body_sim_damping=nothing, damping_per_stiffness=nothing,
          aero_mode=nothing, data_path=nothing, cache_path=nothing,
          use_turbulence=nothing, warmup_time=0.0, warmup_torque=nothing,
-         remake_model=nothing, remake_settled_state=nothing) -> V3KITE
+         remake_model=false, remake_settled_state=nothing) -> V3KITE
 
 Build and return a ready `V3KITE`, settled at a fixed depower equilibrium,
 for a `step!` simulation loop (see `examples/simple_parking.jl`).
@@ -493,7 +493,7 @@ function init(v_wind_gnd, l_tether;
               use_turbulence = nothing,
               warmup_time = 0.0,
               warmup_torque = nothing,
-              remake_model = nothing,
+              remake_model = false,
               remake_settled_state = nothing)
     data_path = project_data_path(system_yaml, data_path)
     system_path = project_path(system_yaml; data_path)

@@ -76,7 +76,7 @@ s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     body_sim_damping = BODY_SIM_DAMPING,
     damping_per_stiffness = DAMPING_PER_STIFFNESS,
     depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
-    system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
+    system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # `init` leaves the winch un-braked; brake it to park at constant tether length.
 s.sys.winches[1].brake = USE_BRAKE
