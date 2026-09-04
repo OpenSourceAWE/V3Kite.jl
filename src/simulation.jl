@@ -288,9 +288,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         apply_kite_material!(sys, kite_set)
         set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
         set_steering!(sys, 0.0, kite_set.geom)
-        # `init!` serializes the model under the global data path, so redirect it
-        # to the cache; without this the binary lands in `data_path` (see
-        # `with_model_cache`), where `bin/delete_cache_files` never sweeps it.
+        # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
         with_model_cache(default_cache_path(data_path)) do
             SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
                                     remake_vsm=true,
