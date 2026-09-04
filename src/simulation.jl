@@ -64,14 +64,7 @@ Base.@kwdef mutable struct V3KiteConfig
     "Steps between VSM aero solves; tuned together with `aero_mode`"
     vsm_interval::Int = 1
 
-    """
-    Hand the solver the backend's analytical Jacobian. `nothing` takes the
-    backend's own default (`true` for `KernelBackend`), `false` makes the solver
-    build its own. Set it `false` on a model whose analytical Jacobian is wrong:
-    a `ContinuousAero` wing's `aero_panel` kernel differentiates to NaN, which
-    stalls the implicit solver at `t = 0` (see `docs/failure.md`). Costs the
-    solver a Jacobian it would otherwise be handed, and keys its own model cache.
-    """
+    "Whether to use the analytical jacobian or not. If `nothing`, the default is used."
     analytic_jacobian::Union{Nothing, Bool} = nothing
 
     """
