@@ -1,9 +1,15 @@
 # The V3 as a particle lattice: the wing is a net of DYNAMIC point masses joined
 # by springs. Loaded into a `V3KiteConfig` via a project file's `kite_settings:`.
+#
+# `analytic_jacobian: false` is required here, not a tuning choice: under
+# `continuous` aero the `aero_panel` kernel's analytical Jacobian evaluates to
+# NaN, which stalls the implicit solver at t = 0 and fails settling outright.
+# See `docs/failure.md`. Drop the key once that is fixed upstream.
 kite_settings:
   wing_type: particle_dynamics   # particle_dynamics | rigid_dynamics
   aero_mode: continuous          # direct | continuous | pressure
   backend: kernel                # monolith | kernel model assembly
+  analytic_jacobian: false       # null takes the backend default (kernel: true)
   vsm_interval: 5                # steps between VSM aero solves
 
   body_sim_damping: [0.0, 0.0, 20.0]   # per-axis wing-frame damping in flight

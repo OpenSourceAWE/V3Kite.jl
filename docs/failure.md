@@ -208,3 +208,236 @@ reliably.
 
 **Current workaround:** use `AeroDirect`. It has been reliable on every
 machine tried so far.
+
+## 2026-09-04: a settle/fly split shows the instability is not settling-specific
+
+Tried settling under one aero mode and handing the settled equilibrium to a
+model rebuilt under a different one, so a mode whose *settling transient* is
+unstable could borrow another mode's equilibrium instead of integrating its
+own violent 40-step damped ramp (prototyped as `fly_aero_mode` on
+`settle_wing` / `settle_aero_mode` on `init`).
+
+Settling with `AeroDirect` and flying `ContinuousAero`, `init()` **succeeds** —
+settling is skipped entirely and a `ContinuousAero`-compiled model is returned.
+But the very first `step!` on that model **diverges with the same `dt_epsilon`
+abort**, at the same `t=0.05`.
+
+This rules out "the settling schedule's violent transient is what
+`ContinuousAero` can't handle" — the instability reproduces on an ordinary
+step from a genuine physical equilibrium, not only from settling's
+decaying-damping ramp.
+
+The split itself was **reverted**: the root cause below is a NaN Jacobian, and
+`analytic_jacobian: false` fixes settling and flight alike, leaving the split
+with no problem to solve. Recorded here for the finding, not the code.
+
+Sharpens the previous lead: `abs_tol`/`rel_tol` (`0.01`/`0.01`, `solver:
+'FBDF'`, from `sim_settings_cabauw.yaml`'s `solver:` block) and the
+CPU-codegen theory are now the most promising things to chase, over anything
+settling-schedule-related.
+
+## 2026-09-04: CPU-microarchitecture theory ruled out
+
+Re-ran the plain `init()` repro (`ContinuousAero`, `system_cabauw.yaml`) in a
+fresh process with `JULIA_CPU_TARGET=generic` (forces baseline x86-64 codegen,
+no AVX-512/`znver4` vectorization or FMA contraction) on the same Ryzen 9
+7950X machine. **Identical failure**: same `dt_epsilon` abort at the same
+`t=0.05`, byte-for-byte the same log shape as the native-target run.
+
+This rules out `znver4`-specific rounding as the cause — the divergence
+reproduces under generic codegen too, so it is not an FMA-contraction or
+vectorization artifact of this particular CPU. The remaining, now-leading
+candidate is a genuine tolerance/algorithm problem: `abs_tol=0.01`,
+`rel_tol=0.01`, `solver: 'FBDF'` (`sim_settings_cabauw.yaml`) may simply not
+be tight enough, or `FBDF` not robust enough, for `ContinuousAero`'s RHS at
+this flight condition — independent of machine. Not yet tried: tightening
+`abs_tol`/`rel_tol`, or swapping the solver (e.g. `Rodas5P`).
+
+## 2026-09-04: smaller settling `dt` doesn't help either
+
+Tried `config.dt = 0.01` (200 steps, `decay_steps=150`, same 2.0 s total
+settle time and damping-decay ratio as the default) and `config.dt = 0.001`
+(2000 steps, `decay_steps=1500`) via a direct `settle_wing` call on the same
+`ContinuousAero`/`system_cabauw.yaml` case. **Both fail identically** — the
+first substep still hits `dt was forced below floating point epsilon`, even
+at 50x the default step resolution.
+
+This is the useful negative: if this were ordinary stiffness/tolerance
+sensitivity, a much smaller starting `dt` should buy the adaptive controller
+real headroom before it needs to shrink further. Instead it collapses to
+underflow on the very first substep regardless of the requested step size —
+that points away from "tolerances too loose for a stiff-but-well-posed RHS"
+and toward **the `ContinuousAero` RHS (or its Jacobian) evaluating to
+NaN/Inf, or being genuinely singular, at this exact initial state**. No step
+size fixes a derivative that is already broken at evaluation time.
+
+Not yet tried: a direct one-shot RHS/derivative evaluation at `t=0` on this
+state (bypassing the ODE solver's step-size search entirely) to check for
+NaN/Inf directly, which would confirm or rule this out without further
+solver-tuning guesses.
+
+## 2026-09-04: direct RHS evaluation — no NaN/Inf, but a genuinely violent transient
+
+Rebuilt the settling model by hand up to the point immediately before the
+first failing `sim_step!` (mirroring `run_power_zone_settling!`'s step-1 body:
+`setup_settling_model`, `update_sys_struct_from_data!`, the depower ramp,
+`reposition!`, `reinit_integrator!`), then evaluated the RHS once directly —
+`integ.f(du, integ.u, integ.p, integ.t)` — with no ODE solver involved.
+
+- `du` and `u` are both **fully finite** — no NaN/Inf anywhere.
+- But `du` is enormous and widespread: **103 of 272 state derivatives exceed
+  magnitude 100** (up to ~786,000), at `t=0`, before any settling step has run.
+
+This rules out a localized singularity (e.g. a divide-by-zero in one panel's
+induced-velocity term) — the state isn't corrupted, and the blow-up isn't
+confined to one or two components. It is a genuinely violent initial
+transient: under `ContinuousAero`'s force field, the placed-but-unsettled
+starting geometry is far out of static equilibrium across roughly a third of
+the structure's degrees of freedom. No `abs_tol`/`rel_tol` or `dt` choice
+can rescue that — confirms the 2026-09-04 smaller-`dt` result above. Solver
+tuning (`Rodas5P`, tighter tolerances) might paper over it, but the honest
+read is that `ContinuousAero`'s force field disagrees sharply with
+`AeroDirect`'s at this exact starting geometry — a physics/force-model
+discrepancy between the two aero modes, not a numerics bug. `AeroDirect`
+evidently keeps the same starting geometry much closer to force balance,
+which is why its settling transient is mild and integrates without incident.
+
+Not yet tried: comparing the two aero modes' force/moment output directly at
+this same starting geometry (bypass the ODE entirely — call each aero mode's
+force computation once and diff the results) to see which components of the
+force field disagree and by how much.
+
+## 2026-09-04: force/moment comparison — the two aero modes agree, corrects the theory above
+
+Built `ContinuousAero` and `AeroDirect` models from the identical pre-settling
+starting state (same `u`, confirmed by `maximum(abs.(u_cont .- u_dir)) ==
+0.0`) and evaluated each RHS once. **This overturns the theory in the section
+above.** The two derivative vectors are nearly identical, not different:
+
+- Entries with `|du| > 100`: 103 (`ContinuousAero`) vs. 102 (`AeroDirect`) —
+  differ by a single entry crossing the threshold.
+- `maximum(abs.(du_cont .- du_dir))` = **~9.06**, negligible next to the
+  ~786,000-magnitude values both share.
+- Only 60 of 272 entries differ at all beyond floating-point noise, and even
+  those differ by at most ~9.
+
+So the two aero modes face **the same violently stiff initial transient** at
+this starting geometry — it is not specific to `ContinuousAero`'s force
+field, and the "force-field disagreement" read of the previous section is
+wrong. `AeroDirect`'s settling loop nonetheless gets through this transient
+while `ContinuousAero`'s does not, so the divergence must originate one level
+deeper than the RHS: most likely in how each mode's **implicit step** (FBDF's
+Newton iteration against the analytical Jacobian, "Planned the analytical
+Jacobian" at model-assembly time) handles the same stiff derivative — Jacobian
+conditioning or sparsity differing between the two aero kernels' generated
+code, even though their RHS values agree closely.
+
+Not yet tried: evaluating/comparing the Jacobian (not just the RHS) between
+the two modes at this same state — checking for NaN/Inf, extreme conditioning,
+or a structural difference in sparsity pattern that would explain why Newton's
+method converges for one and not the other despite near-identical right-hand
+sides.
+
+## 2026-09-04: ROOT CAUSE — NaN in the `aero_panel` kernel's analytical Jacobian
+
+**The `ContinuousAero` analytical Jacobian contains NaN.** Evaluating
+`f.jac(J, u, p, 0.0)` directly — the exact matrix handed to FBDF's Newton
+solve — at the pre-settling state:
+
+| | `ContinuousAero` | `AeroDirect` |
+| --- | --- | --- |
+| non-finite entries | **3134 / 73984** | 0 |
+| max abs | `NaN` | 5.69e7 (finite) |
+
+A NaN Jacobian breaks Newton immediately at any step size or tolerance, which
+is why smaller `dt`, tighter `abs_tol`/`rel_tol` (1e-5) and `dtmax=0.025` all
+failed identically. The RHS itself is NaN-free, so only the *derivative* path
+is affected.
+
+### Localized to one kernel
+
+Per-kernel dual blocks (`KernelJacobian.duals`, `kernel_backend/jacobian.jl`):
+`aero_panel_1_up` holds **1296 of 8640** non-finite entries; the other 13
+kernels (`wing_node`, `spring_segment`, `aero_inflow`, `aero_point_force_1`,
+`wing_aero_sum`, …) are **all clean**. `aero_panel_1_up` exists only under
+`ContinuousAero` — `AeroDirect` emits a single `wing_aero_1` instead, which is
+exactly why its Jacobian is finite.
+
+The pattern is rigid: **all 6 outputs** (`force_out`, `couple_out`) × **exactly
+3 of 20 input slots** × **all 72 panel instances** = 1296. The three slots are
+`te_b_1` (10), `te_b_3` (12) and `va_a_2` (14).
+
+### It is not the physics — proof
+
+- **State-independent.** Perturbing `u` by 1e-3 and by 1e-1 reproduces the
+  identical pattern (same slots, same 3134 count), so it is not a geometric
+  singularity such as `atan(0,0)` or a zero-length vector.
+- Inputs, params (`numeric`), seeds and outputs are **all finite**; the seeds
+  are proper unit vectors. `NaNMath.pow(x, 2)` differentiates correctly for
+  positive, zero and negative `x`. The `cl`/`cd`/`cm` polars evaluate on a
+  seeded `Dual` with a finite value and **zero** non-finite partials.
+- **The decisive contradiction:** in the generated kernel body, input slots
+  13–20 are each referenced exactly once, and slots 14 (`va_a_2`) and 17
+  (`va_b_2`) appear *only* in the same expression,
+  `##cse#46 = arg2[14] + arg2[17]`. For `f = a + b` both partials are exactly
+  1 and follow bit-identical downstream paths — one cannot be NaN while the
+  other is finite. It therefore **cannot** come from the aerodynamic
+  expressions; it is injected by the differentiation machinery.
+
+### Minimal reproduction
+
+A single instance, freshly constructed, reproduces it standalone:
+
+```julia
+kd = SymbolicAWEModels.KernelDuals(system, kernel_idx, [instance_id])
+SymbolicAWEModels.fill_blocks!(kd, kernel, system, u, scratch.input, numeric,
+                               callables[kernel_idx], 0.0)
+findall(!isfinite, kd.blocks)   # 18 entries: rows 1:6 × slots 10, 12, 14
+```
+
+with every input value finite and ordinary (slots 10/12/14/17 =
+1.4085 / 8.281 / 0.0964 / 0.0845) and all six output values finite
+(-0.9432, 4.6298, -0.2168, 0.0323, -0.2571, -0.0095).
+
+So: finite inputs, clean unit seeds, finite outputs — yet 3 of 20 partial
+lanes come back NaN. This is a bug in `SymbolicAWEModels`' `KernelBackend`
+analytical Jacobian (`src/kernel_backend/jacobian.jl` and the MTK codegen
+behind `aero_panel`), not in V3Kite and not in the aerodynamic model.
+
+### Workaround, wired up: `analytic_jacobian: false`
+
+Turning the analytical Jacobian off makes the solver build its own and
+bypasses the broken one entirely. **Confirmed working** on the case that
+started this document:
+
+```julia
+init(10.0, 150.0; depower_setpoint=0.25, sim_time=1.0,
+     system_yaml="system_cabauw.yaml")   # ContinuousAero, was "Settling failed"
+```
+
+now settles all 40 steps (elevation holds 70.01°) and flies 40 `step!`s
+(elevation 67.91°, heading -3.13°).
+
+It is exposed as a `V3KiteConfig` field and a `kite_settings:` key, threaded
+into every `SymbolicAWEModels.init!` call site (`stabilization.jl` ×3,
+`simulation.jl`, `sim_helpers.jl`). `nothing` keeps the backend's own default,
+so nothing changes for a model that was already fine:
+
+```yaml
+kite_settings:
+  aero_mode: continuous
+  analytic_jacobian: false   # null takes the backend default (kernel: true)
+```
+
+Set in `kite_settings_psm.yaml` and `kite_settings_psm_replay.yaml`, the two
+`continuous` files — which is what `system_psm.yaml` and `system_cabauw.yaml`
+both point at. The `pressure` (beam) files are left on `nothing`; whether
+`AeroPressure` has the same defect is untested.
+
+Note it keys its own model cache (`..._sparse_kernel.bin`, without `analytic`),
+so switching it costs one model rebuild.
+
+**Still worth fixing upstream.** A local dev checkout is available at
+`~/repos/SymbolicAWEModels` (v0.15.2 vs. the v0.15.1 in use), though
+`examples/Project.toml` is not yet pointed at it. Until then `AeroDirect`
+remains the other option.

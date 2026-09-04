@@ -747,7 +747,8 @@ function settle_wing(config::V3SettleConfig, init_row;
             # structure hash that rejects it if the settled structure differs.
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                reinit_sys=false)
+                reinit_sys=false,
+                analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     else
         @info "Loading source geometry" source_struc
@@ -763,7 +764,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, ignore_l0=false,
-                remake_vsm=true)
+                remake_vsm=true,
+                analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     end
 
@@ -843,7 +845,8 @@ function setup_settling_model(config::V3SettleConfig;
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
-            ignore_l0=false, remake_vsm=true)
+            ignore_l0=false, remake_vsm=true,
+            analytic_jacobian=config.kite_set.analytic_jacobian)
     end
 
     @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt

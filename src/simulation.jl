@@ -65,6 +65,16 @@ Base.@kwdef mutable struct V3KiteConfig
     vsm_interval::Int = 1
 
     """
+    Hand the solver the backend's analytical Jacobian. `nothing` takes the
+    backend's own default (`true` for `KernelBackend`), `false` makes the solver
+    build its own. Set it `false` on a model whose analytical Jacobian is wrong:
+    a `ContinuousAero` wing's `aero_panel` kernel differentiates to NaN, which
+    stalls the implicit solver at `t = 0` (see `docs/failure.md`). Costs the
+    solver a Jacobian it would otherwise be handed, and keys its own model cache.
+    """
+    analytic_jacobian::Union{Nothing, Bool} = nothing
+
+    """
     Damping of the *points* the simulation runs with, and the floor settling
     decays down to. Body-frame damping damps a node against its wing frame, which
     only `DYNAMIC` points have — on a beam wing, whose wing nodes are
@@ -290,7 +300,8 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         # `with_model_cache`), where `bin/delete_cache_files` never sweeps it.
         with_model_cache(default_cache_path(data_path)) do
             SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
-                                    remake_vsm=true)
+                                    remake_vsm=true,
+                                    analytic_jacobian=kite_set.analytic_jacobian)
         end
         sys.winches[1].brake = kite_set.brake
 

@@ -823,7 +823,8 @@ function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false, remake_vsm=true)
+            remake=false, ignore_l0=false, remake_vsm=true,
+            analytic_jacobian=kite_set.analytic_jacobian)
     end
     return sam, sys
 end
