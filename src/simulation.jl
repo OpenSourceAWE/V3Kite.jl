@@ -64,6 +64,9 @@ Base.@kwdef mutable struct V3KiteConfig
     "Steps between VSM aero solves; tuned together with `aero_mode`"
     vsm_interval::Int = 1
 
+    "Whether to use the analytical jacobian or not. If `nothing`, the default is used."
+    analytic_jacobian::Union{Nothing, Bool} = nothing
+
     """
     Damping of the *points* the simulation runs with, and the floor settling
     decays down to. Body-frame damping damps a node against its wing frame, which
@@ -285,8 +288,12 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         apply_kite_material!(sys, kite_set)
         set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
         set_steering!(sys, 0.0, kite_set.geom)
-        SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
-                                remake_vsm=true)
+        # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
+        with_model_cache(default_cache_path(data_path)) do
+            SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
+                                    remake_vsm=true,
+                                    analytic_jacobian=kite_set.analytic_jacobian)
+        end
         sys.winches[1].brake = kite_set.brake
 
         state_path = project_file(project, kite_set.init_state; data_path)

@@ -620,13 +620,14 @@ num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
 num_tag(d::AbstractVector) = join(num_tag.(d), "-")
 
 """
-    default_cache_path(data_path) -> String
+    default_cache_path(data_path = nothing) -> String
 
 Where generated artifacts go when the caller names no `cache_path`: always a
 scratch directory next to the depot, keyed by V3Kite's own UUID — regardless
 of `data_path` (a caller's project directory, possibly its own, outside
 V3Kite entirely) and regardless of whether V3Kite itself is Pkg-installed or
-a development checkout.
+a development checkout. The argument is accepted and ignored, so a caller that
+has a `data_path` to hand can pass it and one that has none can leave it out.
 
 A package directory under `DEPOT_PATH/packages` is not ours to write to: it is
 usually read-only, and `Pkg.gc` deletes the whole tree once no environment
@@ -635,7 +636,7 @@ survives reinstalling and is writable regardless of install mode, so
 `precompile.jl`'s warm-up artifacts and every runtime caller — dev'ed or
 installed — agree on where to look.
 """
-function default_cache_path(data_path)
+function default_cache_path(data_path = nothing)
     uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"  # V3Kite, see Project.toml
     return joinpath(DEPOT_PATH[1], "scratchspaces", uuid, "v3kite_cache")
 end
@@ -746,7 +747,8 @@ function settle_wing(config::V3SettleConfig, init_row;
             # structure hash that rejects it if the settled structure differs.
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                reinit_sys=false)
+                reinit_sys=false,
+                analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     else
         @info "Loading source geometry" source_struc
@@ -762,7 +764,8 @@ function settle_wing(config::V3SettleConfig, init_row;
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, ignore_l0=false,
-                remake_vsm=true)
+                remake_vsm=true,
+                analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     end
 
@@ -831,7 +834,8 @@ SAM creation, geometry adjustments, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
-        data_path, source_struc, source_aero, cache_path=data_path)
+        data_path, source_struc, source_aero, cache_path=nothing)
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     gc = config.kite_set.geom
     sys, set = build_settling_struct(config;
         data_path, source_struc, source_aero)
@@ -841,7 +845,8 @@ function setup_settling_model(config::V3SettleConfig;
     sys.tethers[1].init_stretched_len = gc.tether_length
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
-            ignore_l0=false, remake_vsm=true)
+            ignore_l0=false, remake_vsm=true,
+            analytic_jacobian=config.kite_set.analytic_jacobian)
     end
 
     @info "Settling PARTICLE_DYNAMICS wing" config.num_steps config.dt total_time=config.num_steps * config.dt
@@ -857,8 +862,10 @@ end
 function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
         source_struc, source_aero,
-        dest_struc, cache_path=data_path, log_path=cache_path,
+        dest_struc, cache_path=nothing, log_path=nothing,
         init_row)
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
+    isnothing(log_path) && (log_path = cache_path)
     sam, sys, gc = setup_settling_model(config;
         data_path, source_struc, source_aero, cache_path)
 

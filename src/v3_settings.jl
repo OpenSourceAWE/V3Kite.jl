@@ -275,6 +275,8 @@ convert_setting(::Type{Union{Nothing, Vector{Float64}}}, value) =
     isnothing(value) ? nothing : convert(Vector{Float64}, value)
 convert_setting(::Type{Union{Nothing, String}}, value) =
     isnothing(value) ? nothing : String(value)
+convert_setting(::Type{Union{Nothing, Bool}}, value) =
+    isnothing(value) ? nothing : Bool(value)
 convert_setting(T, value) = convert(T, value)
 
 """

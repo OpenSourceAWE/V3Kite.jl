@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Uwe Fechner
+# SPDX-License-Identifier: MIT
+#
+# Force V3Kite (and, if present, V3KiteMakieExt) to be fully recompiled on the
+# next `using V3Kite` by deleting their precompile cache directories under
+# ~/.julia/compiled/v<major>.<minor>/. Julia normally reuses a cached .ji/.so
+# pair keyed by a content hash, so this is only needed when the cache is stale
+# in a way Julia itself does not detect, e.g. after editing a file without
+# bumping mtimes correctly, or to get a clean timing baseline for compilation.
+#
+# The Julia version used is whatever `julia --version` on PATH reports; the
+# depot is the first entry of JULIA_DEPOT_PATH, or ~/.julia if unset.
+#
+# Usage: bin/force_precompilation
+#        bin/force_precompilation --dry-run     list what would go, delete nothing
+#        bin/force_precompilation --yes         skip the confirmation prompt
+set -euo pipefail
+
+SELF_DIR=$(cd "$(dirname "$0")" && pwd)
+SELF=$SELF_DIR/$(basename "$0")
+
+DRY_RUN=0
+ASSUME_YES=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1 ;;
+        --yes|-y)  ASSUME_YES=1 ;;
+        -h|--help) sed -n '4,18p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*)        echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+DEPOT=${JULIA_DEPOT_PATH:-}
+DEPOT=${DEPOT%%:*}
+DEPOT=${DEPOT:-$HOME/.julia}
+
+if ! command -v julia &> /dev/null; then
+    echo "Error: julia is not on PATH." >&2
+    exit 1
+fi
+JULIA_VERSION=$(julia --startup-file=no -e 'print("$(VERSION.major).$(VERSION.minor)")')
+
+COMPILED_DIR="$DEPOT/compiled/v${JULIA_VERSION}"
+
+VICTIMS=()
+N_VICTIMS=0
+for name in V3Kite V3KiteMakieExt; do
+    d="$COMPILED_DIR/$name"
+    if [[ -d $d ]]; then
+        VICTIMS+=("$d")
+        N_VICTIMS=$((N_VICTIMS + 1))
+    fi
+done
+
+if [[ $N_VICTIMS -eq 0 ]]; then
+    echo "No V3Kite precompile cache found under $COMPILED_DIR."
+    exit 0
+fi
+
+echo "V3Kite precompile cache directories:"
+for d in "${VICTIMS[@]}"; do
+    echo "  $(du -sh "$d" | cut -f1)  $d"
+done
+echo
+
+if [[ $DRY_RUN -eq 1 ]]; then
+    echo "Dry run, nothing deleted."
+    exit 0
+fi
+
+if [[ $ASSUME_YES -eq 0 ]]; then
+    read -rp "Delete these $N_VICTIMS directories? [y/N]: " reply
+    if [[ ! $reply =~ ^[Yy]$ ]]; then
+        echo "Nothing deleted."
+        exit 0
+    fi
+fi
+
+rm -rf -- "${VICTIMS[@]}"
+echo "Deleted $N_VICTIMS precompile cache directories."
+echo "V3Kite will be fully recompiled the next time it is loaded."

@@ -1,8 +1,12 @@
 # kite_settings_psm.yaml plus the lattice corrections fitted against the 2025 flights.
+#
+# `analytic_jacobian: false` is required under `continuous` aero; see the header
+# of kite_settings_psm.yaml and `docs/failure.md`.
 kite_settings:
   wing_type: particle_dynamics   # particle_dynamics | rigid_dynamics
   aero_mode: continuous          # direct | continuous | pressure
   backend: kernel                # monolith | kernel model assembly
+  analytic_jacobian: false       # null takes the backend default (kernel: true)
   vsm_interval: 1                # steps between VSM aero solves
 
   body_sim_damping: [0.0, 0.0, 20.0]   # per-axis wing-frame damping in flight

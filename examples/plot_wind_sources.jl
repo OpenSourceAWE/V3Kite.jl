@@ -88,5 +88,5 @@ pdf_fig = build_fig()
 pdf_path = "wind_sources_$(replace(start_utc, ":" => ""))" *
     "_$(replace(end_utc, ":" => "")).pdf"
 @info "Saving $pdf_path"
-save(pdf_path, pdf_fig)
+CairoMakie.save(pdf_path, pdf_fig)
 GLMakie.activate!()

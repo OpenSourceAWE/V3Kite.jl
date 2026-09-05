@@ -820,8 +820,12 @@ function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
         aero_mode=resolve_aero_mode(kite_set))
     sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
     apply_geom_adjustments!(sys, kite_set.geom)
-    SymbolicAWEModels.init!(sam;
-        remake=false, ignore_l0=false, remake_vsm=true)
+    # Cache the model binary, not `data_path`; see `with_model_cache`.
+    with_model_cache(default_cache_path()) do
+        SymbolicAWEModels.init!(sam;
+            remake=false, ignore_l0=false, remake_vsm=true,
+            analytic_jacobian=kite_set.analytic_jacobian)
+    end
     return sam, sys
 end
 
