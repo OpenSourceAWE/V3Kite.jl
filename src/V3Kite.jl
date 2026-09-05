@@ -22,7 +22,6 @@ using Rotations
 using Dates
 using DiscretePIDs
 using DiscretePIDs: set_K!, set_Td!
-using HDF5
 using Serialization
 using Parameters
 using StaticArrays

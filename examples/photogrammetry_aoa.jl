@@ -9,6 +9,7 @@ and the tether vector from photogrammetry data for each frame CSV.
 """
 
 using V3Kite, LinearAlgebra, GLMakie, CairoMakie
+using HDF5
 GLMakie.activate!()
 using LazyArtifacts
 
