@@ -25,6 +25,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using HDF5
 using VortexStepMethod
 using V3Kite: reinit_integrator!
 using LinearAlgebra

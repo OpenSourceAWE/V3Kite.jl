@@ -14,6 +14,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using HDF5
 using GLMakie
 using CairoMakie
 GLMakie.activate!()
