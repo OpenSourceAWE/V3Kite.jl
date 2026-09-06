@@ -32,7 +32,7 @@ using Printf
 # =============================================================================
 
 TETHER_LENGTH = 262.0
-ELEVATION = 70.0       # degrees
+ELEVATION = 60.0       # degrees
 AZIMUTH = 0.0          # degrees
 
 V_WIND = 7.6
