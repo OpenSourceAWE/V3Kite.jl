@@ -475,10 +475,10 @@ end
 """
     wing_station_chords(sys, wing=sys.wings[1]) -> Vector{NamedTuple}
 
-Every twist surface's `(y, le, te)` — span position [m] and body-frame leading/
+Every station's `(y, le, te)` — span position [m] and body-frame leading/
 trailing edge position — sorted from the `-y` tip outboard.
 
-The edges are the surface's extreme points in chordwise CAD x, which is the rule
+The edges are the station's extreme points in chordwise CAD x, which is the rule
 SymbolicAWEModels itself maps aero sections onto. Pairing wing nodes off by
 index instead only works on the lattice: a beam station carries eleven chordwise
 control points that are wing nodes too.
@@ -495,8 +495,8 @@ function wing_station_chords(sys, wing=sys.wings[1])
         SymbolicAWEModels.get_ref_position_from_points(sys.points, wing.origin)
     body_pos(point) = R_w_b * (point.pos_w - origin)
     stations = NamedTuple[]
-    for surface_idx in wing.twist_surface_idxs
-        idxs = sys.twist_surfaces[surface_idx].point_idxs
+    for station_idx in wing.station_idxs
+        idxs = sys.stations[station_idx].point_idxs
         length(idxs) < 2 && continue
         station = [sys.points[i] for i in idxs]
         le = body_pos(argmin(p -> p.pos_cad[1], station))

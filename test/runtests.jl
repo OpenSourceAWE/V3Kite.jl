@@ -237,6 +237,26 @@ using KitePodModels: KCU
         end
     end
 
+    @testset "Wing Stations" begin
+        # SymbolicAWEModels 0.17 renamed `twist_surfaces` to `stations`, in the
+        # structural geometry YAML as well as in the code, and ships no alias:
+        # a file still using the old key builds a wing with no sections.
+        config = V3Kite.V3SettleConfig()
+        data_path = V3Kite.project_data_path(config.project, nothing)
+        sys, _ = V3Kite.build_settling_struct(config; data_path,
+            source_struc = V3Kite.struc_geometry_path(config.project; data_path),
+            source_aero = V3Kite.aero_geometry_path(config.project; data_path,
+                aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
+        @test length(sys.stations) == 10
+        @test length(sys.wings[1].station_idxs) == 10
+        # The diagnostics read the wing through those indices, and return
+        # empty rather than erroring when the stations are missing.
+        @test length(wing_station_chords(sys)) == 10
+        span_y, twist = wing_twist_dist(sys)
+        @test length(span_y) == 10
+        @test length(twist) == 10
+    end
+
     include("test_ripple_metrics.jl")
 
     include("test_turn_rate_id.jl")

@@ -327,11 +327,11 @@ winches:
     - [1, [1], 39]
 
 ###########################
-## Twist surfaces #########
+## Stations ###############
 ###########################
 # LE/TE pairs define the wing's aerodynamic surface; membership marks the
 # structural nodes as wing points.
-twist_surfaces:
+stations:
   headers: [name, point_idxs, type, moment_frac, damping]
   data:
     - [1, [2, 3], STATIC, 0.75, 50.0]
@@ -349,19 +349,19 @@ twist_surfaces:
 ## Wings ##################
 ###########################
 # Wing aerodynamic bodies
-# headers: [id, type, twist_surfaces]
+# headers: [id, type, stations]
 # type: PARTICLE_DYNAMICS or RIGID_DYNAMICS
-# twist_surfaces: the wing's LE/TE surfaces; their points are the wing nodes
+# stations: the wing's chordwise LE/TE pairs; their points are the wing nodes
 
 wings:
   data:
     # RIGID_DYNAMICS wing: Rigid body with twist groups (auto-created from LE/TE pairs)
     # Points 2-21 form 10 LE/TE segment pairs (2,3), ..., (20,21)
     # For RIGID_DYNAMICS wings, use aero_z_offset to shift VSM panels in body frame z
-    # For PARTICLE_DYNAMICS wings, use twist_surfaces, origin_idx, z_ref_points, y_ref_points
+    # For PARTICLE_DYNAMICS wings, use stations, origin_idx, z_ref_points, y_ref_points
     - idx: 1
       type: PARTICLE_DYNAMICS
-      twist_surfaces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      stations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       origin_idx: 1
       z_ref_points: [1, [[12, 0.7], [11, 0.3]]] # KCU to LE for Z (normal)
       y_ref_points: [12, 10] # Center LE for Y (span)

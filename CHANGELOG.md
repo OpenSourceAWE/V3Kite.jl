@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- BREAKING: a wing's twist surfaces are stations, in the structural geometry
+  YAML as well as in the code: the top-level `twist_surfaces:` table and the
+  per-wing `twist_surfaces:` list are both `stations:`. This follows
+  SymbolicAWEModels 0.17, which renamed the entity and ships no alias. A
+  geometry file still saying `twist_surfaces:` parses to a wing with no
+  stations and then fails the model build with `Cannot refine mesh: wing has no
+  unrefined_sections`. The three tracked `data/struc_geometry*.yaml` files are
+  converted; a file of your own needs the same two keys renamed.
+- VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.17.0.
+  Coefficients move in the last few digits: VSM's `LOOP` solver now tests
+  convergence on the fixed-point residual rather than on the under-relaxed
+  step, so every `LOOP` solve is tighter by the relaxation factor, and panel
+  aerodynamic load is now shared between the two adjacent stations instead of
+  rounded to the nearest. Cached `model_*.bin` files are rebuilt once: the
+  name carries the SymbolicAWEModels version.
+
 ## V3Kite v1.3.0 02-09-2026
 
 ### Added

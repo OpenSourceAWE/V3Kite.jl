@@ -600,7 +600,7 @@ function write_model(path, tables, geom, bridle, topo; full)
         flap_rows = [["flap_$i", 1, "KINEMATIC", station_points(i),
             [String(le_body_name(i)), String(te_body_name(i))], [0.0, 1.0, 0.0]]
             for i in 1:n]
-        emit_table(io, "twist_surfaces",
+        emit_table(io, "stations",
             ["name", "wing", "type", "points", "flap_bodies", "flap_axis"], flap_rows)
         emit_table(io, "points", POINT_HEADERS, point_rows)
         emit_table(io, "segments", SEG_HEADERS, seg_rows)
@@ -616,7 +616,7 @@ function write_model(path, tables, geom, bridle, topo; full)
         println(io, "      origin_idx: ", fmt_ref(origin))
         println(io, "      z_ref_points: ", fmt_ref(z_ref))
         println(io, "      y_ref_points: ", fmt_ref(y_ref))
-        println(io, "      twist_surfaces: ", fmt_ref(["flap_$i" for i in 1:n]))
+        println(io, "      stations: ", fmt_ref(["flap_$i" for i in 1:n]))
         if full
             println(io, "\ntransforms:\n  data:\n    - idx: 1")
             println(io, "      elevation: ", fmt_num(topo.elevation_deg))
