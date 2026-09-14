@@ -208,6 +208,15 @@ using KitePodModels: KCU
         @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
         @test beam_settle.kite_set.body_sim_damping == beam.body_sim_damping
 
+        # A beam wing's nodes are BODY_STATIC points that the point damping
+        # cannot reach, so every beam project needs the beam_* ramps of its own
+        # settling schedule, not a schedule written for the lattice.
+        for project in ("system_beam.yaml", "system_beam_replay.yaml")
+            settle = load_settle(project; kite_set=load_kite(project))
+            @test any(!iszero, settle.beam_body_start_damping)
+            @test any(!iszero, settle.beam_angular_start_damping)
+        end
+
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.
         @test_throws ErrorException aero_geometry_path("system_psm.yaml";

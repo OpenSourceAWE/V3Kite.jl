@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Fixed
+- `data/vsm_settings.yaml` asks for `rtol: 1e-4` rather than `1e-6`, which is the
+  convergence criterion it had before the bump. VSM 5.1.0 tests the `LOOP` solver
+  on the fixed-point residual instead of on the under-relaxed step, so `rtol` is
+  read directly where it used to mean `rtol / relaxation_factor`; this file sets
+  `relaxation_factor: 0.01`, so the same number became a 100x tighter ask.
+- `flight_replay.jl` on the beam wing settles on a schedule of its own,
+  `data/settle_settings_beam_replay.yaml`, instead of the lattice's. v1.3.0 gave
+  `system_beam.yaml` its own schedule for this reason and left
+  `system_beam_replay.yaml` pointing at `settle_settings_replay.yaml`, which
+  names no `beam_*_start_damping` at all: they default to zero, which damps
+  nothing on a beam wing, whose nodes are `BODY_STATIC` points the point damping
+  cannot reach. The replay began by flying a ringing structure. The new schedule
+  carries the ramps of `settle_settings_beam.yaml` and holds `heading` rather
+  than `course`. `system_psm_replay.yaml` keeps the lattice schedule unchanged.
+
 ### Changed
 - BREAKING: a wing's twist surfaces are stations, in the structural geometry
   YAML as well as in the code: the top-level `twist_surfaces:` table and the
