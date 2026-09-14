@@ -3,6 +3,25 @@
 ## Unreleased
 
 ### Fixed
+- Power-zone settling falls back to a warm aero solve when the cold one misses
+  the solver's tolerances. It repositions the transform and calls
+  `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
+  `lin_vsm=true`, which restarts the circulation from the elliptic distribution
+  rather than from the one the step before converged to. At a power-zone state
+  that fixed point can be unreachable within the solver's iteration budget, and
+  settling a beam wing onto a recorded flight row died on the first step;
+  settling at the 70 deg elevation `v3kite.jl` flies survived it. Settling now
+  reinitializes with `lin_vsm=false` on that failure and lets the step that
+  follows refresh the aero warm-started. The cold solve is still tried first,
+  because it is what converges on a particle-lattice wing, where skipping it
+  outright cost 27 missed solves in 200 settling steps against none before.
+- Settling survives an aero solve that misses the solver's tolerances, reusing
+  the last converged circulation, where it now ended the run. VSM 5.1.0 added
+  `throw_on_fail` and SymbolicAWEModels passes it, so a missed solve raises a
+  `SolveFailure` where it used to return a solution the run carried on with;
+  `sim_step!` catches only `AssertionError`. Settling is a transient driven far
+  from equilibrium on purpose, so it passes `vsm_warn_on_fail=true`; the flight
+  the settled state feeds still errors.
 - `data/vsm_settings.yaml` asks for `rtol: 1e-4` rather than `1e-6`, which is the
   convergence criterion it had before the bump. VSM 5.1.0 tests the `LOOP` solver
   on the fixed-point residual instead of on the under-relaxed step, so `rtol` is

@@ -243,9 +243,11 @@ Reset `sam`'s integrator from the current `SystemStructure`, reusing the solver
 `init!` built it with. `SymbolicAWEModels.reinit!` takes that solver as a required
 argument, and a bare `FBDF()` differentiates forward, which makes the monolith
 backend compile its right-hand side a second time at `ForwardDiff.Dual`.
+`lin_vsm=false` skips the cold VSM solve it otherwise runs, for a caller that
+steps the model straight afterwards and so refreshes the aero warm-started.
 """
-reinit_integrator!(sam; prn=true) =
-    SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn)
+reinit_integrator!(sam; prn=true, lin_vsm=true) =
+    SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn, lin_vsm)
 
 """
     start_from_state!(sam, sys, path) -> Bool
@@ -936,15 +938,28 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
             SymbolicAWEModels.reposition!(
                 sys.transforms, sys)
-            reinit_integrator!(sam; prn=false)
+            try
+                reinit_integrator!(sam; prn=false)
+            catch failure
+                failure isa VortexStepMethod.SolveFailure || rethrow()
+                # The cold solve restarts the circulation from the elliptic
+                # distribution, which at a power-zone state can have no
+                # reachable fixed point. Reinitialize without it and let the
+                # `sim_step!` below refresh the aero warm-started instead.
+                reinit_integrator!(sam; prn=false, lin_vsm=false)
+            end
 
             for sub in 1:config.num_substeps
                 global_step =
                     (step - 1) * config.num_substeps + sub
                 t = global_step * config.dt
 
+                # Settling drives the structure far from equilibrium on
+                # purpose, so a transient solve that misses the solver's
+                # tolerances reuses the last converged circulation rather than
+                # ending the run; the flight it feeds still errors.
                 if !sim_step!(sam; dt=config.dt,
-                        vsm_interval=1)
+                        vsm_interval=1, vsm_warn_on_fail=true)
                     @error "Simulation failed" step sub t
                     failed = true
                     break
