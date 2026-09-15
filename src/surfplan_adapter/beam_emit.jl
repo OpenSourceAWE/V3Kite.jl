@@ -70,9 +70,7 @@ function beam_tables(geom, topo)
 
     le_pos = [pos[id] for id in le_ids]
     te_pos = [pos[id] for id in te_ids]
-    # Against the section order: the sections descend in span but a node body's
-    # y axis is its `flap_axis`, which `frame_quaternion_xy` wants along +y.
-    le_tangent(i) = normalize(le_pos[max(i - 1, 1)] - le_pos[min(i + 1, n)])
+    le_tangent(i) = normalize(le_pos[min(i + 1, n)] - le_pos[max(i - 1, 1)])
     chord(i) = te_pos[i] - le_pos[i]
 
     control_fractions = checked_chord_fractions(topo.chord_control_fractions,
@@ -122,11 +120,11 @@ function beam_tables(geom, topo)
     function le_edge_tangent(i, frac)
         step = 0.01 * (le_pos[i + 1][2] - le_pos[i][2])
         (isempty(geom.leading_edge_polyline) || abs(step) < 1e-9) &&
-            return normalize(le_pos[i] .- le_pos[i + 1])
+            return normalize(le_pos[i + 1] .- le_pos[i])
         span = le_span_at(i, frac)
         ahead = sample_position(geom.leading_edge_polyline, span + step)
         behind = sample_position(geom.leading_edge_polyline, span - step)
-        return normalize(behind .- ahead)
+        return normalize(ahead .- behind)
     end
 
     le_names = Symbol[]; le_poss = Vector{Float64}[]; le_station_of = Int[]

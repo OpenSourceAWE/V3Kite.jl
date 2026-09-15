@@ -48,16 +48,6 @@
   held, so changing `course_correction_mode` no longer silently reuses the
   state settled under the other. `:course`, the default, is left out of the
   name, so states written before this keep being found.
-- BREAKING: every flap deflection on the beam wing had the wrong sign. A node
-  body's frame is built by `frame_quaternion_xy(chord, le_tangent)`, whose y
-  axis is what a station's `flap_axis: [0, 1, 0]` names, but `le_tangent` was
-  the difference along the emitted section order, which descends in span, so
-  every body's y axis pointed at the -y tip. Rotating a station's flap body by
-  +5 deg about world +y read as delta = -4.975 deg; it now reads +4.975 deg.
-  `data/struc_geometry_beam.yaml` and `data/struc_geometry_beam_wing.yaml` are
-  regenerated to match. A settled state saved before this carries the old body
-  orientations and re-imposes them, so re-settle the beam projects once
-  (`remake_settled_state: true`).
 
 ### Changed
 - BREAKING: a wing's twist surfaces are stations, in the structural geometry
