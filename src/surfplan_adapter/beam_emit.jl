@@ -27,6 +27,25 @@ function harmonic_radius(radius_at, n_samples = 16)
     return (inverse_cube / n_samples)^(-1 / 3)
 end
 
+"""The three chord receivers `[fore, hinge, aft]` whose two segments span a
+station's flap deflection: the chord's ends, and the node nearest `crease_frac`.
+The hinge belongs where the aero tables were deflected, and the ends are where the
+whole chord's bending shows."""
+function flap_delta_nodes(control_fractions, crease_frac)
+    length(control_fractions) >= 3 || error(
+        "chord_control_fractions needs at least three entries to read a flap " *
+        "deflection off; got $control_fractions")
+    hinge = argmin(abs.(control_fractions .- crease_frac))
+    1 < hinge < length(control_fractions) || error(
+        "the chord node nearest crease_frac = $crease_frac is an end of the " *
+        "chord ($(control_fractions[hinge])), which leaves one segment of the " *
+        "flap angle empty; add a chord_control_fractions entry at $crease_frac")
+    isapprox(control_fractions[hinge], crease_frac; atol = 0.01) || @warn(
+        "The flap hinge sits off the crease the aero tables were deflected about",
+        crease_frac, hinge_frac = control_fractions[hinge])
+    return [1, hinge, length(control_fractions)]
+end
+
 le_body_name(i) = Symbol("wing_le_body_$i")
 le_sub_body_name(i, j) = Symbol("wing_le_sub_body_$(i)_$j")
 te_body_name(i) = Symbol("wing_te_body_$i")
@@ -282,8 +301,11 @@ function beam_tables(geom, topo)
         end
     end
 
+    delta_nodes = flap_delta_nodes(control_fractions, topo.crease_frac)
+    flap_points = [["wing_ctrl_$(i)_$j" for j in delta_nodes] for i in 1:n]
+
     return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, joint_rows, joint_radius,
-        wing_pt, wing_body, body_frame, mid, control_specs)
+        wing_pt, wing_body, body_frame, mid, control_specs, flap_points)
 end
 
 """
@@ -601,10 +623,9 @@ function write_model(path, tables, geom, bridle, topo; full)
         station_points(i) = [wing_pt[le_ids[i]]; wing_pt[te_ids[i]];
             [spec.name for spec in tables.control_specs if spec.station == i]]
         flap_rows = [["flap_$i", 1, "KINEMATIC", station_points(i),
-            [String(le_body_name(i)), String(te_body_name(i))], [0.0, 1.0, 0.0]]
-            for i in 1:n]
+            tables.flap_points[i], [0.0, 1.0, 0.0]] for i in 1:n]
         emit_table(io, "stations",
-            ["name", "wing", "type", "points", "flap_bodies", "flap_axis"], flap_rows)
+            ["name", "wing", "type", "points", "flap_points", "flap_axis"], flap_rows)
         emit_table(io, "points", POINT_HEADERS, point_rows)
         emit_table(io, "segments", SEG_HEADERS, seg_rows)
         isempty(pulley_rows) ||

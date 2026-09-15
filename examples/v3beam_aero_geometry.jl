@@ -52,7 +52,7 @@ N_SECTIONS = 37            # matches the section count of cfd_aero_geometry.yaml
 ALPHA_RANGE = -10:2:30     # deg; every step is another Cp/cf table per section
 DELTA_RANGE = nothing      # the V3 has no trailing-edge flap
 WINGTIP_DISTANCE = 0.05
-CREASE_FRAC = 0.75
+CREASE_FRAC = V3BeamTopology().crease_frac  # the hinge the beam reads its flap δ about
 TABLE_FORMAT = :arrow      # :csv is readable, :arrow loads ~10x faster
 FORCE = false              # true reruns the NeuralFoil pass
 

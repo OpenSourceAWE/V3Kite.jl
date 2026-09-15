@@ -227,10 +227,11 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
             @test settle.course_correction_mode === :course
         end
 
-        # A station reads its `flap_axis` in the frame of its main flap body,
-        # and every spanwise direction here runs -y to +y, so a node body whose
-        # y axis points at the -y tip inverts the flap deflection of every
-        # station on the wing.
+        # Every spanwise direction in the beam geometry runs -y to +y, which is
+        # VortexStepMethod's `spanwise_direction`. A node body's y axis is the
+        # in-plane span `frame_quaternion_xy` promises, and the corotational
+        # element frame of every leading-edge joint takes its transverse
+        # reference from it.
         for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
             table = V3Kite.YAML.load_file(
                 joinpath(v3_data_path(), name))["bodies"]
@@ -239,6 +240,23 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
                 quaternion_to_rotation_matrix(Float64.(row[quat_col]))[2, 2] > 0
             end
             @test spanwise == length(table["data"])
+        end
+
+        # A station reads its deflection off three of its own chord receivers,
+        # hinged at the one nearest the crease the aero tables were deflected
+        # about. The ends are the chord's, so the whole chord's bending shows.
+        topo = V3BeamTopology()
+        nodes = V3Kite.SurfplanAdapter.flap_delta_nodes(
+            topo.chord_control_fractions, topo.crease_frac)
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            table = V3Kite.YAML.load_file(
+                joinpath(v3_data_path(), name))["stations"]
+            flap_col = findfirst(==("flap_points"), table["headers"])
+            point_col = findfirst(==("points"), table["headers"])
+            for (i, row) in enumerate(table["data"])
+                @test row[flap_col] == ["wing_ctrl_$(i)_$j" for j in nodes]
+                @test row[flap_col] ⊆ row[point_col]
+            end
         end
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so

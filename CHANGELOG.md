@@ -69,6 +69,24 @@
   is regenerated here.
 
 ### Changed
+- BREAKING: a beam wing's stations read their flap deflection off three of their
+  own chord receivers, `flap_points: [fore, hinge, aft]`, instead of off the two
+  node bodies (`flap_bodies`). δ is then the angle the aft chord segment makes
+  with the fore one about the wing's spanwise axis, referenced to the CAD pose,
+  so a chord that bends over its beam elements reads a deflection where the body
+  pair read the two nodes' own rotation — on the relaxed V3 beam, 18-22 deg
+  mid-span against the body pair's 37-47 deg. The hinge is the receiver nearest
+  `V3BeamTopology.crease_frac` (0.75, the fraction the aero tables were deflected
+  about; `examples/v3beam_aero_geometry.jl` now slices the mesh at that same
+  number rather than its own copy of it). `chord_control_fractions` has no entry
+  at 0.75, so the hinge sits at 0.7 and the emitter warns; putting a receiver on
+  the crease needs the geometry regenerated from the Surfplan export. Needs
+  SymbolicAWEModels 0.17, which added point flaps. Measured no-op on the flight
+  path: the V3's section tables are functions of angle of attack alone
+  (`DELTA_RANGE = nothing`) and the pressure loft contour is frozen at build, so
+  δ drives the viewer and the tables a future δ sweep would index, and the beam
+  replay's trajectory is unchanged to the centimetre by this or by the sign fix
+  above.
 - BREAKING: a wing's twist surfaces are stations, in the structural geometry
   YAML as well as in the code: the top-level `twist_surfaces:` table and the
   per-wing `twist_surfaces:` list are both `stations:`. This follows
