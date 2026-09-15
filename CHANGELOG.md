@@ -48,6 +48,25 @@
   held, so changing `course_correction_mode` no longer silently reuses the
   state settled under the other. `:course`, the default, is left out of the
   name, so states written before this keep being found.
+- BREAKING: every flap deflection on the beam wing had the wrong sign. A node
+  body's frame is `frame_quaternion_xy(chord, le_tangent)`, whose y axis is what
+  the station's `flap_axis: [0, 1, 0]` names, and spanwise runs `-y` to `+y`:
+  VortexStepMethod takes no `spanwise_direction` but `[0, 1, 0]` and flips
+  panels so `y_airf` follows it whatever order the sections arrive in. The
+  emitter took its spanwise differences along the station order, which descends
+  in span because that is the order VSM sorts sections into, so every body's y
+  axis pointed at the `-y` tip and every station's hinge axis was reversed.
+  Rotating a station's flap body by +5 deg about world +y read
+  delta = -4.975 deg; it now reads +4.975 deg. The station order is unchanged
+  and still descends: SymbolicAWEModels rebuilds a beam wing's sections in
+  station order with `sort_sections=false` and indexes section i by station i.
+  `data/struc_geometry_beam.yaml`, `data/struc_geometry_beam_wing.yaml` and the
+  relaxed state they are flown from are regenerated. A state log restores body
+  orientations, so one saved before this carries the old frames into a model
+  built on the new ones — a ~180 deg rest violation on every beam element, which
+  diverges in the first seconds. Re-settle the beam projects once
+  (`remake_settled_state: true`); `data/relaxed_struc_geometry_beam_dp20.arrow`
+  is regenerated here.
 
 ### Changed
 - BREAKING: a wing's twist surfaces are stations, in the structural geometry

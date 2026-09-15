@@ -51,12 +51,14 @@ lump node masses/inertia, and assemble the node `Body` and `TimoshenkoJoint` row
 Returns everything the emitter needs; the bridle is separate
 (see [`BridleGeometry`](@ref)).
 
-Descending span is required, not cosmetic: `VortexStepMethod.refine!` sorts sections
-that way, but SymbolicAWEModels rebuilds a beam wing's sections with
-`sort_sections=false`, so whatever order the twist surfaces are emitted in is the
-order the panels are built in. Ascending span gives reversed panels and the VSM
-solve does not converge. `y_ref` is ordered against the stations to keep body y
-pointing along +y.
+Two spanwise conventions meet here, both VortexStepMethod's. The station ORDER
+descends in span, the order `refine!` sorts sections into; SymbolicAWEModels
+rebuilds a beam wing's sections from the stations with `sort_sections=false` and
+then indexes section i by station i, so emitting them ascending would have VSM
+reverse the sections under that mapping. Every spanwise DIRECTION runs the other
+way, `-y` to `+y`, VSM's own `spanwise_direction`: `le_tangent`, `le_edge_tangent`
+and `y_ref` are all taken against the station order so that a node body's y axis —
+which is what its station's `flap_axis` names — points along `+y`.
 """
 function beam_tables(geom, topo)
     pos = geom.pos
@@ -70,7 +72,7 @@ function beam_tables(geom, topo)
 
     le_pos = [pos[id] for id in le_ids]
     te_pos = [pos[id] for id in te_ids]
-    le_tangent(i) = normalize(le_pos[min(i + 1, n)] - le_pos[max(i - 1, 1)])
+    le_tangent(i) = normalize(le_pos[max(i - 1, 1)] - le_pos[min(i + 1, n)])
     chord(i) = te_pos[i] - le_pos[i]
 
     control_fractions = checked_chord_fractions(topo.chord_control_fractions,
@@ -118,9 +120,10 @@ function beam_tables(geom, topo)
         le_pos[i] .+ frac .* (le_pos[i + 1] .- le_pos[i]) :
         sample_position(geom.leading_edge_polyline, le_span_at(i, frac))
     function le_edge_tangent(i, frac)
-        step = 0.01 * (le_pos[i + 1][2] - le_pos[i][2])
+        # `step` is toward +y, so the difference it takes is too.
+        step = 0.01 * (le_pos[i][2] - le_pos[i + 1][2])
         (isempty(geom.leading_edge_polyline) || abs(step) < 1e-9) &&
-            return normalize(le_pos[i + 1] .- le_pos[i])
+            return normalize(le_pos[i] .- le_pos[i + 1])
         span = le_span_at(i, frac)
         ahead = sample_position(geom.leading_edge_polyline, span + step)
         behind = sample_position(geom.leading_edge_polyline, span - step)
