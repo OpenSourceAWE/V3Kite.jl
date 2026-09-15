@@ -439,6 +439,15 @@ julia --startup-file=no --project=examples -e "using Pkg; Pkg.resolve(), Pkg.ins
 julia --startup-file=no --project=examples -e "using V3Kite, GLMakie, MakieControlPlots, VortexStepMethod, KiteUtils, CSV, DataFrames"
 
 echo
+# The beam projects fly a sliced aero geometry that is not in git, so a checkout
+# has none and an older one can hold a slice that predates the settings in the
+# script below. Regenerating it here, with the caches already gone, is what
+# makes a run after an install reproducible.
+echo "Slicing the surface-resolved aero geometry..."
+rm -rf data/nf_aero_geometry.yaml data/polars_neuralfoil
+julia --startup-file=no --project=examples examples/v3beam_aero_geometry.jl
+
+echo
 printf "\033[1;32mInstallation complete!\033[0m\n"
 echo
 echo "You can now launch Julia by typing"

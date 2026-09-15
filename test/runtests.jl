@@ -209,29 +209,23 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
         @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
         @test beam_settle.kite_set.body_sim_damping == beam.body_sim_damping
 
-        # A beam wing's nodes are BODY_STATIC points that the point damping
-        # cannot reach, so every beam project needs the beam_* ramps of its own
-        # settling schedule, not a schedule written for the lattice.
+        # A beam wing's nodes are BODY_STATIC points, which the point damping
+        # in every other settling schedule cannot reach.
         for project in ("system_beam.yaml", "system_beam_replay.yaml")
             settle = load_settle(project; kite_set=load_kite(project))
             @test any(!iszero, settle.beam_body_start_damping)
             @test any(!iszero, settle.beam_angular_start_damping)
         end
 
-        # A replay settles onto a recorded row that has a velocity, so the
-        # course is defined and is what the flight it feeds has to start on.
-        # Holding the heading it began with leaves the wing flying somewhere
-        # the data never went.
+        # A replay settles onto a recorded row that carries a velocity, so its
+        # course is defined and is what the flight it feeds starts on.
         for project in ("system_psm_replay.yaml", "system_beam_replay.yaml")
             settle = load_settle(project; kite_set=load_kite(project))
             @test settle.course_correction_mode === :course
         end
 
-        # Every spanwise direction in the beam geometry runs -y to +y, which is
-        # VortexStepMethod's `spanwise_direction`. A node body's y axis is the
-        # in-plane span `frame_quaternion_xy` promises, and the corotational
-        # element frame of every leading-edge joint takes its transverse
-        # reference from it.
+        # A node body's y axis is the in-plane span, and spanwise runs -y to
+        # +y, which is VortexStepMethod's `spanwise_direction`.
         for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
             table = V3Kite.YAML.load_file(
                 joinpath(v3_data_path(), name))["bodies"]
@@ -242,9 +236,8 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
             @test spanwise == length(table["data"])
         end
 
-        # A station reads its deflection off three of its own chord receivers,
-        # hinged at the one nearest the crease the aero tables were deflected
-        # about. The ends are the chord's, so the whole chord's bending shows.
+        # The hinge is the chord receiver nearest the crease the aero tables
+        # were deflected about; the other two are the chord's own ends.
         topo = V3BeamTopology()
         nodes = V3Kite.SurfplanAdapter.flap_delta_nodes(
             topo.chord_control_fractions, topo.crease_frac)
@@ -289,9 +282,6 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
     end
 
     @testset "Wing Stations" begin
-        # SymbolicAWEModels 0.17 renamed `twist_surfaces` to `stations`, in the
-        # structural geometry YAML as well as in the code, and ships no alias:
-        # a file still using the old key builds a wing with no sections.
         config = V3Kite.V3SettleConfig()
         data_path = V3Kite.project_data_path(config.project, nothing)
         sys, _ = V3Kite.build_settling_struct(config; data_path,
@@ -300,8 +290,6 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
         @test length(sys.stations) == 10
         @test length(sys.wings[1].station_idxs) == 10
-        # The diagnostics read the wing through those indices, and return
-        # empty rather than erroring when the stations are missing.
         @test length(wing_station_chords(sys)) == 10
         span_y, twist = wing_twist_dist(sys)
         @test length(span_y) == 10

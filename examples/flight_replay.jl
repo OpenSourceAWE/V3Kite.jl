@@ -428,22 +428,6 @@ function run_physics_replay(h5_path;
         prev_sim_pos = copy(cur_sim_pos)
         sim_time += dt
 
-        if step % n_substeps == 0
-            sys = sam.sys_struct
-            for i in (4, 5)
-                f = sys.points[i].aero_force_b[2]
-                if f < 0.0
-                    @warn "Aero y-force negative" point=i force=round(f, digits=2)
-                end
-            end
-            for i in (18, 19)
-                f = sys.points[i].aero_force_b[2]
-                if f > 0.0
-                    @warn "Aero y-force positive" point=i force=round(f, digits=2)
-                end
-            end
-        end
-
         if replay.distance_based_steering
             pct = sim_cum_dist / total_data_dist
             report = pct >= 1.0 ||
