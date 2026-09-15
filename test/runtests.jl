@@ -217,6 +217,15 @@ using KitePodModels: KCU
             @test any(!iszero, settle.beam_angular_start_damping)
         end
 
+        # A replay settles onto a recorded row that has a velocity, so the
+        # course is defined and is what the flight it feeds has to start on.
+        # Holding the heading it began with leaves the wing flying somewhere
+        # the data never went.
+        for project in ("system_psm_replay.yaml", "system_beam_replay.yaml")
+            settle = load_settle(project; kite_set=load_kite(project))
+            @test settle.course_correction_mode === :course
+        end
+
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.
         @test_throws ErrorException aero_geometry_path("system_psm.yaml";

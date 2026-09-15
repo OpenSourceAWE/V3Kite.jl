@@ -8,13 +8,15 @@
   `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
   `lin_vsm=true`, which restarts the circulation from the elliptic distribution
   rather than from the one the step before converged to. At a power-zone state
-  that fixed point can be unreachable within the solver's iteration budget, and
-  settling a beam wing onto a recorded flight row died on the first step;
-  settling at the 70 deg elevation `v3kite.jl` flies survived it. Settling now
+  that fixed point can be unreachable within the solver's iteration budget: on
+  the bumped stack both replays died in settling, the beam wing on the first
+  step and the particle lattice around step 20, while settling at the 70 deg
+  elevation `v3kite.jl` flies survived it. Settling now
   reinitializes with `lin_vsm=false` on that failure and lets the step that
   follows refresh the aero warm-started. The cold solve is still tried first,
-  because it is what converges on a particle-lattice wing, where skipping it
-  outright cost 27 missed solves in 200 settling steps against none before.
+  because SymbolicAWEModels cold-starts it deliberately: a warm start inherits
+  the circulation of whatever ran on that model before, so the settled state
+  would depend on run order.
 - Settling survives an aero solve that misses the solver's tolerances, reusing
   the last converged circulation, where it now ended the run. VSM 5.1.0 added
   `throw_on_fail` and SymbolicAWEModels passes it, so a missed solve raises a
@@ -34,8 +36,18 @@
   names no `beam_*_start_damping` at all: they default to zero, which damps
   nothing on a beam wing, whose nodes are `BODY_STATIC` points the point damping
   cannot reach. The replay began by flying a ringing structure. The new schedule
-  carries the ramps of `settle_settings_beam.yaml` and holds `heading` rather
-  than `course`. `system_psm_replay.yaml` keeps the lattice schedule unchanged.
+  carries the ramps of `settle_settings_beam.yaml`. `system_psm_replay.yaml`
+  keeps the lattice schedule unchanged.
+- The beam replay settles onto the recorded course rather than onto the heading
+  it started with. A replay settles onto a data row that carries a velocity, so
+  `course_correction_mode: course` is defined and is what the flight it feeds
+  has to begin on; the beam schedule inherited `heading` from the from-rest
+  schedule it was copied from, and the wing left the settled state flying
+  roughly 27 deg off the recorded course.
+- A settled state is cached under a name that says which of the two the run
+  held, so changing `course_correction_mode` no longer silently reuses the
+  state settled under the other. `:course`, the default, is left out of the
+  name, so states written before this keep being found.
 
 ### Changed
 - BREAKING: a wing's twist surfaces are stations, in the structural geometry

@@ -15,7 +15,7 @@ settle_settings:
   decay_steps: 200               # steps over which they decay to the sim damping
 
   course_correction_gain: 0.05   # steering gain of the course/heading hold
-  course_correction_mode: heading  # heading (from rest) | course (from a log)
+  course_correction_mode: course   # heading (from rest) | course (from a log)
 
   kcu_mass: null                 # [kg] overrides the kcu_mass of the settings
   start_depower: null            # [%] depower the settling ramp starts at

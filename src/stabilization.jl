@@ -131,10 +131,12 @@ value settling ran at, so every flown ratio below the floor shares
 one settled state.
 
 The aerodynamics enter the name because a structure settled under one
-mode is not equilibrium under another, and the source geometry enters it
+mode is not equilibrium under another, the source geometry enters it
 because a state logged for one has the wrong number of points for
-another. Both are left out at their default so that files written before
-the key knew about them keep being found.
+another, and the course hold enters it because a state settled onto a
+held heading points somewhere else than one settled onto a held course.
+All three are left out at their default so that files written before the
+key knew about them keep being found.
 """
 function settled_state_path(config::V3SettleConfig, init_row;
                             data_path=nothing, cache_path=nothing)
@@ -199,6 +201,8 @@ function settled_state_path(config::V3SettleConfig, init_row;
     struc_tag = splitext(basename(
         project_entry(config.project, "structural_geometry"; data_path)))[1]
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
+    config.course_correction_mode === :course ||
+        (suffix *= "_hold$(config.course_correction_mode)")
     return joinpath(cache_path, "settled_$(suffix).arrow")
 end
 
@@ -942,10 +946,8 @@ function run_power_zone_settling!(config::V3SettleConfig;
                 reinit_integrator!(sam; prn=false)
             catch failure
                 failure isa VortexStepMethod.SolveFailure || rethrow()
-                # The cold solve restarts the circulation from the elliptic
-                # distribution, which at a power-zone state can have no
-                # reachable fixed point. Reinitialize without it and let the
-                # `sim_step!` below refresh the aero warm-started instead.
+                # A power-zone state has no fixed point the cold solve can
+                # reach; the `sim_step!` below refreshes the aero warm-started.
                 reinit_integrator!(sam; prn=false, lin_vsm=false)
             end
 
@@ -954,10 +956,8 @@ function run_power_zone_settling!(config::V3SettleConfig;
                     (step - 1) * config.num_substeps + sub
                 t = global_step * config.dt
 
-                # Settling drives the structure far from equilibrium on
-                # purpose, so a transient solve that misses the solver's
-                # tolerances reuses the last converged circulation rather than
-                # ending the run; the flight it feeds still errors.
+                # Settling is a transient on purpose, so a missed solve
+                # reuses the last converged circulation instead of ending it.
                 if !sim_step!(sam; dt=config.dt,
                         vsm_interval=1, vsm_warn_on_fail=true)
                     @error "Simulation failed" step sub t
