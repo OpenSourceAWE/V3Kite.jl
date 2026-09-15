@@ -5,6 +5,7 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
+using SymbolicAWEModels: quaternion_to_rotation_matrix
 
 @testset "V3Kite.jl" begin
 
@@ -224,6 +225,19 @@ using KitePodModels: KCU
         for project in ("system_psm_replay.yaml", "system_beam_replay.yaml")
             settle = load_settle(project; kite_set=load_kite(project))
             @test settle.course_correction_mode === :course
+        end
+
+        # A station reads its `flap_axis` in the frame of its main flap body,
+        # so a node body whose y axis points at the -y tip inverts the flap
+        # deflection of every station on the wing.
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            table = V3Kite.YAML.load_file(
+                joinpath(v3_data_path(), name))["bodies"]
+            quat_col = findfirst(==("Q_b_to_w"), table["headers"])
+            spanwise = count(table["data"]) do row
+                quaternion_to_rotation_matrix(Float64.(row[quat_col]))[2, 2] > 0
+            end
+            @test spanwise == length(table["data"])
         end
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so
