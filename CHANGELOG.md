@@ -43,7 +43,7 @@
   held, so changing `course_correction_mode` no longer silently reuses the
   state settled under the other. `:course`, the default, is left out of the
   name, so states written before this keep being found.
-- BREAKING: every flap deflection on the beam wing had the wrong sign. A node
+- Every flap deflection on the beam wing had the wrong sign. A node
   body's frame is `frame_quaternion_xy(chord, le_tangent)`, whose y axis is what
   the station's `flap_axis: [0, 1, 0]` names, and spanwise runs `-y` to `+y`:
   VortexStepMethod takes no `spanwise_direction` but `[0, 1, 0]` and flips
@@ -80,7 +80,7 @@
   model and settled-state files, so that what an install leaves on disk is what
   the tracked scripts produce today rather than whatever a previous checkout
   wrote.
-- BREAKING: a beam wing's stations read their flap deflection off three of their
+- A beam wing's stations read their flap deflection off three of their
   own chord receivers, `flap_points: [fore, hinge, aft]`, instead of off the two
   node bodies (`flap_bodies`). δ is then the angle the aft chord segment makes
   with the fore one about the wing's spanwise axis, referenced to the CAD pose,
@@ -98,7 +98,7 @@
   δ drives the viewer and the tables a future δ sweep would index, and the beam
   replay's trajectory is unchanged to the centimetre by this or by the sign fix
   above.
-- BREAKING: a wing's twist surfaces are stations, in the structural geometry
+- A wing's twist surfaces are stations, in the structural geometry
   YAML as well as in the code: the top-level `twist_surfaces:` table and the
   per-wing `twist_surfaces:` list are both `stations:`. This follows
   SymbolicAWEModels 0.17, which renamed the entity and ships no alias. A
