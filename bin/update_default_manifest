@@ -9,29 +9,29 @@ while [[ $# -gt 0 ]]; do
         --version)
             shift
             if [[ $# -eq 0 ]]; then
-                echo "Error: --version requires an argument (e.g. +1.11 or +1.12)"
+                echo "Error: --version requires an argument (e.g. +1.12 or +1.13)"
                 exit 1
             fi
             version_override="$1"
             shift
             ;;
         --help|-h)
-            echo "Usage: $0 [--version +1.11|+1.12]"
+            echo "Usage: $0 [--version +1.12|+1.13]"
             echo ""
-            echo "Update one default manifest file for the RamAirKite.jl project."
+            echo "Update one default manifest file for the V3Kite.jl project."
             echo "Runs Pkg.update() on the main, examples, and test projects,"
             echo "then copies the resulting Manifest to the corresponding"
             echo "Manifest-v<version>.toml.default file and commits it."
             echo ""
             echo "Options:"
-            echo "  --version +1.11|+1.12  Update manifest for a specific Julia version"
+            echo "  --version +1.12|+1.13  Update manifest for a specific Julia version"
             echo "                         (default: use the currently active Julia version)"
             echo "  --help, -h             Show this help message"
             exit 0
             ;;
         *)
             echo "Error: Unknown argument: $1"
-            echo "Usage: $0 [--version +1.11|+1.12]"
+            echo "Usage: $0 [--version +1.12|+1.13]"
             echo "Try '$0 --help' for more information."
             exit 1
             ;;
@@ -71,26 +71,10 @@ if [ ! -f "Manifest-v${julia_major}.toml" ] && [ -f "Manifest.toml" ]; then
     echo "Renamed Manifest.toml to Manifest-v${julia_major}.toml"
 fi
 
-if [[ $julia_major == "1.11" ]]; then
-    # For Julia 1.11: use the examples manifest as the main default manifest
-    # Normalize examples manifest name first
-    if [ ! -f "examples/Manifest-v1.11.toml" ] && [ -f "examples/Manifest.toml" ]; then
-        mv "examples/Manifest.toml" "examples/Manifest-v1.11.toml"
-        echo "Renamed examples/Manifest.toml to examples/Manifest-v1.11.toml"
-    fi
-    # Copy examples manifest to main manifest
-    cp "examples/Manifest-v1.11.toml" "Manifest-v1.11.toml"
-    echo "Copied examples/Manifest-v1.11.toml to Manifest-v1.11.toml"
-    # Make it the default
-    cp "Manifest-v1.11.toml" "Manifest-v1.11.toml.default"
-    echo "Copied Manifest-v1.11.toml to Manifest-v1.11.toml.default"
-elif [[ $julia_major == "1.12" ]]; then
-    # For Julia 1.12: copy main manifest to .default and delete all examples manifests
-    cp "Manifest-v1.12.toml" "Manifest-v1.12.toml.default"
-    echo "Copied Manifest-v1.12.toml to Manifest-v1.12.toml.default"
-    rm -f examples/Manifest.toml examples/Manifest-v1.11.toml examples/Manifest-v1.12.toml examples/Manifest-v1.11.toml.default examples/Manifest-v1.12.toml.default
-    echo "Deleted all manifest files in examples/"
-fi
+cp "Manifest-v${julia_major}.toml" "Manifest-v${julia_major}.toml.default"
+echo "Copied Manifest-v${julia_major}.toml to Manifest-v${julia_major}.toml.default"
+rm -f examples/Manifest.toml "examples/Manifest-v${julia_major}.toml" "examples/Manifest-v${julia_major}.toml.default"
+echo "Deleted all manifest files in examples/"
 
 # Commit only the default manifest files
 git add "Manifest-v${julia_major}.toml.default"

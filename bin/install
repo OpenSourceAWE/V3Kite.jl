@@ -62,7 +62,7 @@ if ! command -v juliaup &> /dev/null; then
     echo "Error: juliaup is not installed. Please install it first."
     case "$(uname -s)" in
         Linux|Darwin)
-            echo "  curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11"
+            echo "  curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.12"
             ;;
         MINGW*|MSYS*|CYGWIN*)
             echo "  winget install --name Julia --id 9NJNWW8PVKMN -e -s msstore"
@@ -96,24 +96,24 @@ if [[ $_yes_to_all == true ]]; then
     echo "Using currently active Julia ${_desired_julia}..."
 else
     # Interactive mode: ask which Julia version to use
-    # Default to 1.12 if it is already installed and is the current default, otherwise 1.11
-    if juliaup status 2>/dev/null | grep '^\s*\*' | grep -q '1\.12'; then
+    # Default to 1.13 if it is already installed and is the current default, otherwise 1.12
+    if juliaup status 2>/dev/null | grep '^\s*\*' | grep -q '1\.13'; then
         _default_choice=2
-        _default_julia="1.12"
+        _default_julia="1.13"
     else
         _default_choice=1
-        _default_julia="1.11"
+        _default_julia="1.12"
     fi
     echo "Which Julia version do you want to use?"
-    echo "  1) Julia 1.11"
-    echo "  2) Julia 1.12"
+    echo "  1) Julia 1.12"
+    echo "  2) Julia 1.13"
     read -rp "Enter 1 or 2 [default: ${_default_choice}]: " _julia_choice
     case "${_julia_choice}" in
         1)
-            _desired_julia="1.11"
+            _desired_julia="1.12"
             ;;
         2)
-            _desired_julia="1.12"
+            _desired_julia="1.13"
             ;;
         "")
             _desired_julia="${_default_julia}"
@@ -171,41 +171,23 @@ else
     branch=""
 fi
 
-# Only accept Julia 1.11 and 1.12
-if [[ $julia_major != "1.11" ]] && [[ $julia_major != "1.12" ]]; then
-    echo "Error: Julia $julia_major is not supported. Only Julia 1.11 and 1.12 are supported."
-    echo "You can install Julia 1.11 with the following commands:"
-    echo "juliaup add 1.11"
-    echo "juliaup default 1.11"
+# Only accept Julia 1.12 and 1.13
+if [[ $julia_major != "1.12" ]] && [[ $julia_major != "1.13" ]]; then
+    echo "Error: Julia $julia_major is not supported. Only Julia 1.12 and 1.13 are supported."
+    echo "You can install Julia 1.12 with the following commands:"
+    echo "juliaup add 1.12"
+    echo "juliaup default 1.12"
     exit 1
 fi
 
 # Copy the appropriate default manifest (skip in --update mode: start clean)
 if [[ $update == false ]]; then
-    if [[ $julia_major == "1.11" ]]; then
-        if [ -f "Manifest-v1.11.toml.default" ]; then
-            cp Manifest-v1.11.toml.default Manifest-v1.11.toml
-            echo "Copied Manifest-v1.11.toml.default to Manifest-v1.11.toml"
-        else
-            echo "Warning: Manifest-v1.11.toml.default not found"
-            echo "Using Manifest-v1.12.toml.default instead (may need resolution)"
-            if [ -f "Manifest-v1.12.toml.default" ]; then
-                cp Manifest-v1.12.toml.default Manifest-v1.11.toml
-                echo "Copied Manifest-v1.12.toml.default to Manifest-v1.11.toml"
-            else
-                echo "Error: no default manifest found"
-                exit 1
-            fi
-        fi
+    if [ -f "Manifest-v${julia_major}.toml.default" ]; then
+        cp "Manifest-v${julia_major}.toml.default" "Manifest-v${julia_major}.toml"
+        echo "Copied Manifest-v${julia_major}.toml.default to Manifest-v${julia_major}.toml"
     else
-        # Default to 1.12 for newer versions
-        if [ -f "Manifest-v1.12.toml.default" ]; then
-            cp Manifest-v1.12.toml.default Manifest-v1.12.toml
-            echo "Copied Manifest-v1.12.toml.default to Manifest-v1.12.toml"
-        else
-            echo "Error: Manifest-v1.12.toml.default not found"
-            exit 1
-        fi
+        echo "Error: Manifest-v${julia_major}.toml.default not found"
+        exit 1
     fi
 else
     # Update mode: start from a clean state without a manifest and let Pkg.update() generate it.
@@ -388,27 +370,15 @@ echo "Precompiling main project..."
 julia --project -e 'using Pkg; Pkg.precompile()'
 
 # Instantiate sub-project: examples
-if [[ $julia_major == "1.11" ]]; then
-    echo "Instantiating examples project for Julia $julia_major..."
-    rm -f examples/Manifest-v1.11.toml examples/Manifest.toml
-    cp Manifest-v1.11.toml examples/Manifest-v1.11.toml
-    _ec=0; run_resolve_with_retry "examples" 0 || _ec=$?
-    if [[ $_ec -eq 2 ]]; then RETRIED_RESOLVES+=("examples (1.11)")
-    elif [[ $_ec -ne 0 ]]; then FAILED_RESOLVES+=("examples (1.11)"); fi
-    echo "Precompiling examples project..."
-    julia --project=examples -e 'using Pkg; Pkg.precompile()'
-else
-    echo "Julia $julia_major: instantiating examples project..."
-    rm -f "examples/Manifest-v${julia_major}.toml" examples/Manifest.toml
-    _ec=0; run_resolve_with_retry "examples" 0 || _ec=$?
-    if [[ $_ec -eq 2 ]]; then RETRIED_RESOLVES+=("examples (1.12)")
-    elif [[ $_ec -ne 0 ]]; then FAILED_RESOLVES+=("examples (1.12)"); fi
-    echo "Precompiling examples project..."
-    julia --project=examples -e 'using Pkg; Pkg.precompile()'
-    # Julia 1.12: do not keep a manifest in the examples folder
-    rm -f "examples/Manifest-v${julia_major}.toml" examples/Manifest.toml
-    echo "Removed manifest from examples/ (not needed for Julia ${julia_major})"
-fi
+echo "Julia $julia_major: instantiating examples project..."
+rm -f "examples/Manifest-v${julia_major}.toml" examples/Manifest.toml
+_ec=0; run_resolve_with_retry "examples" 0 || _ec=$?
+if [[ $_ec -eq 2 ]]; then RETRIED_RESOLVES+=("examples (${julia_major})")
+elif [[ $_ec -ne 0 ]]; then FAILED_RESOLVES+=("examples (${julia_major})"); fi
+echo "Precompiling examples project..."
+julia --project=examples -e 'using Pkg; Pkg.precompile()'
+rm -f "examples/Manifest-v${julia_major}.toml" examples/Manifest.toml
+echo "Removed manifest from examples/ (not needed for Julia ${julia_major})"
 
 echo
 if [[ ${#FAILED_RESOLVES[@]} -eq 0 && ${#RETRIED_RESOLVES[@]} -eq 0 ]]; then
