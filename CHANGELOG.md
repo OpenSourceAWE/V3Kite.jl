@@ -113,6 +113,9 @@
   gravity term `c2` of the opposite sign, a change SymbolicAWEModels 0.16.0 made.
   Cached `model_*.bin` files are rebuilt once: the name carries the
   SymbolicAWEModels version.
+- Julia 1.12 and 1.13 are supported, and 1.10 and 1.11 no longer are.
+  `./bin/install` offers those two and installs from the
+  `Manifest-v<version>.toml.default` of the active Julia.
 
 ## V3Kite v1.3.0 02-09-2026
 
