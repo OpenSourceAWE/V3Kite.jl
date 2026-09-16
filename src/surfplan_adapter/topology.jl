@@ -80,6 +80,14 @@ section for the `AeroPressure` coupling to distribute surface pressure onto; eac
 is a `BODY_STATIC` point riding that element. They must be ascending and within
 `[0, 1]`.
 
+Three of those receivers also read the station's flap deflection: the two chord
+ends and the one nearest `crease_frac`, which is the chord fraction the aero
+tables were deflected about (`examples/v3beam_aero_geometry.jl` slices the mesh at
+the same number, taken from here). A chord that bends over its elements reads a
+deflection this way without a hinge body, and it is read off the very points the
+pressure coupling is built on. The hinge wants a fraction of its own: with none
+at `crease_frac` the nearest receiver is used and the emitter says so.
+
 The receivers also carry the spanwise canopy net: each interior fraction (0 and 1
 are already tied by the leading-edge beam and the `te` segments) gets a membrane
 segment to the matching receiver on the neighbouring station, so a strut cannot bow
@@ -126,6 +134,7 @@ Base.@kwdef struct V3BeamTopology
     leading_edge_ids_odd::Bool = true
     frame_offset::Vector{Float64} = copy(V3_ADAPTER_FRAME_OFFSET)
     chord_control_fractions::Vector{Float64} = collect(0.0:0.1:1.0)
+    crease_frac::Float64 = 0.75
     cell_diagonals::Bool = true
     le_tip_joints::Int = 2
     bridle_segments::Int = 1

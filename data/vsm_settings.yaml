@@ -65,7 +65,7 @@ solver_settings:
 
   # --- Convergence Control ---
   max_iterations: 5000 # Maximum solver iterations before timeout
-  rtol: 1e-6 # Relative tolerance for convergence
+  rtol: 1e-6 # Relative tolerance on the fixed-point residual of the circulation
   tol_reference_error: 0.001 # Reference error tolerance
   relaxation_factor: 0.01 # [0.001-0.1] Under-relaxation for stability
 

@@ -1,5 +1,119 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Power-zone settling falls back to a warm aero solve when the cold one misses
+  the solver's tolerances. It repositions the transform and calls
+  `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
+  `lin_vsm=true`, which restarts the circulation from the elliptic distribution
+  rather than from the one the step before converged to. At a power-zone state
+  that fixed point can be unreachable within the solver's iteration budget: on
+  the bumped stack both replays died in settling, the beam wing on the first
+  step and the particle lattice around step 20, while settling at the 70 deg
+  elevation `v3kite.jl` flies survived it. Settling now
+  reinitializes with `lin_vsm=false` on that failure and lets the step that
+  follows refresh the aero warm-started. The cold solve is still tried first,
+  because SymbolicAWEModels cold-starts it deliberately: a warm start inherits
+  the circulation of whatever ran on that model before, so the settled state
+  would depend on run order.
+- Settling survives an aero solve that misses the solver's tolerances, reusing
+  the last converged circulation, where it now ended the run. VSM 5.1.0 added
+  `throw_on_fail` and SymbolicAWEModels passes it, so a missed solve raises a
+  `SolveFailure` where it used to return a solution the run carried on with;
+  `sim_step!` catches only `AssertionError`. Settling is a transient driven far
+  from equilibrium on purpose, so it passes `vsm_warn_on_fail=true`; the flight
+  the settled state feeds still errors.
+- `flight_replay.jl` on the beam wing settles on a schedule of its own,
+  `data/settle_settings_beam_replay.yaml`, instead of the lattice's. v1.3.0 gave
+  `system_beam.yaml` its own schedule for this reason and left
+  `system_beam_replay.yaml` pointing at `settle_settings_replay.yaml`, which
+  names no `beam_*_start_damping` at all: they default to zero, which damps
+  nothing on a beam wing, whose nodes are `BODY_STATIC` points the point damping
+  cannot reach. The replay began by flying a ringing structure. The new schedule
+  carries the ramps of `settle_settings_beam.yaml`. `system_psm_replay.yaml`
+  keeps the lattice schedule unchanged.
+- The beam replay settles onto the recorded course rather than onto the heading
+  it started with. A replay settles onto a data row that carries a velocity, so
+  `course_correction_mode: course` is defined and is what the flight it feeds
+  has to begin on; the beam schedule inherited `heading` from the from-rest
+  schedule it was copied from, and the wing left the settled state flying
+  roughly 27 deg off the recorded course.
+- A settled state is cached under a name that says which of the two the run
+  held, so changing `course_correction_mode` no longer silently reuses the
+  state settled under the other. `:course`, the default, is left out of the
+  name, so states written before this keep being found.
+- Every flap deflection on the beam wing had the wrong sign. A node
+  body's frame is `frame_quaternion_xy(chord, le_tangent)`, whose y axis is what
+  the station's `flap_axis: [0, 1, 0]` names, and spanwise runs `-y` to `+y`:
+  VortexStepMethod takes no `spanwise_direction` but `[0, 1, 0]` and flips
+  panels so `y_airf` follows it whatever order the sections arrive in. The
+  emitter took its spanwise differences along the station order, which descends
+  in span because that is the order VSM sorts sections into, so every body's y
+  axis pointed at the `-y` tip and every station's hinge axis was reversed.
+  Rotating a station's flap body by +5 deg about world +y read
+  delta = -4.975 deg; it now reads +4.975 deg. The station order is unchanged
+  and still descends: SymbolicAWEModels rebuilds a beam wing's sections in
+  station order with `sort_sections=false` and indexes section i by station i.
+  `data/struc_geometry_beam.yaml`, `data/struc_geometry_beam_wing.yaml` and the
+  relaxed state they are flown from are regenerated. A state log restores body
+  orientations, so one saved before this carries the old frames into a model
+  built on the new ones — a ~180 deg rest violation on every beam element, which
+  diverges in the first seconds. Re-settle the beam projects once
+  (`remake_settled_state: true`); `data/relaxed_struc_geometry_beam_dp20.arrow`
+  is regenerated here.
+
+### Changed
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh at
+  `WINGTIP_DISTANCE = 0.15` instead of 0.05. The number is leading-edge arc
+  length, and 0.05 of it sliced the same sections as 0.0 would: the outermost
+  section pair sat on the tip cap, where the leading edge runs almost chordwise,
+  carrying 0.44 m of chord (17 % of the maximum) against 1.07 m one section
+  inboard. They now carry 0.87 m, the 33 % that the stock
+  `data/cfd_aero_geometry.yaml` has at its own tips, and the 37 sections cover
+  8.311 m of the 8.333 m span instead of 8.328 m. Every beam aero result moves
+  with it. `data/nf_aero_geometry.yaml` is not in git, so regenerate it and
+  rebuild the model once: a cached `model_*.bin` is named after the
+  SymbolicAWEModels version and the structural counts, not after the aero
+  geometry it was built from.
+- `./bin/install` slices that geometry itself, after it has cleared the cached
+  model and settled-state files, so that what an install leaves on disk is what
+  the tracked scripts produce today rather than whatever a previous checkout
+  wrote.
+- A beam wing's stations read their flap deflection off three of their
+  own chord receivers, `flap_points: [fore, hinge, aft]`, instead of off the two
+  node bodies (`flap_bodies`). δ is then the angle the aft chord segment makes
+  with the fore one about the wing's spanwise axis, referenced to the CAD pose,
+  so a chord that bends over its beam elements reads a deflection where the body
+  pair read the two nodes' own rotation — on the relaxed V3 beam, 18-22 deg
+  mid-span against the body pair's 37-47 deg. The hinge is the receiver nearest
+  `V3BeamTopology.crease_frac` (0.75, the fraction the aero tables were deflected
+  about; `examples/v3beam_aero_geometry.jl` now slices the mesh at that same
+  number rather than its own copy of it). `chord_control_fractions` has no entry
+  at 0.75, so the hinge sits at 0.7 and the emitter warns; putting a receiver on
+  the crease needs the geometry regenerated from the Surfplan export. Needs
+  SymbolicAWEModels 0.17, which added point flaps. Measured no-op on the flight
+  path: the V3's section tables are functions of angle of attack alone
+  (`DELTA_RANGE = nothing`) and the pressure loft contour is frozen at build, so
+  δ drives the viewer and the tables a future δ sweep would index, and the beam
+  replay's trajectory is unchanged to the centimetre by this or by the sign fix
+  above.
+- A wing's twist surfaces are stations, in the structural geometry
+  YAML as well as in the code: the top-level `twist_surfaces:` table and the
+  per-wing `twist_surfaces:` list are both `stations:`. This follows
+  SymbolicAWEModels 0.17, which renamed the entity and ships no alias. A
+  geometry file still saying `twist_surfaces:` parses to a wing with no
+  stations and then fails the model build with `Cannot refine mesh: wing has no
+  unrefined_sections`. The three tracked `data/struc_geometry*.yaml` files are
+  converted; a file of your own needs the same two keys renamed.
+- VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.18.0.
+  The particle-lattice examples fly their pre-bump trajectories to within 1.1 deg
+  of heading, except the closed-loop sweep of `steering_test_v3.jl`, which drifts
+  by up to 6.5 deg and identifies the same turn-rate gain `c1` to 0.4 % but a
+  gravity term `c2` of the opposite sign, a change SymbolicAWEModels 0.16.0 made.
+  Cached `model_*.bin` files are rebuilt once: the name carries the
+  SymbolicAWEModels version.
+
 ## V3Kite v1.3.0 02-09-2026
 
 ### Added

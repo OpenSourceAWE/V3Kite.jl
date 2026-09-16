@@ -131,10 +131,12 @@ value settling ran at, so every flown ratio below the floor shares
 one settled state.
 
 The aerodynamics enter the name because a structure settled under one
-mode is not equilibrium under another, and the source geometry enters it
+mode is not equilibrium under another, the source geometry enters it
 because a state logged for one has the wrong number of points for
-another. Both are left out at their default so that files written before
-the key knew about them keep being found.
+another, and the course hold enters it because a state settled onto a
+held heading points somewhere else than one settled onto a held course.
+All three are left out at their default so that files written before the
+key knew about them keep being found.
 """
 function settled_state_path(config::V3SettleConfig, init_row;
                             data_path=nothing, cache_path=nothing)
@@ -199,6 +201,8 @@ function settled_state_path(config::V3SettleConfig, init_row;
     struc_tag = splitext(basename(
         project_entry(config.project, "structural_geometry"; data_path)))[1]
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
+    config.course_correction_mode === :course ||
+        (suffix *= "_hold$(config.course_correction_mode)")
     return joinpath(cache_path, "settled_$(suffix).arrow")
 end
 
@@ -243,9 +247,11 @@ Reset `sam`'s integrator from the current `SystemStructure`, reusing the solver
 `init!` built it with. `SymbolicAWEModels.reinit!` takes that solver as a required
 argument, and a bare `FBDF()` differentiates forward, which makes the monolith
 backend compile its right-hand side a second time at `ForwardDiff.Dual`.
+`lin_vsm=false` skips the cold VSM solve it otherwise runs, for a caller that
+steps the model straight afterwards and so refreshes the aero warm-started.
 """
-reinit_integrator!(sam; prn=true) =
-    SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn)
+reinit_integrator!(sam; prn=true, lin_vsm=true) =
+    SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn, lin_vsm)
 
 """
     start_from_state!(sam, sys, path) -> Bool
@@ -936,15 +942,24 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
             SymbolicAWEModels.reposition!(
                 sys.transforms, sys)
-            reinit_integrator!(sam; prn=false)
+            try
+                reinit_integrator!(sam; prn=false)
+            catch failure
+                failure isa VortexStepMethod.SolveFailure || rethrow()
+                # A power-zone state has no fixed point the cold solve can
+                # reach; the `sim_step!` below refreshes the aero warm-started.
+                reinit_integrator!(sam; prn=false, lin_vsm=false)
+            end
 
             for sub in 1:config.num_substeps
                 global_step =
                     (step - 1) * config.num_substeps + sub
                 t = global_step * config.dt
 
+                # Settling is a transient on purpose, so a missed solve
+                # reuses the last converged circulation instead of ending it.
                 if !sim_step!(sam; dt=config.dt,
-                        vsm_interval=1)
+                        vsm_interval=1, vsm_warn_on_fail=true)
                     @error "Simulation failed" step sub t
                     failed = true
                     break

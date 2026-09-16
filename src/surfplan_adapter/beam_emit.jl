@@ -27,6 +27,25 @@ function harmonic_radius(radius_at, n_samples = 16)
     return (inverse_cube / n_samples)^(-1 / 3)
 end
 
+"""The three chord receivers `[fore, hinge, aft]` whose two segments span a
+station's flap deflection: the chord's ends, and the node nearest `crease_frac`.
+The hinge belongs where the aero tables were deflected, and the ends are where the
+whole chord's bending shows."""
+function flap_delta_nodes(control_fractions, crease_frac)
+    length(control_fractions) >= 3 || error(
+        "chord_control_fractions needs at least three entries to read a flap " *
+        "deflection off; got $control_fractions")
+    hinge = argmin(abs.(control_fractions .- crease_frac))
+    1 < hinge < length(control_fractions) || error(
+        "the chord node nearest crease_frac = $crease_frac is an end of the " *
+        "chord ($(control_fractions[hinge])), which leaves one segment of the " *
+        "flap angle empty; add a chord_control_fractions entry at $crease_frac")
+    isapprox(control_fractions[hinge], crease_frac; atol = 0.01) || @warn(
+        "The flap hinge sits off the crease the aero tables were deflected about",
+        crease_frac, hinge_frac = control_fractions[hinge])
+    return [1, hinge, length(control_fractions)]
+end
+
 le_body_name(i) = Symbol("wing_le_body_$i")
 le_sub_body_name(i, j) = Symbol("wing_le_sub_body_$(i)_$j")
 te_body_name(i) = Symbol("wing_te_body_$i")
@@ -51,12 +70,14 @@ lump node masses/inertia, and assemble the node `Body` and `TimoshenkoJoint` row
 Returns everything the emitter needs; the bridle is separate
 (see [`BridleGeometry`](@ref)).
 
-Descending span is required, not cosmetic: `VortexStepMethod.refine!` sorts sections
-that way, but SymbolicAWEModels rebuilds a beam wing's sections with
-`sort_sections=false`, so whatever order the twist surfaces are emitted in is the
-order the panels are built in. Ascending span gives reversed panels and the VSM
-solve does not converge. `y_ref` is ordered against the stations to keep body y
-pointing along +y.
+Two spanwise conventions meet here, both VortexStepMethod's. The station ORDER
+descends in span, the order `refine!` sorts sections into; SymbolicAWEModels
+rebuilds a beam wing's sections from the stations with `sort_sections=false` and
+then indexes section i by station i, so emitting them ascending would have VSM
+reverse the sections under that mapping. Every spanwise DIRECTION runs the other
+way, `-y` to `+y`, VSM's own `spanwise_direction`: `le_tangent`, `le_edge_tangent`
+and `y_ref` are all taken against the station order so that a node body's y axis —
+which is what its station's `flap_axis` names — points along `+y`.
 """
 function beam_tables(geom, topo)
     pos = geom.pos
@@ -70,7 +91,7 @@ function beam_tables(geom, topo)
 
     le_pos = [pos[id] for id in le_ids]
     te_pos = [pos[id] for id in te_ids]
-    le_tangent(i) = normalize(le_pos[min(i + 1, n)] - le_pos[max(i - 1, 1)])
+    le_tangent(i) = normalize(le_pos[max(i - 1, 1)] - le_pos[min(i + 1, n)])
     chord(i) = te_pos[i] - le_pos[i]
 
     control_fractions = checked_chord_fractions(topo.chord_control_fractions,
@@ -118,9 +139,10 @@ function beam_tables(geom, topo)
         le_pos[i] .+ frac .* (le_pos[i + 1] .- le_pos[i]) :
         sample_position(geom.leading_edge_polyline, le_span_at(i, frac))
     function le_edge_tangent(i, frac)
-        step = 0.01 * (le_pos[i + 1][2] - le_pos[i][2])
+        # `step` is toward +y, so the difference it takes is too.
+        step = 0.01 * (le_pos[i][2] - le_pos[i + 1][2])
         (isempty(geom.leading_edge_polyline) || abs(step) < 1e-9) &&
-            return normalize(le_pos[i + 1] .- le_pos[i])
+            return normalize(le_pos[i] .- le_pos[i + 1])
         span = le_span_at(i, frac)
         ahead = sample_position(geom.leading_edge_polyline, span + step)
         behind = sample_position(geom.leading_edge_polyline, span - step)
@@ -279,8 +301,11 @@ function beam_tables(geom, topo)
         end
     end
 
+    delta_nodes = flap_delta_nodes(control_fractions, topo.crease_frac)
+    flap_points = [["wing_ctrl_$(i)_$j" for j in delta_nodes] for i in 1:n]
+
     return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, joint_rows, joint_radius,
-        wing_pt, wing_body, body_frame, mid, control_specs)
+        wing_pt, wing_body, body_frame, mid, control_specs, flap_points)
 end
 
 """
@@ -598,10 +623,9 @@ function write_model(path, tables, geom, bridle, topo; full)
         station_points(i) = [wing_pt[le_ids[i]]; wing_pt[te_ids[i]];
             [spec.name for spec in tables.control_specs if spec.station == i]]
         flap_rows = [["flap_$i", 1, "KINEMATIC", station_points(i),
-            [String(le_body_name(i)), String(te_body_name(i))], [0.0, 1.0, 0.0]]
-            for i in 1:n]
-        emit_table(io, "twist_surfaces",
-            ["name", "wing", "type", "points", "flap_bodies", "flap_axis"], flap_rows)
+            tables.flap_points[i], [0.0, 1.0, 0.0]] for i in 1:n]
+        emit_table(io, "stations",
+            ["name", "wing", "type", "points", "flap_points", "flap_axis"], flap_rows)
         emit_table(io, "points", POINT_HEADERS, point_rows)
         emit_table(io, "segments", SEG_HEADERS, seg_rows)
         isempty(pulley_rows) ||
@@ -616,7 +640,7 @@ function write_model(path, tables, geom, bridle, topo; full)
         println(io, "      origin_idx: ", fmt_ref(origin))
         println(io, "      z_ref_points: ", fmt_ref(z_ref))
         println(io, "      y_ref_points: ", fmt_ref(y_ref))
-        println(io, "      twist_surfaces: ", fmt_ref(["flap_$i" for i in 1:n]))
+        println(io, "      stations: ", fmt_ref(["flap_$i" for i in 1:n]))
         if full
             println(io, "\ntransforms:\n  data:\n    - idx: 1")
             println(io, "      elevation: ", fmt_num(topo.elevation_deg))

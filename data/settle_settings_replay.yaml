@@ -1,6 +1,6 @@
-# Settling schedule of flight_replay.jl on either wing: longer and more heavily
-# damped than settle_settings_default.yaml because it settles onto a recorded
-# flight state.
+# Settling schedule of flight_replay.jl on the particle-lattice wing: longer and
+# more heavily damped than settle_settings_default.yaml because it settles onto a
+# recorded flight state. The beam wing has settle_settings_beam_replay.yaml.
 settle_settings:
   num_steps: 200                  # settling steps
   num_substeps: 1                # solver steps per settling step

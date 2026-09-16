@@ -5,6 +5,7 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
+using SymbolicAWEModels: quaternion_to_rotation_matrix
 
 @testset "V3Kite.jl" begin
 
@@ -208,6 +209,49 @@ using KitePodModels: KCU
         @test beam_settle.body_start_damping == [0.0, 0.0, 40.0]
         @test beam_settle.kite_set.body_sim_damping == beam.body_sim_damping
 
+        # A beam wing's nodes are BODY_STATIC points, which the point damping
+        # in every other settling schedule cannot reach.
+        for project in ("system_beam.yaml", "system_beam_replay.yaml")
+            settle = load_settle(project; kite_set=load_kite(project))
+            @test any(!iszero, settle.beam_body_start_damping)
+            @test any(!iszero, settle.beam_angular_start_damping)
+        end
+
+        # A replay settles onto a recorded row that carries a velocity, so its
+        # course is defined and is what the flight it feeds starts on.
+        for project in ("system_psm_replay.yaml", "system_beam_replay.yaml")
+            settle = load_settle(project; kite_set=load_kite(project))
+            @test settle.course_correction_mode === :course
+        end
+
+        # A node body's y axis is the in-plane span, and spanwise runs -y to
+        # +y, which is VortexStepMethod's `spanwise_direction`.
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            table = V3Kite.YAML.load_file(
+                joinpath(v3_data_path(), name))["bodies"]
+            quat_col = findfirst(==("Q_b_to_w"), table["headers"])
+            spanwise = count(table["data"]) do row
+                quaternion_to_rotation_matrix(Float64.(row[quat_col]))[2, 2] > 0
+            end
+            @test spanwise == length(table["data"])
+        end
+
+        # The hinge is the chord receiver nearest the crease the aero tables
+        # were deflected about; the other two are the chord's own ends.
+        topo = V3BeamTopology()
+        nodes = V3Kite.SurfplanAdapter.flap_delta_nodes(
+            topo.chord_control_fractions, topo.crease_frac)
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            table = V3Kite.YAML.load_file(
+                joinpath(v3_data_path(), name))["stations"]
+            flap_col = findfirst(==("flap_points"), table["headers"])
+            point_col = findfirst(==("points"), table["headers"])
+            for (i, row) in enumerate(table["data"])
+                @test row[flap_col] == ["wing_ctrl_$(i)_$j" for j in nodes]
+                @test row[flap_col] ⊆ row[point_col]
+            end
+        end
+
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.
         @test_throws ErrorException aero_geometry_path("system_psm.yaml";
@@ -235,6 +279,21 @@ using KitePodModels: KCU
             @test project_data_path("system_beam.yaml", nothing) == v3_data_path()
             @test load_kite("system_beam.yaml").wing_mass == 0.0
         end
+    end
+
+    @testset "Wing Stations" begin
+        config = V3Kite.V3SettleConfig()
+        data_path = V3Kite.project_data_path(config.project, nothing)
+        sys, _ = V3Kite.build_settling_struct(config; data_path,
+            source_struc = V3Kite.struc_geometry_path(config.project; data_path),
+            source_aero = V3Kite.aero_geometry_path(config.project; data_path,
+                aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
+        @test length(sys.stations) == 10
+        @test length(sys.wings[1].station_idxs) == 10
+        @test length(wing_station_chords(sys)) == 10
+        span_y, twist = wing_twist_dist(sys)
+        @test length(span_y) == 10
+        @test length(twist) == 10
     end
 
     include("test_ripple_metrics.jl")
