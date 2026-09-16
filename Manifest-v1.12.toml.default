@@ -2,7 +2,7 @@
 
 julia_version = "1.12.7"
 manifest_format = "2.0"
-project_hash = "d64dcbad31ec44b8aee97e7ad4458a92bb96371c"
+project_hash = "b220784527de2ee2cc5bdca8398049269a944552"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -3080,9 +3080,9 @@ version = "0.2.8"
 
 [[deps.SymbolicAWEModels]]
 deps = ["ADTypes", "AtmosphericModels", "CodecZlib", "ControlSystemsBase", "DataInterpolations", "Dates", "DocStringExtensions", "ForwardDiff", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "LinearSolve", "Logging", "ModelingToolkit", "NonlinearSolve", "NonlinearSolveQuasiNewton", "OrderedCollections", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqNonlinearSolve", "Parameters", "Pkg", "PrecompileTools", "Printf", "RecipesBase", "SHA", "Serialization", "SparseArrays", "StaticArrays", "Statistics", "SteadyStateDiffEq", "Suppressor", "SymbolicIndexingInterface", "SymbolicUtils", "Symbolics", "TOML", "Tar", "Timers", "UnPack", "VortexStepMethod", "YAML"]
-git-tree-sha1 = "b4eef29f09a14a023e3a6c1a7c6a806f22733cbe"
+git-tree-sha1 = "124691e87152f2ae206c0028690a953da0d82c8a"
 uuid = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
-version = "0.17.0"
+version = "0.18.0"
 weakdeps = ["GeometryBasics", "MakieControlPlots"]
 
     [deps.SymbolicAWEModels.extensions]

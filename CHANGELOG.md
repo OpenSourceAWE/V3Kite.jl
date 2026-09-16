@@ -111,7 +111,7 @@
   stations and then fails the model build with `Cannot refine mesh: wing has no
   unrefined_sections`. The three tracked `data/struc_geometry*.yaml` files are
   converted; a file of your own needs the same two keys renamed.
-- VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.17.0.
+- VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.18.0.
   Coefficients move in the last few digits: VSM's `LOOP` solver now tests
   convergence on the fixed-point residual rather than on the under-relaxed
   step, so every `LOOP` solve is tighter by the relaxation factor, and panel
