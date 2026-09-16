@@ -24,11 +24,6 @@
   `sim_step!` catches only `AssertionError`. Settling is a transient driven far
   from equilibrium on purpose, so it passes `vsm_warn_on_fail=true`; the flight
   the settled state feeds still errors.
-- `data/vsm_settings.yaml` asks for `rtol: 1e-4` rather than `1e-6`, which is the
-  convergence criterion it had before the bump. VSM 5.1.0 tests the `LOOP` solver
-  on the fixed-point residual instead of on the under-relaxed step, so `rtol` is
-  read directly where it used to mean `rtol / relaxation_factor`; this file sets
-  `relaxation_factor: 0.01`, so the same number became a 100x tighter ask.
 - `flight_replay.jl` on the beam wing settles on a schedule of its own,
   `data/settle_settings_beam_replay.yaml`, instead of the lattice's. v1.3.0 gave
   `system_beam.yaml` its own schedule for this reason and left
@@ -112,12 +107,11 @@
   unrefined_sections`. The three tracked `data/struc_geometry*.yaml` files are
   converted; a file of your own needs the same two keys renamed.
 - VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.18.0.
-  Coefficients move in the last few digits: VSM's `LOOP` solver now tests
-  convergence on the fixed-point residual rather than on the under-relaxed
-  step, so every `LOOP` solve is tighter by the relaxation factor, and panel
-  aerodynamic load is now shared between the two adjacent stations instead of
-  rounded to the nearest. Cached `model_*.bin` files are rebuilt once: the
-  name carries the SymbolicAWEModels version.
+  The particle-lattice examples reproduce their pre-bump trajectories to within
+  a degree, with one exception: `steering_test_v3.jl` identifies the same
+  turn-rate gain `c1` to 0.4 % but a gravity term `c2` of the opposite sign.
+  Cached `model_*.bin` files are rebuilt once: the name carries the
+  SymbolicAWEModels version.
 
 ## V3Kite v1.3.0 02-09-2026
 
