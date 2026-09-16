@@ -73,7 +73,7 @@ fi
 
 cp "Manifest-v${julia_major}.toml" "Manifest-v${julia_major}.toml.default"
 echo "Copied Manifest-v${julia_major}.toml to Manifest-v${julia_major}.toml.default"
-rm -f examples/Manifest.toml "examples/Manifest-v${julia_major}.toml" "examples/Manifest-v${julia_major}.toml.default"
+rm -f examples/Manifest*
 echo "Deleted all manifest files in examples/"
 
 # Commit only the default manifest files
