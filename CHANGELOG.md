@@ -107,9 +107,10 @@
   unrefined_sections`. The three tracked `data/struc_geometry*.yaml` files are
   converted; a file of your own needs the same two keys renamed.
 - VortexStepMethod 4.3.1 -> 5.1.1 and SymbolicAWEModels 0.15.1 -> 0.18.0.
-  The particle-lattice examples reproduce their pre-bump trajectories to within
-  a degree, with one exception: `steering_test_v3.jl` identifies the same
-  turn-rate gain `c1` to 0.4 % but a gravity term `c2` of the opposite sign.
+  The particle-lattice examples fly their pre-bump trajectories to within 1.1 deg
+  of heading, except the closed-loop sweep of `steering_test_v3.jl`, which drifts
+  by up to 6.5 deg and identifies the same turn-rate gain `c1` to 0.4 % but a
+  gravity term `c2` of the opposite sign, a change SymbolicAWEModels 0.16.0 made.
   Cached `model_*.bin` files are rebuilt once: the name carries the
   SymbolicAWEModels version.
 
