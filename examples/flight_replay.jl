@@ -71,7 +71,7 @@ function update_vel_from_csv!(sys, row,
     winch = sys.winches[1]
     winch.brake = true
     winch.vel = row.tether_vel
-    sys.tethers[1].len = row.tether_len
+    SymbolicAWEModels.set_unstretched_length!(sys, sys.tethers[1], row.tether_len)
     sys.tethers[1].stretched_len = row.tether_len
 
     # Depower from CSV (returns adjusted dp)

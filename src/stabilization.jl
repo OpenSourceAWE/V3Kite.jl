@@ -266,10 +266,25 @@ and skipping the recompute would pair a relaxed geometry with the rest lengths o
 the YAML instead.
 """
 function start_from_state!(sam, sys, path)
+    apply_relaxed_state!(sys, path) || return false
+    reinit_integrator!(sam)
+    return true
+end
+
+"""
+    apply_relaxed_state!(sys, path) -> Bool
+
+Restore the state logged at `path` onto `sys`, then place each tether at its
+`init_stretched_len` and derive its unstretched length from there, as `init!` does.
+Returns `false` when the log is missing or unreadable.
+"""
+function apply_relaxed_state!(sys, path)
     state = read_state_log(path)
     isnothing(state) && return false
     update_from_sysstate!(sys, state)
-    reinit_integrator!(sam)
+    apply_tether_init_stretched_lens!(sys; prn=false)
+    update_segment_lengths!(sys)
+    apply_tether_init_forces!(sys)
     return true
 end
 

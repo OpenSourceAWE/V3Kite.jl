@@ -5,7 +5,7 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
-using SymbolicAWEModels: quaternion_to_rotation_matrix
+using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length
 
 @testset "V3Kite.jl" begin
 
@@ -281,19 +281,37 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
         end
     end
 
-    @testset "Wing Stations" begin
-        config = V3Kite.V3SettleConfig()
+    function settling_struct(config)
         data_path = V3Kite.project_data_path(config.project, nothing)
         sys, _ = V3Kite.build_settling_struct(config; data_path,
             source_struc = V3Kite.struc_geometry_path(config.project; data_path),
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
+        return sys
+    end
+
+    @testset "Wing Stations" begin
+        sys = settling_struct(V3Kite.V3SettleConfig())
         @test length(sys.stations) == 10
         @test length(sys.wings[1].station_idxs) == 10
         @test length(wing_station_chords(sys)) == 10
         span_y, twist = wing_twist_dist(sys)
         @test length(span_y) == 10
         @test length(twist) == 10
+    end
+
+    @testset "Relaxed state keeps the tether length it is restored onto" begin
+        config = load_settle("system_beam_replay.yaml")
+        sys = settling_struct(config)
+        tether = sys.tethers[1]
+        tether.init_stretched_len = 247.557
+        state_path = project_file(config.project, config.kite_set.init_state)
+        @test V3Kite.apply_relaxed_state!(sys, state_path)
+        segments = [sys.segments[idx] for idx in tether.segment_idxs]
+        @test sum(segment_world_length(segment, sys.points) for segment in segments) ≈
+            247.557
+        @test tether.len ≈ 247.557
+        @test sum(segment.l0 for segment in segments) ≈ 247.557
     end
 
     include("test_ripple_metrics.jl")
