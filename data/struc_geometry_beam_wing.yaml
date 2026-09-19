@@ -478,7 +478,7 @@ segments:
 wings:
   data:
     - idx: 1
-      type: PARTICLE_DYNAMICS
+      dynamics_type: PARTICLE_DYNAMICS
       origin_idx: wing_le_5
       z_ref_points: [wing_te_5, wing_le_5]
       y_ref_points: [wing_le_6, wing_le_4]

@@ -349,8 +349,8 @@ twist_surfaces:
 ## Wings ##################
 ###########################
 # Wing aerodynamic bodies
-# headers: [id, type, twist_surfaces]
-# type: PARTICLE_DYNAMICS or RIGID_DYNAMICS
+# headers: [id, dynamics_type, twist_surfaces]
+# dynamics_type: PARTICLE_DYNAMICS or RIGID_DYNAMICS
 # twist_surfaces: the wing's LE/TE surfaces; their points are the wing nodes
 
 wings:
@@ -360,7 +360,7 @@ wings:
     # For RIGID_DYNAMICS wings, use aero_z_offset to shift VSM panels in body frame z
     # For PARTICLE_DYNAMICS wings, use twist_surfaces, origin_idx, z_ref_points, y_ref_points
     - idx: 1
-      type: PARTICLE_DYNAMICS
+      dynamics_type: PARTICLE_DYNAMICS
       twist_surfaces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       origin_idx: 1
       z_ref_points: [1, [[12, 0.7], [11, 0.3]]] # KCU to LE for Z (normal)
