@@ -304,8 +304,6 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
     @testset "Relaxed state is placed unstrained at the tether's own length" begin
         config = load_settle("system_beam_replay.yaml")
         state_path = project_file(config.project, config.kite_set.init_state)
-        state = V3Kite.read_state_log(state_path)
-
         sys = settling_struct(config)
         tether = sys.tethers[1]
         tether.init_stretched_len = 247.557
@@ -320,7 +318,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
         # At the length it was relaxed at, the state is restored as logged.
         sys = settling_struct(config)
         logged = settling_struct(config)
-        update_from_sysstate!(logged, state)
+        update_from_sysstate!(logged, V3Kite.read_state_log(state_path))
         @test V3Kite.apply_relaxed_state!(sys, state_path)
         @test sys.tethers[1].len == logged.tethers[1].len
         @test all(point.pos_w == logged_point.pos_w
