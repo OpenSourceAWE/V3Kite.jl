@@ -21,7 +21,7 @@ end
 using V3Kite
 using GLMakie
 using MakieControlPlots
-using MakieControlPlots: plot
+using LaTeXStrings
 using SymbolicAWEModels
 
 # =============================================================================
@@ -74,16 +74,16 @@ for step in 1:n_steps
     target_rad = max_heading_rad * sin(angular_freq * t)
     measured = sys.wings[1].heading
     schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
-    steer_ctrl = pid(target_rad, measured, 0.0)
+    steering = nominal_steering + pid(target_rad, measured, 0.0)
     sys_state.bearing = target_rad
 
-    set_steering!(sys, nominal_steering + steer_ctrl, kite_set.geom)
+    set_steering!(sys, steering, kite_set.geom)
 
     if !sim_step!(sam; dt, vsm_interval = kite_set.vsm_interval)
         @error "Simulation failed" step
         break
     end
-    log_state!(logger, sys_state, sam, t)
+    log_state!(logger, sys_state, sam, t; steering)
 
     if should_report(step, n_steps)
         elapsed = time() - sim_start
@@ -102,10 +102,24 @@ syslog = load_log(log_name)
 # =============================================================================
 
 @info "Creating visualization..."
-fig = plot(sam.sys_struct, syslog;
-    plot_tether=true,
-    setpoints=Dict(:heading => syslog.syslog.bearing))
-display(GLMakie.Screen(), fig)
+sl = syslog.syslog
+plot_window = plotx(sl.time,
+    rad2deg.(sl.elevation),
+    rad2deg.(sl.azimuth),
+    [rad2deg.(wrap_to_pi.(sl.heading)), rad2deg.(sl.bearing), rad2deg.(sl.course)],
+    100.0 .* sl.steering,
+    rad2deg.(sl.AoA),
+    first.(sl.winch_force);
+    xlabel = L"\mathrm{time}~[\mathrm{s}]",
+    ysize = 18,
+    legendsize = 16,
+    ylabels = [L"\mathrm{elevation}~[°]", L"\mathrm{azimuth}~[°]",
+               L"\psi, \chi~[°]", L"u_{\mathrm{s}}~[\%]", L"\mathrm{AoA}~[°]",
+               L"F_{\mathrm{t}}~[\mathrm{N}]"],
+    labels = [nothing, nothing, [L"\psi", L"\psi_{\mathrm{ref}}", L"\chi"],
+              nothing, nothing, nothing],
+    fig = "V3 Kite heading tracking – $(splitext(PROJECT)[1])")
+display(plot_window)
 
 scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
 display(GLMakie.Screen(), scene)

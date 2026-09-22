@@ -64,6 +64,11 @@
   is regenerated here.
 
 ### Changed
+- `examples/v3kite.jl` shows its results in a MakieControlPlots `plotx` window,
+  with zoom, pan and save buttons and larger legends: elevation, azimuth,
+  heading against its setpoint and course, steering, AoA and tether force. The
+  steering is now logged, so `sl.steering` of its log is the applied steering
+  rather than zero.
 - `examples/v3beam_aero_geometry.jl` slices the V3 mesh at
   `WINGTIP_DISTANCE = 0.15` instead of 0.05. The number is leading-edge arc
   length, and 0.05 of it sliced the same sections as 0.0 would: the outermost
