@@ -3,13 +3,8 @@
 ## Unreleased
 
 ### Fixed
-- Settling from a relaxed state settles the tether length it was asked for,
-  where it took the length the relaxation ran at. When the two differ,
-  `start_from_state!` places the restored geometry at the tether's
-  `init_stretched_len`, unstrained. On the beam replay that is the recorded
-  247.557 m rather than 250 m, and `flight_replay.jl` sets that length with
-  `set_unstretched_length!`, so the tether's segments carry it too. At an
-  unchanged length the state is restored as before.
+- Settling from a relaxed state settles the tether length it was asked for, not
+  the length the relaxation ran at: the beam replay settles the recorded 247.557 m.
 - Power-zone settling falls back to a warm aero solve when the cold one misses
   the solver's tolerances. It repositions the transform and calls
   `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to

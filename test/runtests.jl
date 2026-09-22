@@ -311,7 +311,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
         @test V3Kite.apply_relaxed_state!(sys, state_path)
         segments = [sys.segments[idx] for idx in tether.segment_idxs]
         placed = sum(segment_world_length(segment, sys.points) for segment in segments)
-        @test placed ≈ 247.557 atol=0.1
+        @test placed ≈ 247.557 atol=0.05
         @test tether.len ≈ placed
         @test sum(segment.l0 for segment in segments) ≈ tether.len
 

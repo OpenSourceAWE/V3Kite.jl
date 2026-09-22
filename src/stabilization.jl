@@ -260,8 +260,7 @@ Restore the state logged at `path` onto `sys` with [`apply_relaxed_state!`](@ref
 and push it onto `sam`'s integrator, so a run starts where that log left off.
 Returns `false` when the log is missing or unreadable.
 
-Call after `init!`, not before: the log carries positions and velocities, and the
-rest lengths they belong with are the ones `init!` computes.
+Call after `init!`, not before.
 """
 function start_from_state!(sam, sys, path)
     apply_relaxed_state!(sys, path) || return false
