@@ -103,10 +103,10 @@ syslog = load_log(log_name)
 
 @info "Creating visualization..."
 sl = syslog.syslog
-p = plotx(sl.time,
+plot_window = plotx(sl.time,
     rad2deg.(sl.elevation),
     rad2deg.(sl.azimuth),
-    [rad2deg.(sl.heading), rad2deg.(sl.bearing), rad2deg.(sl.course)],
+    [rad2deg.(wrap_to_pi.(sl.heading)), rad2deg.(sl.bearing), rad2deg.(sl.course)],
     100.0 .* sl.steering,
     rad2deg.(sl.AoA),
     first.(sl.winch_force);
@@ -119,7 +119,7 @@ p = plotx(sl.time,
     labels = [nothing, nothing, [L"\psi", L"\psi_{\mathrm{ref}}", L"\chi"],
               nothing, nothing, nothing],
     fig = "V3 Kite heading tracking – $(splitext(PROJECT)[1])")
-display(p)
+display(plot_window)
 
 scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
 display(GLMakie.Screen(), scene)
