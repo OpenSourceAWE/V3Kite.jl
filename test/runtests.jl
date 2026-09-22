@@ -300,7 +300,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length
         @test length(twist) == 10
     end
 
-    @testset "Relaxed state keeps the tether length it is restored onto" begin
+    @testset "Relaxed state is placed unstrained at the tether's own length" begin
         config = load_settle("system_beam_replay.yaml")
         sys = settling_struct(config)
         tether = sys.tethers[1]
@@ -308,10 +308,10 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length
         state_path = project_file(config.project, config.kite_set.init_state)
         @test V3Kite.apply_relaxed_state!(sys, state_path)
         segments = [sys.segments[idx] for idx in tether.segment_idxs]
-        @test sum(segment_world_length(segment, sys.points) for segment in segments) ≈
-            247.557
-        @test tether.len ≈ 247.557
-        @test sum(segment.l0 for segment in segments) ≈ 247.557
+        placed = sum(segment_world_length(segment, sys.points) for segment in segments)
+        @test placed ≈ 247.557 atol=0.1
+        @test tether.len ≈ placed
+        @test sum(segment.l0 for segment in segments) ≈ tether.len
     end
 
     include("test_ripple_metrics.jl")

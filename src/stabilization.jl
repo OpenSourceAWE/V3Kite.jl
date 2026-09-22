@@ -256,14 +256,12 @@ reinit_integrator!(sam; prn=true, lin_vsm=true) =
 """
     start_from_state!(sam, sys, path) -> Bool
 
-Restore the state logged at `path` onto `sys` and push it onto `sam`'s
-integrator, so a run starts where that log left off. Returns `false` when the log
-is missing or unreadable.
+Restore the state logged at `path` onto `sys` with [`apply_relaxed_state!`](@ref)
+and push it onto `sam`'s integrator, so a run starts where that log left off.
+Returns `false` when the log is missing or unreadable.
 
 Call after `init!`, not before: the log carries positions and velocities, and the
-rest lengths they belong with are the ones `init!` computes, so restoring first
-and skipping the recompute would pair a relaxed geometry with the rest lengths of
-the YAML instead.
+rest lengths they belong with are the ones `init!` computes.
 """
 function start_from_state!(sam, sys, path)
     apply_relaxed_state!(sys, path) || return false
