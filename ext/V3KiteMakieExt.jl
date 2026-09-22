@@ -840,7 +840,7 @@ function V3Kite.plot_photogrammetry(points, groups;
 end
 
 """
-    plot_yaw_rate_vs_steering(syslogs; source, labels, figsize)
+    plot_yaw_rate_vs_steering(syslogs; source, labels, figsize, delay, ...)
 
 Scatter plot of |turn rate| vs |u_s * v_a| for one or more
 logs. The turn rate is computed by `calc_turn_rate` with the
@@ -856,6 +856,14 @@ KCU actually reached.
 - `labels`: Optional vector of series labels
 - `figsize`: Figure size tuple (default: (600, 400))
 - `labelsize`: Axis label font size (default: 18)
+- `min_steering`: Drop samples with `|u_s|` at or below this value
+- `dt`: Sample time [s] of the logs, passed to `calc_turn_rate`
+- `delay`: Steering transport delay [s], a scalar or one value per
+  log. `u_s` is shifted by this before plotting, so the turn rate is
+  paired with the steering that caused it (see `identify_turn_rate_law`).
+  Without it, every steering reversal opens a hysteresis loop in the
+  scatter and the fitted slope comes out too low.
+- `strides`: Plot every n-th sample, one value per log
 """
 function V3Kite.plot_yaw_rate_vs_steering(
         syslogs;
@@ -863,6 +871,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         labels=nothing, figsize=(600, 400),
         labelsize=18,
         min_steering=0.0, dt=0.01,
+        delay=0.0,
         strides=nothing)
     logs = syslogs isa Vector ? syslogs : [syslogs]
     n = length(logs)
@@ -874,6 +883,9 @@ function V3Kite.plot_yaw_rate_vs_steering(
     if isnothing(strides)
         strides = ones(Int, n)
     end
+    delays = delay isa Number ? fill(delay, n) : delay
+    length(delays) == n ||
+        throw(ArgumentError("delay must be a scalar or have one entry per log"))
 
     ylabel = source === :course ?
         L"|\dot{\chi}| \; [rad/s]" :
@@ -889,7 +901,7 @@ function V3Kite.plot_yaw_rate_vs_steering(
         sl = hasproperty(lg, :syslog) ? lg.syslog : lg
         rate = V3Kite.calc_turn_rate(lg; source, dt)
 
-        us = sl.steering[2:end]
+        us = V3Kite.shift_delay(sl.steering[2:end], round(Int, delays[i] / dt))
         mask = abs.(us) .> min_steering
         x_all = abs.(us[mask] .* sl.v_app[2:end][mask])
         y_all = abs.(rate[mask])

@@ -70,7 +70,7 @@ SIM_TIME         = 200.0    # Simulation time limit [s]; sized so the sweep ends
 DT               = 0.05/3     # Simulation timestep [s]
 V_WIND           = 9.51     # Ground wind speed at reference height [m/s]
 TETHER_LENGTH    = 150.0    # Initial tether length [m]
-DEPOWER_SETPOINT = 0.25     # Depower setting held during the run [-]
+DEPOWER_SETPOINT = 0.266     # Depower setting held during the run [-]
 
 # The damping the coefficients are identified AT. `BODY_SIM_DAMPING` is the one that
 # matters: `BODY_START_DAMPING` only shapes the settling transient, decaying to this

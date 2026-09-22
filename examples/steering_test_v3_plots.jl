@@ -37,6 +37,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using GLMakie
+import CairoMakie
 using MakieControlPlots
 using LaTeXStrings
 using V3Kite
@@ -72,6 +73,10 @@ i0 = searchsortedfirst(sl.time, r.t_start)
 rng = i0:searchsortedlast(sl.time, r.t_end)
 band = fill(HEADING_OFFSET, length(rng))
 
+# Figures for the paper are saved here, if the paper repo is checked out next
+# to this one.
+FIG_DIR = joinpath(@__DIR__, "..", "..", "LearningControl", "figures")
+
 @info "Plotting results..."
 p1 = plotx(
     sl.time[rng],
@@ -102,6 +107,32 @@ p1 = plotx(
 display(p1)
 sleep(0.1)  # Allow Makie to render the plot before continuing
 
+# The heading and steering sub-plots on their own: the relay excitation and
+# the actuator's response to it, without the surrounding flight state.
+p1b = plotx(
+    sl.time[rng],
+    [rad2deg.(wrap_to_pi.(sl.heading[rng])), band, -band],
+    [100.0 .* sl.set_steering[rng], 100.0 .* sl.steering[rng], 100.0 .* r.us_del];
+    xlabel = L"\mathrm{time}~[\mathrm{s}]",
+    ysize = 18,
+    legendsize = 16,
+    ylabels = [
+        L"\psi~[°]",
+        L"u_{\mathrm{s}}~[\%]",
+    ],
+    labels = [
+        [L"\psi", L"+\psi_\mathrm{band}", L"-\psi_\mathrm{band}"],
+        [L"u_{\mathrm{s,set}}", L"u_{\mathrm{s}}", L"u_{\mathrm{s,delayed}}"],
+    ],
+    fig = fig_name * " – heading and steering",
+)
+display(p1b)
+sleep(0.1)
+# `savefig` re-renders the most recently displayed plotx figure with CairoMakie.
+if isdir(FIG_DIR)
+    savefig(joinpath(FIG_DIR, "steering_response.pdf"))
+end
+
 # =============== GAIN SCATTER AND FIT ==================== #
 
 # both GLMakie and MakieControlPlots export `plot`, so it has to be qualified
@@ -124,9 +155,58 @@ display(p3)
 sleep(0.1)
 
 # Slope view, directly comparable to the flight-data and circle-sweep logs.
+# With the identified delay applied, the slope G_k should match c1.
 p4 = plot_yaw_rate_vs_steering(syslog; source = :heading, dt = DT,
-                               min_steering = MIN_STEERING_FIT)
+                               min_steering = MIN_STEERING_FIT,
+                               delay = r.delay_sec)
 display(p4)
 sleep(0.1)
+
+# ================= 3D VIEW OF THE TWO-TERM LAW ================= #
+
+# The two regressors of the fit, each scaled by its coefficient, so the fitted
+# law is the plane z = x + y. Measured turn rates that lie on that plane are
+# fully explained by the law; the vertical distance is the fit residual.
+x_steer = 1000 .* r.c1 .* r.v_app .* r.us_del
+y_grav  = 1000 .* r.c2 ./ r.v_app .* sin.(r.psi) .* cos.(r.beta)
+z_meas  = 1000 .* r.rate
+
+# A figure rendered by one backend cannot be re-rendered by another, so the
+# figure is built once per backend: GLMakie for display, CairoMakie for the PDF.
+function plot_law_3d(x_steer, y_grav, z_meas)
+    # Times-like font, matching the Copernicus class of the paper
+    fig = Figure(size = (900, 700),
+                 fonts = (; regular = "TeX Gyre Termes", bold = "TeX Gyre Termes Bold"))
+    ax = Axis3(fig[1, 1];
+        xlabel = L"c_1 v_{\mathrm{a}} u_{\mathrm{s}}~[\mathrm{mrad/s}]",
+        ylabel = L"c_2 / v_{\mathrm{a}} \sin\psi \cos\beta~[\mathrm{mrad/s}]",
+        zlabel = L"\dot{\psi}~[\mathrm{mrad/s}]",
+        xlabelsize = 20, ylabelsize = 20, zlabelsize = 20,
+        xticklabelsize = 16, yticklabelsize = 16, zticklabelsize = 16,
+        azimuth = -0.4π, elevation = 0.2π)
+    # a wireframe instead of a filled surface: Cairo draws a transparent
+    # surface as tiles with visible seams, the wireframe stays clean vector
+    xs = range(extrema(x_steer)...; length = 12)
+    ys = range(extrema(y_grav)...; length = 12)
+    wireframe!(ax, xs, ys, [x + y for x in xs, y in ys];
+        color = :gray50, linewidth = 0.8, label = "analytic")
+    scatter!(ax, x_steer, y_grav, z_meas; markersize = 4, color = :blue,
+        label = "measured")
+    axislegend(ax; position = :lt, labelsize = 18)
+    return fig
+end
+
+p5 = plot_law_3d(x_steer, y_grav, z_meas)
+display(GLMakie.Screen(), p5)
+sleep(0.1)
+
+# PDF for the paper, if the paper repo is checked out next to this one.
+if isdir(FIG_DIR)
+    CairoMakie.activate!()
+    CairoMakie.save(joinpath(FIG_DIR, "turn_rate_law_3d.pdf"),
+                    plot_law_3d(x_steer, y_grav, z_meas))
+    GLMakie.activate!()
+    @info "Saved 3D plot to $(normpath(FIG_DIR))/turn_rate_law_3d.pdf"
+end
 
 nothing
