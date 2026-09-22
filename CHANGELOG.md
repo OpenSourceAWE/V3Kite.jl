@@ -66,20 +66,18 @@
 ### Changed
 - `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
   artificial damping keys, as the VortexStepMethod release after v5.1.1 reads them.
-  That release measures `WINGTIP_DISTANCE` in `examples/v3beam_aero_geometry.jl` along
-  the span instead of along the leading edge.
-- `examples/v3beam_aero_geometry.jl` slices the V3 mesh at
-  `WINGTIP_DISTANCE = 0.15` instead of 0.05. The number is leading-edge arc
-  length, and 0.05 of it sliced the same sections as 0.0 would: the outermost
-  section pair sat on the tip cap, where the leading edge runs almost chordwise,
-  carrying 0.44 m of chord (17 % of the maximum) against 1.07 m one section
-  inboard. They now carry 0.87 m, the 33 % that the stock
-  `data/cfd_aero_geometry.yaml` has at its own tips, and the 37 sections cover
-  8.311 m of the 8.333 m span instead of 8.328 m. Every beam aero result moves
-  with it. `data/nf_aero_geometry.yaml` is not in git, so regenerate it and
-  rebuild the model once: a cached `model_*.bin` is named after the
-  SymbolicAWEModels version and the structural counts, not after the aero
-  geometry it was built from.
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh with that release, which
+  spreads the sections evenly over the span of the quarter-chord line and measures
+  `WINGTIP_DISTANCE` along it, where v5.1.1 used leading-edge arc length. 0.05 m of
+  arc length sliced the same sections as 0.0 would: the outermost section pair sat
+  on the tip cap, where the leading edge runs almost chordwise, carrying 0.44 m of
+  chord (17 % of the maximum) against 1.07 m one section inboard. 0.05 m of span
+  puts them on 0.87 m, the 33 % that the stock `data/cfd_aero_geometry.yaml` has at
+  its own tips, and the 37 sections cover 8.311 m of the 8.333 m span instead of
+  8.328 m. Every beam aero result moves with it. `data/nf_aero_geometry.yaml` is
+  not in git, so regenerate it and rebuild the model once: a cached `model_*.bin`
+  is named after the SymbolicAWEModels version and the structural counts, not
+  after the aero geometry it was built from.
 - `./bin/install` slices that geometry itself, after it has cleared the cached
   model and settled-state files, so that what an install leaves on disk is what
   the tracked scripts produce today rather than whatever a previous checkout
