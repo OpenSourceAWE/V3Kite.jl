@@ -272,14 +272,18 @@ end
 """
     apply_relaxed_state!(sys, path) -> Bool
 
-Restore the state logged at `path` onto `sys`, then place each tether at its
-`init_stretched_len` and derive its unstretched length from there, as `init!` does.
-Returns `false` when the log is missing or unreadable.
+Restore the state logged at `path` onto `sys`. Where the log's tether length differs
+from the one `sys` was placed at, place the tethers at their `init_stretched_len` and
+derive their unstretched lengths from there, as `init!` does. Returns `false` when
+the log is missing or unreadable.
 """
 function apply_relaxed_state!(sys, path)
     state = read_state_log(path)
     isnothing(state) && return false
+    placed_lengths = [tether.len for tether in sys.tethers]
     update_from_sysstate!(sys, state)
+    all(tether.len ≈ len for (tether, len) in zip(sys.tethers, placed_lengths)) &&
+        return true
     apply_tether_init_stretched_lens!(sys; prn=false)
     update_segment_lengths!(sys)
     apply_tether_init_forces!(sys)

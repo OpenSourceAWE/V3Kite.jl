@@ -5,7 +5,8 @@ using Test
 using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
-using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length
+using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
+    set_unstretched_length!, update_from_sysstate!
 
 @testset "V3Kite.jl" begin
 
@@ -302,16 +303,28 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length
 
     @testset "Relaxed state is placed unstrained at the tether's own length" begin
         config = load_settle("system_beam_replay.yaml")
+        state_path = project_file(config.project, config.kite_set.init_state)
+        state = V3Kite.read_state_log(state_path)
+
         sys = settling_struct(config)
         tether = sys.tethers[1]
         tether.init_stretched_len = 247.557
-        state_path = project_file(config.project, config.kite_set.init_state)
+        set_unstretched_length!(sys, tether, 247.557)
         @test V3Kite.apply_relaxed_state!(sys, state_path)
         segments = [sys.segments[idx] for idx in tether.segment_idxs]
         placed = sum(segment_world_length(segment, sys.points) for segment in segments)
         @test placed ≈ 247.557 atol=0.1
         @test tether.len ≈ placed
         @test sum(segment.l0 for segment in segments) ≈ tether.len
+
+        # At the length it was relaxed at, the state is restored as logged.
+        sys = settling_struct(config)
+        logged = settling_struct(config)
+        update_from_sysstate!(logged, state)
+        @test V3Kite.apply_relaxed_state!(sys, state_path)
+        @test sys.tethers[1].len == logged.tethers[1].len
+        @test all(point.pos_w == logged_point.pos_w
+                  for (point, logged_point) in zip(sys.points, logged.points))
     end
 
     include("test_ripple_metrics.jl")
