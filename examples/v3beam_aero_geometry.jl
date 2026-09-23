@@ -19,10 +19,10 @@ raised by 7.3 m, and `cfd_aero_geometry.yaml` was sliced from it — see
 `obj_to_yaml` rotates but does not translate, so slicing the raised copy at
 `rotation=I` is what puts the sections where the beam wing already is.
 
-The output is a few hundred MB of `Cp`/`cf` tables and is not in git, unlike the
-structural YAML and the relaxed state. `obj_to_yaml` reuses an existing
-`geometry.yaml`, so rerunning is free; `FORCE` regenerates, which is the slow
-NeuralFoil pass.
+The output, about 8 MB of Arrow tables, is not in git, unlike the structural YAML
+and the relaxed state. `obj_to_yaml` reuses an existing `geometry.yaml` and skips
+NeuralFoil, so after changing the slice set `FORCE` to regenerate the tables; the
+NeuralFoil pass takes under a minute.
 
 `DELTA_RANGE` is `nothing` because the V3 has no trailing-edge flap — it steers
 by bridle-induced wing twist — so the section tables are functions of angle of
