@@ -65,8 +65,8 @@
 
 ### Changed
 - `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
-  artificial damping keys, as the VortexStepMethod release after v5.1.1 reads them.
-- `examples/v3beam_aero_geometry.jl` slices the V3 mesh with that release, which
+  artificial damping keys, as VortexStepMethod v6 reads them.
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh with VortexStepMethod v6, which
   spreads the sections evenly over the span of the quarter-chord line and measures
   `WINGTIP_DISTANCE` along it, where v5.1.1 used leading-edge arc length. 0.05 m of
   arc length sliced the same sections as 0.0 would: the outermost section pair sat
