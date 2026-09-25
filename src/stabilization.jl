@@ -231,7 +231,7 @@ rather than crash.
 function read_state_log(path)
     isfile(path) || return nothing
     log = try
-        load_log(path)
+        load_log(path; frame=KA)
     catch err
         err isa InterruptException && rethrow()
         @warn "State log unreadable, using the placed geometry" path err
@@ -715,7 +715,8 @@ function settle_wing(config::V3SettleConfig, init_row;
                 rethrow(err)
             end
             try
-                syslog = load_log("settle_particle_dynamics_wing"; path=cache_path)
+                syslog = load_log("settle_particle_dynamics_wing";
+                    path=cache_path, frame=KA)
             catch
             end
         end
@@ -724,7 +725,6 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Load model from the settled state, or source
     # YAML if settling failed
     set = Settings(project_path(config.project; data_path))
-    set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
@@ -795,7 +795,6 @@ function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     set = Settings(project_path(config.project; data_path))
     set.g_earth = config.g_earth
-    set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
 

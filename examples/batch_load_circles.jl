@@ -16,6 +16,7 @@ end
 
 using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_GAIN
+using KiteUtils: KA
 using LinearAlgebra
 using Statistics
 using Dates
@@ -44,9 +45,8 @@ end
 # System construction
 # =============================================================================
 
-function build_sys(; v_wind=10.0, tether_length=150.0)
+function build_sys(; tether_length=150.0)
     settings = Settings("system_psm.yaml")
-    settings.v_wind = v_wind
     settings.l_tether = tether_length
     _, sys = create_v3_model("system_psm.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
@@ -162,7 +162,7 @@ function calculate_cs(sl, sys; rho=1.225, eps=1e-12)
         side_dir = side_raw / sn
         R = SymbolicAWEModels.quaternion_to_rotation_matrix(
             sl.orient[k])
-        Fw = R * sl.aero_force_b[k]
+        Fw = R * sl.aero_force_KA[k]
         cs[k] = dot(Fw, side_dir) /
                 (0.5 * rho * va_norm^2 * s_ref)
     end
@@ -388,8 +388,8 @@ function analyze_log(lg, sys; window_sec=COURSE_RATE_WINDOW_SEC)
         usva_at=Dict{Int,Float64}(),
         yaw_rate_at=Dict{Int,Float64}())
 
-    az = [sl.aero_force_b[i][3]
-          for i in eachindex(sl.aero_force_b)]
+    az = [sl.aero_force_KA[i][3]
+          for i in eachindex(sl.aero_force_KA)]
     aero_force = mean_last_window(az, sl.time;
         window_sec)
     v_app = mean_last_window(sl.v_app, sl.time;
@@ -674,7 +674,7 @@ function main()
         tags = parse_up_us_vw_lt(log_name)
         tags === nothing && continue
         up, us, vw, lt = tags
-        lg = load_log(log_name; path=batch_dir)
+        lg = load_log(log_name; path=batch_dir, frame=KA)
         m = analyze_log(lg, sys)
         push!(rows, (
             vw=vw, up=up, us=us, lt=lt,

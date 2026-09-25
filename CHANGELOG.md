@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Fixed
+- `batch_run_circles.jl` and `batch_run_zenith_then_circles.jl` ramp the wind speed
+  through `wind_vec`. The `v_wind` they assigned was discarded, because every
+  `sim_settings_*.yaml` sets `use_wind_vec: true`, and KiteUtils 0.13 makes that
+  assignment throw.
 - Power-zone settling falls back to a warm aero solve when the cold one misses
   the solver's tolerances. It repositions the transform and calls
   `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
@@ -64,6 +68,12 @@
   is regenerated here.
 
 ### Changed
+- BREAKING: the `bodies` table of a beam geometry names a body's own mass
+  `extra_mass`, as SymbolicAWEModels 0.19 reads it; the SurfplanAdapter writes it so,
+  and a file of your own still saying `mass` errors when it loads.
+- `read_state_log` and settling read a state log that declares no frame convention as
+  KiteUtils 0.13's `KA`, which is what SymbolicAWEModels wrote into it. Read as `KS`,
+  the default for such a log, the tracked relaxed states come back turned about 90 deg.
 - `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
   artificial damping keys, as VortexStepMethod v6 reads them.
 - `examples/v3beam_aero_geometry.jl` slices the V3 mesh with VortexStepMethod v6, which
