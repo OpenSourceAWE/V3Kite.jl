@@ -261,9 +261,9 @@ function calc_orient_quat(s::V3KITE; viewer=false)
         rotation = rot(pos_kite_, pos_before, -x)
     else
         x, y, z = kite_ref_frame(s) # in ENU reference
-        x = enu2ned(x)
-        y = enu2ned(y) 
-        z = enu2ned(z)
+        x = fromENU2NED(x)
+        y = fromENU2NED(y)
+        z = fromENU2NED(z)
 
         # reference frame for the orientation: NED (north, east, down)
         ax = @SVector [1, 0, 0]
