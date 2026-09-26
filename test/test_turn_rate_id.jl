@@ -98,6 +98,18 @@ end
         d, _ = estimate_delay(u, shift_delay(u, 5), dt; t_max = 5.0)
         @test d * dt ≈ 0.5
         @test_throws AssertionError estimate_delay(u, u[1:end-1], dt)
+        # A delay between two samples: d is the nearest whole sample, d_frac
+        # recovers the fraction, and a 3x decimated record reads the same delay.
+        f(t) = sin(0.3t) + 0.5cos(0.11t)
+        for τ in (2.4, 5.7, 9.0)
+            d, _, d_frac = estimate_delay(f.(1:600), f.((1:600) .- τ), dt)
+            @test d == round(Int, τ)
+            @test d_frac ≈ τ atol = 0.05
+            _, _, d3 = estimate_delay(f.(1:3:600), f.((1:3:600) .- τ), 3dt)
+            @test 3d3 ≈ τ atol = 0.15
+        end
+        # No neighbour below d = 0: no refinement
+        @test estimate_delay(u, u, dt)[3] == 0.0
     end
 
     @testset "turn_rate_gain" begin
@@ -223,7 +235,10 @@ end
 
         r = identify_turn_rate_law(sl; dt, t_start = 0.0, t_max_delay = 3.0)
         @test r.delay_samples == d_true
-        @test r.delay_sec ≈ d_true * dt
+        # Less the half sample the backward-difference turn rate lags by. The
+        # zero-filled tail of `lead` lowers the correlation one sample below the
+        # peak only, which skews the sub-sample refinement by a quarter sample.
+        @test r.delay_sec ≈ (d_true - 0.5) * dt atol = 0.3dt
         @test r.delay_corr > 0.99
         # Re-aligned, the fit is back on the true coefficients over the part of
         # the record that the shift did not blank out.

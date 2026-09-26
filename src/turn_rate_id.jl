@@ -58,7 +58,7 @@ function corr(a::AbstractVector, b::AbstractVector)
 end
 
 """
-    estimate_delay(u, y, dt; t_max=10.0) -> (d, corr)
+    estimate_delay(u, y, dt; t_max=10.0) -> (d, corr, d_frac)
 
 Delay of the response `y` behind the input `u`, in samples: the shift `d ≥ 0`
 that maximises the correlation between `u[1:end-d]` and `y[1+d:end]`, searched
@@ -70,6 +70,13 @@ Only non-negative delays are searched: the kite cannot respond before the tape
 moves, so a negative peak would indicate a sign or alignment error rather than
 a physical lead. Such a case shows up as `d = 0` with a poor correlation.
 
+The third value `d_frac` [samples] refines `d` below the sample time: the
+vertex of the parabola through the correlation at `d - 1`, `d` and `d + 1`.
+Without it the delay is quantized to `dt`, and a log decimated for archiving
+(every 3rd sample) reads a different delay than the full log of the same run.
+At `d = 0` or `d = d_max`, where the peak has no neighbour on one side,
+`d_frac = d`.
+
 This replaces `StatsBase.crosscor` used by the KiteModels version — the sign
 convention here is explicit, and the examples environment does not carry
 StatsBase.
@@ -79,14 +86,21 @@ function estimate_delay(u::AbstractVector, y::AbstractVector, dt::Real;
     n = length(u)
     @assert n == length(y) "estimate_delay: inputs must have equal length"
     d_max = min(n - 2, round(Int, t_max / dt))
+    shifted_corr(d) = corr(view(u, 1:n-d), view(y, 1+d:n))
     best_d, best_c = 0, -Inf
     for d in 0:d_max
-        c = corr(view(u, 1:n-d), view(y, 1+d:n))
+        c = shifted_corr(d)
         if c > best_c
             best_c, best_d = c, d
         end
     end
-    return best_d, best_c
+    d_frac = Float64(best_d)
+    if 0 < best_d < d_max
+        c_lo, c_hi = shifted_corr(best_d - 1), shifted_corr(best_d + 1)
+        curv = c_lo - 2best_c + c_hi
+        curv < 0 && (d_frac += clamp(0.5 * (c_lo - c_hi) / curv, -0.5, 0.5))
+    end
+    return best_d, best_c, d_frac
 end
 
 """
@@ -194,6 +208,14 @@ threshold, `t_max_delay` [s] the delay search range.
 
 The steering input is delayed by the identified transport delay before the fit,
 so `c1` is not diluted by the phase lag between tape motion and turn rate.
+That shift is whole samples (`delay_samples`). `delay_sec` is the delay in
+seconds, made independent of the log's sample time in two steps: the sub-sample
+peak (`d_frac` of [`estimate_delay`](@ref)), less half a sample, because
+`calc_turn_rate` is a backward difference aligned to `time[2:end]`, so each rate
+sample is the mean over the preceding interval, centred `dt/2` earlier than the
+time it is aligned to. Floored at 0. Without the half sample, a log decimated for
+archiving (every 3rd sample) read 11 ms more dead time than the full log of the
+same run (0.167 s against 0.156 s, 2026-09-26).
 
 Returns a NamedTuple with the analysis window arrays (`time`, `us`, `us_del`,
 `rate`, `v_app`, `psi`, `beta`, `G`, `us_est`), the delay (`delay_samples`,
@@ -219,7 +241,7 @@ function identify_turn_rate_law(sl; dt::Real, t_start::Real = 0.0,
     psi = wrap_to_pi.(sl.heading[rng][keep])
     beta = collect(sl.elevation[rng][keep])
 
-    d, d_corr = estimate_delay(us, rate ./ v_app, dt; t_max = t_max_delay)
+    d, d_corr, d_frac = estimate_delay(us, rate ./ v_app, dt; t_max = t_max_delay)
     us_del = shift_delay(us, d)
 
     gain = turn_rate_gain(us_del, rate, v_app; min_steering)
@@ -228,7 +250,7 @@ function identify_turn_rate_law(sl; dt::Real, t_start::Real = 0.0,
 
     return (time = time, us = us, us_del = us_del, rate = rate, v_app = v_app,
             psi = psi, beta = beta, G = gain.G, us_est = us_est,
-            delay_samples = d, delay_sec = d * dt, delay_corr = d_corr,
+            delay_samples = d, delay_sec = max(d_frac - 0.5, 0.0) * dt, delay_corr = d_corr,
             G_mean = gain.mean, G_std = gain.std, G_rel_std = gain.rel_std,
             n_gain = gain.n, min_steering = min_steering,
             c1 = fit.c1, c2 = fit.c2, se1 = fit.se1, se2 = fit.se2,
