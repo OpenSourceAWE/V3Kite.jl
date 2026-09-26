@@ -256,20 +256,36 @@ reinit_integrator!(sam; prn=true, lin_vsm=true) =
 """
     start_from_state!(sam, sys, path) -> Bool
 
-Restore the state logged at `path` onto `sys` and push it onto `sam`'s
-integrator, so a run starts where that log left off. Returns `false` when the log
-is missing or unreadable.
+Restore the state logged at `path` onto `sys` with [`apply_relaxed_state!`](@ref)
+and push it onto `sam`'s integrator, so a run starts where that log left off.
+Returns `false` when the log is missing or unreadable.
 
-Call after `init!`, not before: the log carries positions and velocities, and the
-rest lengths they belong with are the ones `init!` computes, so restoring first
-and skipping the recompute would pair a relaxed geometry with the rest lengths of
-the YAML instead.
+Call after `init!`, not before.
 """
 function start_from_state!(sam, sys, path)
+    apply_relaxed_state!(sys, path) || return false
+    reinit_integrator!(sam)
+    return true
+end
+
+"""
+    apply_relaxed_state!(sys, path) -> Bool
+
+Restore the state logged at `path` onto `sys`. Where the log's tether length differs
+from the one `sys` was placed at, place the tethers at their `init_stretched_len` and
+derive their unstretched lengths from there, as `init!` does. Returns `false` when
+the log is missing or unreadable.
+"""
+function apply_relaxed_state!(sys, path)
     state = read_state_log(path)
     isnothing(state) && return false
+    placed_lengths = [tether.len for tether in sys.tethers]
     update_from_sysstate!(sys, state)
-    reinit_integrator!(sam)
+    all(tether.len ≈ len for (tether, len) in zip(sys.tethers, placed_lengths)) &&
+        return true
+    apply_tether_init_stretched_lens!(sys; prn=false)
+    update_segment_lengths!(sys)
+    apply_tether_init_forces!(sys)
     return true
 end
 
