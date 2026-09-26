@@ -104,6 +104,49 @@ function estimate_delay(u::AbstractVector, y::AbstractVector, dt::Real;
 end
 
 """
+    estimate_delay_fit(us, rate, v_app, psi, beta, dt; t_max=10.0) -> (d, rms, d_frac)
+
+Delay of the turn rate behind the steering, in samples, as the shift `d >= 0` of
+`us` at which the full turn-rate law fits `rate` best: for each shift in
+`0 .. t_max/dt`, `c1` and `c2` are least-squares fitted on the samples the
+shift leaves ([`fit_c1_c2`](@ref)), and the shift with the smallest mean squared
+residual wins. Also returns that residual's RMS [rad/s] and, like
+[`estimate_delay`](@ref), `d_frac`: the vertex of the parabola through the mean
+squared residual at `d - 1`, `d` and `d + 1` (`d` itself at either end of the
+search).
+
+Unlike [`estimate_delay`](@ref) this accounts for the gravity term. At low
+airspeed it is a large part of the turn rate (48 % at `v_a` = 10 m/s), and in
+closed loop the steering the controller commands against it is correlated with
+it and leads it, so the plain cross-correlation of `us` with `rate/v_a` peaks at
+a negative delay and reads 0: measured 2026-09-26 on reel-out logs at 3.5-5 m/s
+of wind, where this fit finds 0.30-0.33 s.
+"""
+function estimate_delay_fit(us::AbstractVector, rate::AbstractVector,
+                            v_app::AbstractVector, psi::AbstractVector,
+                            beta::AbstractVector, dt::Real; t_max::Real = 10.0)
+    n = length(us)
+    @assert n == length(rate) == length(v_app) == length(psi) == length(beta) "estimate_delay_fit: inputs must have equal length"
+    d_max = min(n - 3, round(Int, t_max / dt))
+    grav = sin.(psi) .* cos.(beta) ./ v_app
+    function mse(d)
+        k = (1 + d):n
+        A = [v_app[k] .* view(us, k .- d) grav[k]]
+        r = view(rate, k) .- A * (A \ view(rate, k))
+        return sum(abs2, r) / length(k)
+    end
+    m = [mse(d) for d in 0:d_max]
+    i = argmin(m)
+    d = i - 1
+    d_frac = Float64(d)
+    if 1 < i < length(m)
+        curv = m[i - 1] - 2m[i] + m[i + 1]
+        curv > 0 && (d_frac += clamp(0.5 * (m[i - 1] - m[i + 1]) / curv, -0.5, 0.5))
+    end
+    return d, sqrt(m[i]), d_frac
+end
+
+"""
     shift_delay(u, d) -> Vector{Float64}
 
 `u` delayed by `d` samples: `d` leading zeros, the tail dropped so the length is
@@ -206,11 +249,15 @@ pre-excitation part of the run (constant zero steering, no information about
 either coefficient) is kept out of the fit. `min_steering` is the `G` mask
 threshold, `t_max_delay` [s] the delay search range.
 
-The steering input is delayed by the identified transport delay before the fit,
+The transport delay is the shift at which the full law fits best
+([`estimate_delay_fit`](@ref)), not the peak of the plain cross-correlation
+([`estimate_delay`](@ref)), which ignores the gravity term and reads 0 at low
+airspeed. `delay_corr` is the correlation of `us` with `rate/v_a` at that shift.
+The steering input is delayed by it before the fit,
 so `c1` is not diluted by the phase lag between tape motion and turn rate.
 That shift is whole samples (`delay_samples`). `delay_sec` is the delay in
 seconds, made independent of the log's sample time in two steps: the sub-sample
-peak (`d_frac` of [`estimate_delay`](@ref)), less half a sample, because
+minimum (`d_frac` of [`estimate_delay_fit`](@ref)), less half a sample, because
 `calc_turn_rate` is a backward difference aligned to `time[2:end]`, so each rate
 sample is the mean over the preceding interval, centred `dt/2` earlier than the
 time it is aligned to. Floored at 0. Without the half sample, a log decimated for
@@ -241,7 +288,9 @@ function identify_turn_rate_law(sl; dt::Real, t_start::Real = 0.0,
     psi = wrap_to_pi.(sl.heading[rng][keep])
     beta = collect(sl.elevation[rng][keep])
 
-    d, d_corr, d_frac = estimate_delay(us, rate ./ v_app, dt; t_max = t_max_delay)
+    d, _, d_frac = estimate_delay_fit(us, rate, v_app, psi, beta, dt; t_max = t_max_delay)
+    # The correlation at that shift, kept as the one-number check of whether the delay means anything.
+    d_corr = corr(view(us, 1:length(us)-d), view(rate ./ v_app, 1+d:length(us)))
     us_del = shift_delay(us, d)
 
     gain = turn_rate_gain(us_del, rate, v_app; min_steering)

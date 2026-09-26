@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `identify_turn_rate_law` finds the dead time from the full turn-rate law
+  (`estimate_delay_fit`, new): for each shift of the steering, `c1` and `c2` are
+  fitted, and the shift with the smallest residual wins. It took the peak of the
+  plain cross-correlation of the steering with `rate/v_a`, which ignores the
+  gravity term. At low airspeed that term is a large part of the turn rate
+  (48 % at `v_a` = 10 m/s), and in closed loop the steering the controller
+  commands against it leads it, so the correlation peaked at a negative delay
+  and read 0. Settled phase 4 of the 2026-09-26 reel-out scenarios at 3.5-11 m/s
+  of wind now reads 0.32 s at `v_a` = 10 m/s falling to 0.19-0.20 s at 30 m/s,
+  where it read 0 at 3.5-5 m/s and 0.05-0.15 s, 60-160 ms short, above.
+  `delay_corr` is now the correlation at the fitted shift. `estimate_delay` is
+  unchanged.
+
 ## V3Kite v1.4.0 26-09-2026
 
 ### Fixed
