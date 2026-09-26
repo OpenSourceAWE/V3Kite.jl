@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Fixed
+- `identify_turn_rate_law` no longer reads a longer dead time from a log with a
+  longer sample time. `delay_sec` was the whole-sample peak of the correlation,
+  and the turn rate it correlates against is a backward difference aligned to
+  the end of its interval, half a sample later than it is centred. A log thinned
+  to every 3rd sample for archiving read 0.167 s where the full log of the same
+  run read 0.156 s. `delay_sec` is now the correlation peak refined between
+  samples (`estimate_delay` returns it as a third value, `d_frac`), less half a
+  sample: 0.149 s and 0.148 s. `delay_samples`, the shift the c1/c2 fit uses, is
+  unchanged. A turn-rate table re-identified with this reads a delay half a
+  sweep sample shorter than before.
 - Power-zone settling falls back to a warm aero solve when the cold one misses
   the solver's tolerances. It repositions the transform and calls
   `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
