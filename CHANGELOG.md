@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.4.0 26-09-2026
 
 ### Fixed
 - `identify_turn_rate_law` no longer reads a longer dead time from a log with a
