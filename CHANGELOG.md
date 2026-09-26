@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.4.1 26-09-2026
 
 ### Fixed
 - `identify_turn_rate_law` finds the dead time from the full turn-rate law
