@@ -94,7 +94,7 @@ export COURSE_RATE_WINDOW_SEC
 
 # Turn-rate-law identification exports
 export identify_turn_rate_law, format_turn_rate_report
-export estimate_delay, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
+export estimate_delay, estimate_delay_fit, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
 
 # AoA-ripple analysis exports
 export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report,

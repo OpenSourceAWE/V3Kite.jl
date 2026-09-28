@@ -98,6 +98,40 @@ end
         d, _ = estimate_delay(u, shift_delay(u, 5), dt; t_max = 5.0)
         @test d * dt ≈ 0.5
         @test_throws AssertionError estimate_delay(u, u[1:end-1], dt)
+        # A delay between two samples: d is the nearest whole sample, d_frac
+        # recovers the fraction, and a 3x decimated record reads the same delay.
+        f(t) = sin(0.3t) + 0.5cos(0.11t)
+        for τ in (2.4, 5.7, 9.0)
+            d, _, d_frac = estimate_delay(f.(1:600), f.((1:600) .- τ), dt)
+            @test d == round(Int, τ)
+            @test d_frac ≈ τ atol = 0.05
+            _, _, d3 = estimate_delay(f.(1:3:600), f.((1:3:600) .- τ), 3dt)
+            @test 3d3 ≈ τ atol = 0.15
+        end
+        # No neighbour below d = 0: no refinement
+        @test estimate_delay(u, u, dt)[3] == 0.0
+    end
+
+    @testset "estimate_delay_fit" begin
+        # A kite whose turn rate is half gravity: the law with a known delay,
+        # integrated forward so the heading (and with it the gravity term) is real.
+        dt, n, d_true = 0.05, 2000, 6
+        c1, c2, va, beta = 0.2, 2.5, 10.0, deg2rad(30.0)
+        u = [0.1sin(0.07k) + 0.05sin(0.23k + 1) + 0.03sin(0.51k + 2) for k in 1:n]
+        psi = zeros(n); rate = zeros(n)
+        for k in 1:n
+            rate[k] = c1 * va * (k > d_true ? u[k - d_true] : 0.0) + c2 / va * sin(psi[k]) * cos(beta)
+            k < n && (psi[k + 1] = psi[k] + rate[k] * dt)
+        end
+        vas, betas = fill(va, n), fill(beta, n)
+        d, rms, d_frac = estimate_delay_fit(u, rate, vas, psi, betas, dt; t_max = 2.0)
+        @test d == d_true
+        @test rms < 1e-10
+        @test d_frac ≈ d_true atol = 0.1
+        # No delay: found as 0, with nothing to refine below it.
+        rate0 = c1 * va .* u .+ c2 / va .* sin.(psi) .* cos(beta)
+        @test estimate_delay_fit(u, rate0, vas, psi, betas, dt; t_max = 2.0)[[1, 3]] == (0, 0.0)
+        @test_throws AssertionError estimate_delay_fit(u, rate[1:end-1], vas, psi, betas, dt)
     end
 
     @testset "turn_rate_gain" begin
@@ -223,7 +257,11 @@ end
 
         r = identify_turn_rate_law(sl; dt, t_start = 0.0, t_max_delay = 3.0)
         @test r.delay_samples == d_true
-        @test r.delay_sec ≈ d_true * dt
+        # Less the half sample the backward-difference turn rate lags by. The
+        # zero-filled tail of `lead` enters the fit one sample below the true
+        # shift only, where it is a large residual against an exact zero at the
+        # true shift, so the sub-sample refinement runs to its half-sample clamp.
+        @test r.delay_sec ≈ (d_true - 0.5) * dt atol = 0.5dt
         @test r.delay_corr > 0.99
         # Re-aligned, the fit is back on the true coefficients over the part of
         # the record that the shift did not blank out.

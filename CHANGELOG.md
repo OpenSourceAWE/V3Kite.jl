@@ -1,12 +1,34 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.4.1 26-09-2026
 
 ### Fixed
-- `batch_run_circles.jl` and `batch_run_zenith_then_circles.jl` ramp the wind speed
-  through `wind_vec`. The `v_wind` they assigned was discarded, because every
-  `sim_settings_*.yaml` sets `use_wind_vec: true`, and KiteUtils 0.13 makes that
-  assignment throw.
+- `identify_turn_rate_law` finds the dead time from the full turn-rate law
+  (`estimate_delay_fit`, new): for each shift of the steering, `c1` and `c2` are
+  fitted, and the shift with the smallest residual wins. It took the peak of the
+  plain cross-correlation of the steering with `rate/v_a`, which ignores the
+  gravity term. At low airspeed that term is a large part of the turn rate
+  (48 % at `v_a` = 10 m/s), and in closed loop the steering the controller
+  commands against it leads it, so the correlation peaked at a negative delay
+  and read 0. Settled phase 4 of the 2026-09-26 reel-out scenarios at 3.5-11 m/s
+  of wind now reads 0.32 s at `v_a` = 10 m/s falling to 0.19-0.20 s at 30 m/s,
+  where it read 0 at 3.5-5 m/s and 0.05-0.15 s, 60-160 ms short, above.
+  `delay_corr` is now the correlation at the fitted shift. `estimate_delay` is
+  unchanged.
+
+## V3Kite v1.4.0 26-09-2026
+
+### Fixed
+- `identify_turn_rate_law` no longer reads a longer dead time from a log with a
+  longer sample time. `delay_sec` was the whole-sample peak of the correlation,
+  and the turn rate it correlates against is a backward difference aligned to
+  the end of its interval, half a sample later than it is centred. A log thinned
+  to every 3rd sample for archiving read 0.167 s where the full log of the same
+  run read 0.156 s. `delay_sec` is now the correlation peak refined between
+  samples (`estimate_delay` returns it as a third value, `d_frac`), less half a
+  sample: 0.149 s and 0.148 s. `delay_samples`, the shift the c1/c2 fit uses, is
+  unchanged. A turn-rate table re-identified with this reads a delay half a
+  sweep sample shorter than before.
 - Power-zone settling falls back to a warm aero solve when the cold one misses
   the solver's tolerances. It repositions the transform and calls
   `reinit_integrator!` each step, and `SymbolicAWEModels.reinit!` defaults to
@@ -68,26 +90,18 @@
   is regenerated here.
 
 ### Changed
-- BREAKING: the `bodies` table of a beam geometry names a body's own mass
-  `extra_mass`, as SymbolicAWEModels 0.19 reads it; the SurfplanAdapter writes it so,
-  and a file of your own still saying `mass` errors when it loads.
-- `read_state_log` and settling read a state log that declares no frame convention as
-  KiteUtils 0.13's `KA`, which is what SymbolicAWEModels wrote into it. Read as `KS`,
-  the default for such a log, the tracked relaxed states come back turned about 90 deg.
-- `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
-  artificial damping keys, as VortexStepMethod v6 reads them.
-- `examples/v3beam_aero_geometry.jl` slices the V3 mesh with VortexStepMethod v6, which
-  spreads the sections evenly over the span of the quarter-chord line and measures
-  `WINGTIP_DISTANCE` along it, where v5.1.1 used leading-edge arc length. 0.05 m of
-  arc length sliced the same sections as 0.0 would: the outermost section pair sat
-  on the tip cap, where the leading edge runs almost chordwise, carrying 0.44 m of
-  chord (17 % of the maximum) against 1.07 m one section inboard. 0.05 m of span
-  puts them on 0.87 m, the 33 % that the stock `data/cfd_aero_geometry.yaml` has at
-  its own tips, and the 37 sections cover 8.311 m of the 8.333 m span instead of
-  8.328 m. Every beam aero result moves with it. `data/nf_aero_geometry.yaml` is
-  not in git, so regenerate it and rebuild the model once: a cached `model_*.bin`
-  is named after the SymbolicAWEModels version and the structural counts, not
-  after the aero geometry it was built from.
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh at
+  `WINGTIP_DISTANCE = 0.15` instead of 0.05. The number is leading-edge arc
+  length, and 0.05 of it sliced the same sections as 0.0 would: the outermost
+  section pair sat on the tip cap, where the leading edge runs almost chordwise,
+  carrying 0.44 m of chord (17 % of the maximum) against 1.07 m one section
+  inboard. They now carry 0.87 m, the 33 % that the stock
+  `data/cfd_aero_geometry.yaml` has at its own tips, and the 37 sections cover
+  8.311 m of the 8.333 m span instead of 8.328 m. Every beam aero result moves
+  with it. `data/nf_aero_geometry.yaml` is not in git, so regenerate it and
+  rebuild the model once: a cached `model_*.bin` is named after the
+  SymbolicAWEModels version and the structural counts, not after the aero
+  geometry it was built from.
 - `./bin/install` slices that geometry itself, after it has cleared the cached
   model and settled-state files, so that what an install leaves on disk is what
   the tracked scripts produce today rather than whatever a previous checkout
