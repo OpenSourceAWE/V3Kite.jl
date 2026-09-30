@@ -253,8 +253,7 @@ end
 """
     build_v3_model(project; data_path=nothing, remake_model=nothing,
                    remake_settled_state=nothing, kite_set=nothing,
-                   settle=nothing, cache_path=default_cache_path(data_path))
-        -> (sam, sys)
+                   settle=nothing, cache_path=nothing) -> (sam, sys)
 
 Bring up the model a project file describes, ready to step. Both `remake` flags
 default to the project's `remake_model` / `remake_settled_state`; they are
@@ -267,12 +266,14 @@ geometry instead, for a kite already relaxed at the depower it is flown at —
 restoring after `init!` rather than before, so the rest lengths stay the ones the
 state was relaxed against.
 
-The model binary, the settled state and the settling log go to `cache_path`.
+The model binary, the settled state and the settling log go to `cache_path`
+(default [`default_cache_path`](@ref)`(data_path)`).
 """
 function build_v3_model(project; data_path=nothing, remake_model=nothing,
                         remake_settled_state=nothing, kite_set=nothing, settle=nothing,
-                        cache_path=default_cache_path(data_path))
+                        cache_path=nothing)
     data_path = project_data_path(project, data_path)
+    isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     set_data_path(data_path)
     isnothing(kite_set) && (kite_set = load_kite(project; data_path))
     isnothing(remake_model) && (remake_model = kite_set.remake_model)

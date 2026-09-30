@@ -58,14 +58,15 @@ syslog = load_log(log_name)
 # =============================================================================
 
 @info "Creating visualization..."
-sl = syslog.syslog
-plot_window = plotx(sl.time,
-    rad2deg.(sl.elevation),
-    rad2deg.(sl.azimuth),
-    [rad2deg.(wrap_to_pi.(sl.heading)), rad2deg.(sl.bearing), rad2deg.(sl.course)],
-    100.0 .* sl.steering,
-    rad2deg.(sl.AoA),
-    first.(sl.winch_force);
+states = syslog.syslog
+plot_window = plotx(states.time,
+    rad2deg.(states.elevation),
+    rad2deg.(states.azimuth),
+    [rad2deg.(wrap_to_pi.(states.heading)), rad2deg.(states.bearing),
+        rad2deg.(states.course)],
+    100.0 .* states.steering,
+    rad2deg.(states.AoA),
+    first.(states.winch_force);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 18,
     legendsize = 16,

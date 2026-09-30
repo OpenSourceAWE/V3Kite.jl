@@ -15,14 +15,12 @@
     @test count(element -> element.member === :leading_edge, elements) == 11
     @test count(element -> element.member === :strut, elements) == 10
 
-    # The centre leading-edge bay is the thickest tube, so the stiffest element.
     stiffest = elements[argmax([element.EI for element in elements])]
     @test stiffest.name === :le_beam_5
     @test stiffest.EI ≈ 605.0797
     @test abs(stiffest.span) < 1e-9
     @test stiffest.radius ≈ 0.1008
 
-    # The wing is symmetric about its centre plane.
     leading_edge = sort(filter(element -> element.member === :leading_edge, elements);
         by = element -> element.span)
     @test [element.EI for element in leading_edge] ≈
