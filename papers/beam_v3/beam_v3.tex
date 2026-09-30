@@ -1,0 +1,173 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+
+\input{results.tex}
+
+\title{A dynamic beam-element model of a leading-edge inflatable kite}
+\author{Bart van de Lint \and Jelle A.\,W. Poland}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Dynamic models of leading-edge inflatable (LEI) kites that are fast enough to fly in closed loop represent the wing as a lattice of point masses and springs, and the stiffness of the inflated tubes enters them only through that lattice. We describe a model in which the tubes are beams and which still flies in closed loop: the leading edge and struts of the TU Delft V3 kite are chains of rigid bodies joined by co-rotational Timoshenko beam elements, whose rigidities follow from the tube radius and inflation pressure, and the canopy and the measured bridle hang off the deformed beam centrelines. The model is assembled in SymbolicAWEModels.jl, coupled to a vortex-step aerodynamic model that loads the structure with a surface pressure distribution, and flown under a heading controller. We describe how the structure is built, where its parameters come from and how the model is brought to a flying state, which for the beam model does not yet converge, and we compare it with the particle model of the same kite on one manoeuvre: what each predicts and what each costs to run.
+\end{abstract}
+
+\section{Introduction}
+
+An LEI kite carries its aerodynamic load on an inflated tubular frame: a leading-edge tube and a set of struts, spanned by a single-skin canopy and held by a bridle line system. How that frame bends and twists sets the shape the wing flies at, and with it the lift, the steering response and the load the tether carries.
+
+Two families of models are in use. Particle system models (PSM) lump the wing into a few dozen point masses connected by springs, which makes them cheap enough to fly in closed loop and to replay flight tests~\cite{vandelint2026,poland2026}. Their springs do not carry bending or torsion, so the stiffness of the tubes appears only indirectly, through the diagonal springs chosen to keep the lattice in shape. Breukels derived empirical bending and torsion rigidities for inflated fabric tubes~\cite{breukels2011}. To our knowledge, no model that represents the tubes as beam elements with these rigidities has been flown dynamically in closed loop, with a controller, a tether and a winch.
+
+This paper describes a model between the two: the V3 kite of TU Delft with its leading edge and struts modelled as dynamic Timoshenko beams~\cite{timoshenko1921}, its canopy and bridle as particles and springs, and the whole flown dynamically with the controllers, winch and tether of the particle model. Section~\ref{sec:model} describes the structure and how it is coupled to the canopy, the bridle and the aerodynamics. Section~\ref{sec:structure} describes where the structural parameters come from and how the model reaches a flying state. Section~\ref{sec:flight} flies the beam and the particle model through the same manoeuvre and compares their results and cost. Section~\ref{sec:limits} states what has not been validated yet.
+
+The model is part of V3Kite.jl~\cite{v3kite}, built on SymbolicAWEModels.jl~\cite{symbolicawemodels} and VortexStepMethod.jl~\cite{vortexstepmethod}. A companion paper compares aerodynamic couplings on both the particle and the beam model; the beam model's aerodynamic coupling is only summarised here.
+
+\section{Model}
+\label{sec:model}
+
+\subsection{Topology}
+
+Figure~\ref{fig:structure} shows both models of the V3 kite. The beam model's frame consists of 22 rigid bodies: one at the leading-edge and one at the trailing-edge end of each of the ten struts, plus one extra leading-edge body in each tip bay. Each body is a node of the beam structure with six degrees of freedom. Twenty-one Timoshenko elements connect them: eleven along the leading edge and one along each strut, from its leading-edge node to its trailing-edge node. Every other point on the wing moves with a beam element, so the frame adds no point-mass degrees of freedom of its own.
+
+The canopy is represented by eleven control points along each strut chord. These points ride the deformed beam centreline and are connected by trailing-edge, spanwise and diagonal cross springs. The bridle is taken from the measured 2025 V3 bridle geometry, and its lines end on the wing at the beam point nearest to the measured attachment. The kite control unit (KCU) is a point mass that holds the steering and depower tapes, and the tether is discretised into six segments on a winch. The beam model has \NPointsBeam{} points, of which \NDynamicPointsBeam{} carry their own translational degrees of freedom: the bridle knots, the KCU and the tether. It has \NSegmentsBeam{} spring segments and \NPulleysBeam{} pulleys. The particle model of the same kite has \NPointsPsm{} points, of which \NDynamicPointsPsm{} are dynamic, \NSegmentsPsm{} segments and \NPulleysPsm{} pulleys. After symbolic reduction the beam model integrates \NStatesBeam{} states against \NStatesPsm{} for the particle model.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.48\textwidth]{figures/structure_psm.png}\hfill
+  \includegraphics[width=0.48\textwidth]{figures/structure_beam.png}
+  \caption{The particle model (left) and the beam model (right) of the V3 kite at the end of settling. In the beam model the leading edge and struts are drawn as tubes of the element radius; the lines are the canopy springs and the bridle, cut off below the wing.}
+  \label{fig:structure}
+\end{figure}
+
+\subsection{Beam element}
+
+Each element joins two node bodies $a$ and $b$ and is formulated co-rotationally~\cite{crisfield1990}. An element frame is attached to the chord between the nodes. Its first axis runs along the chord and its second is the $y$ axis of node $a$ projected normal to the chord. The rigid motion of the element is carried by this frame. The deformation is what remains: the axial stretch $\delta$ of the chord, and the rotations $\theta_a$, $\theta_b$ of each node relative to its orientation at rest, taken from the skew-symmetric part of the relative rotation matrix. On these small local deformations the element is linear. With $L$ the rest length, $k$ the shear coefficient and
+\begin{equation}
+  \Phi = \frac{12\,EI}{k\,GA\,L^2},
+\end{equation}
+each bending plane has the end moments
+\begin{equation}
+  \begin{pmatrix} M_a \\ M_b \end{pmatrix} = \frac{EI}{L(1+\Phi)}
+  \begin{pmatrix} 4+\Phi & 2-\Phi \\ 2-\Phi & 4+\Phi \end{pmatrix}
+  \begin{pmatrix} \theta_a \\ \theta_b \end{pmatrix},
+\end{equation}
+with the end shear force $6EI\,(\theta_a+\theta_b)/(L^2(1+\Phi))$ that balances them. The torsional moment is $GJ\,(\theta_{x,b}-\theta_{x,a})/L$ and the axial force is $EA\,\delta/L$. The wrench is rotated back from the element frame and applied to the two bodies. For $\Phi\to0$ this reduces to the Euler--Bernoulli element. Inflated tubes are soft in shear compared to their bending stiffness: for the leading-edge elements $\Phi$ lies between \ShearRatioMin{} and \ShearRatioMax{}, the fraction that shear adds to their bending compliance.
+
+Damping is of Rayleigh type, with a damping matrix proportional to the stiffness matrix, $C=\beta K$. The same wrench is evaluated at $\beta$ times the deformation rates, after the spin of the element frame has been subtracted from those rates, so rigid-body motion is not damped. Each element's $\beta=2\zeta/\omega$ is set for a damping ratio $\zeta=1$ at its first transverse mode, $\omega=\sqrt{12\,EI/(L^3 m)}$, where $m$ is the smaller of the two node masses. In flight all $\beta$ are scaled up by a factor 45 (Section~\ref{sec:structure}).
+
+\subsection{Inflated-tube rigidities}
+
+The rigidities of each element follow from its tube radius $r$ and the inflation pressure $p=\SI{0.3}{bar}$, through Breukels' empirical correlations for inflated fabric tubes~\cite{breukels2011}. The torsional rigidity $GJ$ comes from Breukels' torsion law, linearised at zero twist. The shear rigidity $GA$ follows from $GJ$ through the thin-walled tube relation $GA = GJ\,A/J$, with $J=\pi r^4/2$. The bending rigidity follows from Breukels' initial slope $s$ of the tip load against tip deflection, corrected for shear, $EI = s/(3(1-s/(k\,GA)))$, with $k=8/9$ for a thin-walled tube. The axial rigidity is $EA=EI\,A/I$.
+
+The radius varies along each tube. Because $EI$ scales approximately with $r^3$, each element takes the harmonic mean of $r^3$ over its length. Figure~\ref{fig:rigidities} shows the result. The bending rigidity of the leading edge falls from \SI{\LeadingEdgeMaxEi}{N\,m^2} at mid-span ($r=\SI{\LeadingEdgeMaxRadius}{m}$) to \SI{\LeadingEdgeMinEi}{N\,m^2} in the tip bay ($r=\SI{\LeadingEdgeMinRadius}{m}$). The struts are thinner and \StrutRatioMin{} to \StrutRatioMax{} times less stiff in bending than the leading edge at the span where they meet it.
+
+The tubes wrinkle and eventually collapse under large bending. Comer and Levy's wrinkled-section theory~\cite{comer1963} gives a bending law that softens past the wrinkling moment, and it can be installed on every element in place of the constant $EI$. The results in this paper use the linear rigidities.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/beam_rigidities.png}
+  \caption{Bending ($EI$) and torsional ($GJ$) rigidity of the beam elements along the span, for the leading edge (LE) and the struts, from Breukels' correlations at \SI{0.3}{bar}.}
+  \label{fig:rigidities}
+\end{figure}
+
+\subsection{Coupling to canopy and bridle}
+
+A point on the wing is attached to one element at a fraction $s\in[0,1]$ of its length. Its position is the element's cubic Hermite centreline at $s$, built from the positions and rotations of the two node bodies. Its velocity follows by differentiating that position. The force a spring or the aerodynamics applies to the point is passed to the two node bodies with weights $(1-s,\,s)$, together with the moment of that force about each node. The canopy control points are attached in this way, and so is every bridle attachment. The spring network of the canopy is therefore loaded through the bending and twisting of the frame, and the bridle pulls on the frame where the real bridle does rather than at the nearest node.
+
+The node masses are lumped from the tube and canopy mass and scaled to the wing mass of the design export. Each node's rotational inertia is that of a rod of half the element length plus a ring of the tube radius.
+
+\subsection{Aerodynamics}
+
+The aerodynamic loads come from VortexStepMethod.jl~\cite{vortexstepmethod}, with the wing described by 37 sections cut from the V3 surface geometry. Section polars are computed with NeuralFoil~\cite{neuralfoil}. The beam model uses the pressure coupling: each panel's load is spread over the wing surface as a chordwise pressure distribution and collected at the 130 points on the wing, which pass it on to the beams. The particle model applies the panel forces to its wing points and linearises them between solves (the continuous coupling). Both are described in detail in the companion paper on aerodynamic coupling.
+
+\section{Structure: parameters and settling}
+\label{sec:structure}
+
+\subsection{Where the parameters come from}
+
+No stiffness in the beam model has been fitted to a measurement of the V3 kite. The tube radii and the wing mass come from the kite's design export, the pressure from the measured bridle file, and all four rigidities from Breukels' correlations. What has been checked is the parts they are built from. In SymbolicAWEModels.jl's test suite, a single Timoshenko element is compared against the analytical tip deflection of a cantilever, $PL^3/(3EI)+PL/(kGA)$, and against the axial and torsional cases. A point riding a bent element is also checked to follow its centreline. The tube laws are compared with the reference implementation of the same correlations in the kite finite-element code to within $10^{-9}$.
+
+The measured bridle line lengths and node coordinates come from different sources and do not agree: several lines would start above 100\% strain, with initial accelerations near \SI{5e7}{m/s^2}, which the implicit solver cannot take a single step from. The geometry is therefore relaxed once, before any flight. Every spring stiffness is scaled down to $10^{-4}$ of its nominal value and raised by a factor 1.35 each time the largest acceleration in the structure has fallen below \SI{50}{m/s^2}, with heavy damping on all points and bodies that decays once full stiffness is reached. The rest lengths are kept; the resulting state, relaxed at 20\% depower, is stored and every beam flight starts from it.
+
+\subsection{Settling to a flying state}
+
+A flight starts from a settled state. The kite is placed at the flight condition (\SI{250}{m} tether, \SI{60}{\degree} elevation, \SI{15.4}{m/s} wind) and integrated in steps of \SI{0.05}{s}, while the depower ramps down to the flight setting from ten points above it and a heading hold keeps the kite pointing at the zenith. Added damping decays to its flight value over the first part of the run: on the particles for both models, and for the beam model also on the node bodies, both their translation and their rotation. The particle model settles for 40 steps with the damping decaying over 30. The beam model settles for 300 steps with the damping decaying over 200. The settled state is cached and reused by every flight at the same condition.
+
+Figure~\ref{fig:settling} shows both transients. The particle model ends its \SettleTimePsm{}\,s of settling at \SettleEndForcePsm{}\,N. The beam model does not settle. After \SettleTimeBeam{}\,s its tether force is \SettleEndForceBeam{}\,N and still rising by \SettleEndForceRateBeam{}\,N/s over its last second, and the apparent wind speed has more than doubled. The flight in Section~\ref{sec:flight} starts from this state, which is where its start-up transient comes from. The same failure to converge is known from settling the beam model at a recorded flight state (Section~\ref{sec:limits}).
+
+Rayleigh damping at $\zeta=1$ per element is not enough to keep the beam wing flying. Under flight loads the chordwise bending modes of the struts grow until the implicit solver stalls, so in flight every element's $\beta$ is multiplied by 45. At a factor of 5 the chord modes are no longer damped enough and the kite overshoots its heading setpoint instead of holding it. The factor of 45 therefore sets the structural damping of the beam model in flight, and it has not been identified from measurement.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.8\textwidth]{figures/settling.png}
+  \caption{Apparent wind speed and tether force while the particle and the beam model settle at the flight condition.}
+  \label{fig:settling}
+\end{figure}
+
+\section{Flight: beam against particle model}
+\label{sec:flight}
+
+Both models fly the same manoeuvre, with the tether length held constant: \SI{60}{s} with the heading PID tracking a sine setpoint of \SI{40}{\degree} amplitude and \SI{30}{s} period. Both use a proportional-only heading controller with the same gain and a steering limit of 15\%, and both run at a time step of \SI{0.05}{s}. The particle model solves its aerodynamics every fifth step and the beam model at every step. The two do not fly at the same depower: the beam model at 20\%, which its relaxed state fixes, and the particle model at 30\%, its own default. The comparison is therefore of the two models as they are set up to fly, not at one operating point.
+
+Figure~\ref{fig:flight} shows the two flights. The beam model starts from its unsettled state at \SI{\StartForceBeam}{kN}, which falls below the peak force of the second half of the flight within \SI{\TransientTimeBeam}{s}. After that, both models track the heading setpoint closely, and their tether forces stay in the same range but peak at different times in the manoeuvre. Table~\ref{tab:flight} summarises both over the second half of the run.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/flight.png}
+  \caption{The heading manoeuvre flown by the particle and the beam model: apparent wind speed, angle of attack, heading and tether force.}
+  \label{fig:flight}
+\end{figure}
+
+\begin{table}[t]
+  \centering
+  \caption{The heading manoeuvre over the second half of the run, and what each model costs. Cost is wall time over simulated time for the flight loop, on a shared machine. Setup is building and settling the model from an empty cache, in a Julia session that has compiled the model before.}
+  \label{tab:flight}
+  \begin{tabular}{lrr}
+    \toprule
+    & particle & beam \\
+    \midrule
+    mean tether force [N] & \MeanForcePsm & \MeanForceBeam \\
+    peak tether force [N] & \PeakForcePsm & \PeakForceBeam \\
+    mean angle of attack [\si{\degree}] & \MeanAoaPsm & \MeanAoaBeam \\
+    RMS heading error [\si{\degree}] & \HeadingRmsPsm & \HeadingRmsBeam \\
+    \midrule
+    states & \NStatesPsm & \NStatesBeam \\
+    cost [s per simulated s] & \CostPerSecondPsm & \CostPerSecondBeam \\
+    setup [s] & \BuildTimePsm & \BuildTimeBeam \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Figure~\ref{fig:twist} compares the two wings' twist distributions at the end of the run, when the setpoint crosses zero.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/twist.png}
+  \caption{Spanwise twist of the particle and the beam wing at the end of the manoeuvre.}
+  \label{fig:twist}
+\end{figure}
+
+\section{What is not validated yet}
+\label{sec:limits}
+
+The beam model has not yet been compared with flight data. Replayed on the recorded steering and depower of a 2025 test flight, it does not settle at the recorded flight state. At the recorded depower, the beam wing's equilibrium has an angle of attack about \SI{15}{\degree} below the one in the log, and the settling course hold swings around it without converging. This deficit, and the stiffness and damping it may point to, are the subject of the next step. Until then, the comparison in Section~\ref{sec:flight} shows how the two models of the same kite differ, not which one is closer to the real kite.
+
+Three further parameters are chosen rather than identified. First, the rigidities come from a correlation for generic inflated tubes. Second, the structural damping in flight is 45 times the damping chosen per element. Third, the canopy springs have a fixed stiffness of \SI{1000}{N/m} per metre of rest length. Deflection measurements of the V3 frame under a known load would identify the first, and photogrammetry of the wing in flight, which exists for seven frames of the 2025 test flights, would test all three.
+
+\section{Conclusions}
+
+We have described a dynamic model of an LEI kite in which the leading edge and struts are co-rotational Timoshenko beams, with rigidities from Breukels' inflated-tube correlations, and the canopy and the measured bridle ride the deformed beam centrelines. The model flies in closed loop with the same controllers, tether and winch as the particle model of the same kite. It costs \CostPerSecondBeam{} s of wall time per simulated second, against \CostPerSecondPsm{} s for the particle model. Its stiffness comes from the tube geometry and pressure rather than from tuning a spring lattice. Whether the deformation it predicts matches the real kite in flight remains to be shown against flight data and photogrammetry.
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}
