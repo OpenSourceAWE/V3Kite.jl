@@ -243,6 +243,29 @@ function set_damping_per_stiffness!(sys, seg_idxs, ratio)
 end
 
 """
+    beam_rigidities(sys) -> Vector{NamedTuple}
+
+One row per `TimoshenkoJoint` of `sys`: `name`, `member` (`:leading_edge` or
+`:strut`), `span` (mean y of its two node bodies in CAD [m]), `length` between
+those bodies [m], tube `radius` [m], and the rigidities `EA`, `GA` [N], `GJ`,
+`EI` [N·m²]. A rigidity given as a law is evaluated at zero deformation.
+"""
+function beam_rigidities(sys)
+    rigidity(value) = value isa Real ? Float64(value) : Float64(value(0.0))
+    return map(sys.timoshenko_joints) do joint
+        pos_a = sys.bodies[joint.body_a_idx].pos_cad
+        pos_b = sys.bodies[joint.body_b_idx].pos_cad
+        (name = joint.name,
+         member = startswith(String(joint.name), "strut") ? :strut : :leading_edge,
+         span = (pos_a[2] + pos_b[2]) / 2,
+         length = norm(pos_b - pos_a),
+         radius = joint.radius,
+         EA = rigidity(joint.EA), GA = rigidity(joint.GA), GJ = rigidity(joint.GJ),
+         EI = rigidity(joint.EIy))
+    end
+end
+
+"""
     generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
 
 Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and

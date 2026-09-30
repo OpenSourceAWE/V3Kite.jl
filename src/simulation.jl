@@ -253,7 +253,8 @@ end
 """
     build_v3_model(project; data_path=nothing, remake_model=nothing,
                    remake_settled_state=nothing, kite_set=nothing,
-                   settle=nothing) -> (sam, sys)
+                   settle=nothing, cache_path=default_cache_path(data_path))
+        -> (sam, sys)
 
 Bring up the model a project file describes, ready to step. Both `remake` flags
 default to the project's `remake_model` / `remake_settled_state`; they are
@@ -265,9 +266,12 @@ project's `sim_settings:`, starting from the kite's `init_state` when it has one
 geometry instead, for a kite already relaxed at the depower it is flown at —
 restoring after `init!` rather than before, so the rest lengths stay the ones the
 state was relaxed against.
+
+The model binary, the settled state and the settling log go to `cache_path`.
 """
 function build_v3_model(project; data_path=nothing, remake_model=nothing,
-                        remake_settled_state=nothing, kite_set=nothing, settle=nothing)
+                        remake_settled_state=nothing, kite_set=nothing, settle=nothing,
+                        cache_path=default_cache_path(data_path))
     data_path = project_data_path(project, data_path)
     set_data_path(data_path)
     isnothing(kite_set) && (kite_set = load_kite(project; data_path))
@@ -289,7 +293,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
         set_steering!(sys, 0.0, kite_set.geom)
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
-        with_model_cache(default_cache_path(data_path)) do
+        with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
                                     remake_vsm=true,
                                     analytic_jacobian=kite_set.analytic_jacobian)
@@ -315,7 +319,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
     sam, _, failed = settle_wing(settle;
         position, velocity=[0.0, 0.0, 0.0], heading=0.0, steering=0.0,
         depower=set.depower / 100.0, wind_vec=[set.v_wind, 0.0, 0.0],
-        data_path, remake_model, remake_settled_state)
+        data_path, cache_path, remake_model, remake_settled_state)
     failed && error("Settling failed for $project")
     sys = sam.sys_struct
     sys.winches[1].brake = kite_set.brake

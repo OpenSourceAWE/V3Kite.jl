@@ -84,7 +84,7 @@ export distribute_wing_drag!, distribute_wing_mass!
 export set_v3_body_damping!, set_body_frame_damping!, tether_point_idxs
 export tether_bridle_segments, set_damping_per_stiffness!
 export generate_drag_adjusted_polars
-export segment_stretch_stats
+export segment_stretch_stats, beam_rigidities
 
 # Coordinate utilities exports
 export wrap_to_pi, euler_to_quaternion
@@ -111,7 +111,7 @@ export update_sys_struct_from_data!
 export compute_wind_vec, interpolate_lidar_wind
 
 # Simulation helper exports
-export create_logger, ramp_factor, timestamp_colmeta, log_created_at
+export create_logger, ramp_factor, timestamp_colmeta, log_created_at, fly_heading_sine
 export init_winch_torque!, force_to_torque, drum_params
 export sim_step!, log_state!, should_report
 export compute_drag, compute_lift, compute_lift_drag, compute_tether_drag
@@ -181,6 +181,7 @@ export plot_wind_compare
 export plot_replay, plot_sphere_trajectory
 export plot_2d_trajectory, plot_2d_panels, record_2d_trajectory
 export record_2d_panels
+export plot_beam_rigidities
 
 """
     plot_body_frame_local(sys_structs; kwargs...)
@@ -201,6 +202,18 @@ This function is provided by the V3KiteMakieExt extension.
 Load GLMakie before using: `using GLMakie`
 """
 function plot_twist_dist end
+
+"""
+    plot_beam_rigidities(sys; figsize, labelsize)
+
+Bending (EI) and torsional (GJ) rigidity of every beam element of `sys` against
+its span position, leading edge and struts apart, from [`beam_rigidities`](@ref).
+Requires GLMakie.
+
+This function is provided by the V3KiteMakieExt extension.
+Load GLMakie before using: `using GLMakie`
+"""
+function plot_beam_rigidities end
 
 """
     plot_photogrammetry(points, groups; dir, kwargs...)

@@ -306,6 +306,8 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
         @test length(twist) == 10
     end
 
+    include("test_beam_rigidities.jl")
+
     include("test_ripple_metrics.jl")
 
     include("test_turn_rate_id.jl")
