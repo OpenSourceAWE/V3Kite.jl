@@ -11,6 +11,14 @@
   `fit_c1_c2` with the gravity term `c3·sin(ψ)·cos(β)` held fixed; `fit_delay_lag`
   uses them when given `c3`.
 
+### Changed
+- `damping_per_stiffness` of the precompile workload (`src/precompile.jl`), of
+  `examples/reel_out_v3.jl`, `examples/simple_parking.jl` and
+  `examples/simple_auto_parking.jl` raised from 0.001 s to 0.002 s. The lower value only
+  worked around a bug of old SymbolicAWEModels versions.
+- `test/test_parking_ripple.jl` follows `examples/simple_parking.jl` to 0.002 s; its
+  ripple RMS baseline was retaken: 0.0030° (0.00303° in two runs), was 0.0064° at 0.001 s.
+
 ## V3Kite v1.4.1 26-09-2026
 
 ### Fixed
