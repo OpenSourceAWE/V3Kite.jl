@@ -285,6 +285,89 @@ end
         @test_throws ErrorException identify_turn_rate_law(sl; dt, t_start = 1e6)
     end
 
+    @testset "lag_filter" begin
+        u = [0.0; ones(99)]
+        @test lag_filter(u, 0.0, 0.05) == u
+        @test eltype(lag_filter([0, 1, 1], 0.0, 0.05)) == Float64
+        y = lag_filter(u, 0.2, 0.05)
+        a = exp(-0.05 / 0.2)
+        @test y[1] == 0.0
+        @test y[2] ≈ 1 - a
+        @test y[1 + 4] ≈ 1 - a^4      # one time constant: 63 %
+        @test y[end] ≈ 1.0 atol = 1e-10
+    end
+
+    # A flight of the law ψ̇ = c1·v_a·u_s(t − τ)/(1 + sT) + grav, integrated forward,
+    # with relay-like steps in the steering so that dead time and lag separate.
+    function delay_lag_flight(; dt, n, d, T, c1, grav, phase = 0.0)
+        us = [0.1sign(sin(0.031k + phase)) + 0.04sin(0.17k + 2phase) for k in 1:n]
+        v_app = [12.0 + 3sin(0.011k + phase) for k in 1:n]
+        beta = fill(deg2rad(30.0), n)
+        uf = lag_filter(us, T, dt)
+        psi = zeros(n); rate = zeros(n)
+        for k in 1:n
+            rate[k] = c1 * v_app[k] * (k > d ? uf[k - d] : 0.0) + grav(v_app[k], psi[k], beta[k])
+            k < n && (psi[k + 1] = psi[k] + rate[k] * dt)
+        end
+        return (; us, rate, v_app, psi, beta)
+    end
+
+    @testset "fit_delay_lag" begin
+        dt, d, T, c1, c2 = 0.05, 6, 0.2, 0.2, 2.5
+        fit = delay_lag_flight(; dt, n = 2000, d, T, c1,
+                               grav = (va, psi, beta) -> c2 / va * sin(psi) * cos(beta))
+        r = fit_delay_lag(fit, dt; lag_max = 0.5, t_max = 1.0)
+        @test r.lag ≈ T atol = 1e-9
+        @test r.dead_time ≈ (d - 0.5) * dt atol = 0.1dt
+        @test r.c1 ≈ c1 rtol = 1e-6
+        @test r.c2 ≈ c2 rtol = 1e-6
+        @test r.rms_lag < 1e-6
+        @test r.rms_delay > 100r.rms_lag
+        # A lag at the end of the search grid is reported
+        @test_logs (:warn, r"hit the search limit") fit_delay_lag(fit, dt; lag_max = 0.1, t_max = 1.0)
+    end
+
+    @testset "fit_delay_lag c3" begin
+        dt, d, T, c1, c3 = 0.05, 4, 0.15, 0.2, 0.23
+        fit = delay_lag_flight(; dt, n = 2000, d, T, c1,
+                               grav = (va, psi, beta) -> c3 * sin(psi) * cos(beta))
+        r = fit_delay_lag(fit, dt; lag_max = 0.5, t_max = 1.0, c3)
+        @test r.lag ≈ T atol = 1e-9
+        @test r.dead_time ≈ (d - 0.5) * dt atol = 0.1dt
+        @test r.c1 ≈ c1 rtol = 1e-6
+        @test r.c2 ≈ c3 * sum(fit.v_app) / length(fit.v_app)
+        @test r.rms_lag < 1e-6
+
+        # The pieces on their own, on the delayed and lag-filtered steering
+        uf = lag_filter(fit.us, T, dt)
+        dd, rms, d_frac = estimate_delay_fit_c3(uf, fit.rate, fit.v_app, fit.psi, fit.beta, dt;
+                                                c3, t_max = 1.0)
+        @test dd == d
+        @test rms < 1e-10
+        @test d_frac ≈ d atol = 0.1
+        f = fit_c1_c3(fit.v_app, fit.psi, fit.beta, fit.rate, shift_delay(uf, d); c3)
+        @test f.c1 ≈ c1
+        @test f.rms ≈ 0.0 atol = 1e-12
+        @test f.se2 == 0.0 && f.cond == 1.0 && f.n == length(fit.us)
+        @test_throws AssertionError estimate_delay_fit_c3(uf[1:end-1], fit.rate, fit.v_app,
+                                                          fit.psi, fit.beta, dt; c3)
+    end
+
+    @testset "joint_delay_lag_fit" begin
+        dt, d, T, c1, c2 = 0.05, 5, 0.25, 0.2, 2.5
+        grav = (va, psi, beta) -> c2 / va * sin(psi) * cos(beta)
+        fits = [delay_lag_flight(; dt, n = 1200, d, T, c1, grav, phase) for phase in (0.0, 1.3)]
+        r = joint_delay_lag_fit(fits, dt; lag_max = 0.5, t_max = 0.5)
+        @test r.d == d
+        @test r.dead_time ≈ (d - 0.5) * dt
+        @test r.lag ≈ T atol = 1e-9
+        @test r.c1 ≈ c1 rtol = 1e-6
+        @test r.c2 ≈ c2 rtol = 1e-6
+        @test r.rms_lag < 1e-6
+        @test r.rms_delay > 100r.rms_lag
+        @test r.n == 2 * (1200 - round(Int, 0.5 / dt))
+    end
+
     @testset "format_turn_rate_report" begin
         dt = 0.05
         sl, _ = consistent_log(; dt, n = 601)
