@@ -78,7 +78,7 @@ BODY_START_DAMPING = [0.0, 0.0, 40.0]  # Damping settling starts from, per axis 
 # Tether/bridle damping-to-stiffness ratio, overriding the `dyneema` material
 # default in `data/struc_geometry.yaml`. `init` floors it during settling
 # (see `stabilization.jl`) then applies the raw value to the settled structure.
-DAMPING_PER_STIFFNESS = 0.001  # Damping per stiffness of tether and bridles [s]
+DAMPING_PER_STIFFNESS = 0.002  # Damping per stiffness of tether and bridles [s]
 
 # ======================== INIT =========================== #
 

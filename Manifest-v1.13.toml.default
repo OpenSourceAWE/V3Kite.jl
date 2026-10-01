@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.13.0"
+julia_version = "1.13.1"
 manifest_format = "2.1"
-project_hash = "b220784527de2ee2cc5bdca8398049269a944552"
+project_hash = "f9bdfbdfc6a805d338e7f683c324e9911621c457"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -1722,7 +1722,7 @@ version = "1.9.1+0"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl", "OpenSSL_jll", "Zlib_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
-version = "1.11.103+0"
+version = "1.11.104+0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -3655,7 +3655,7 @@ version = "1.29.0"
 deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "ModelingToolkit", "ModelingToolkitBase", "Parameters", "PrecompileTools", "Printf", "REPL", "Rotations", "Serialization", "StaticArrays", "Statistics", "SymbolicAWEModels", "SymbolicIndexingInterface", "UnPack", "VortexStepMethod", "YAML"]
 path = "."
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
-version = "1.3.0"
+version = "1.4.1"
 weakdeps = ["GLMakie"]
 
     [deps.V3Kite.extensions]

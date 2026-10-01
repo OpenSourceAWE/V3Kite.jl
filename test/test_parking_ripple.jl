@@ -43,11 +43,11 @@ try
         VSM_INTERVAL          = 1
         BODY_START_DAMPING    = [0.0, 0.0, 40.0]
         BODY_SIM_DAMPING      = 0.8 .* BODY_START_DAMPING
-        DAMPING_PER_STIFFNESS = 0.001
+        DAMPING_PER_STIFFNESS = 0.002
 
         # Measured with the parameters above; 1.5x leaves room for the run-to-run
         # spread of the solver without letting the oscillation come back.
-        RIPPLE_RMS_BASELINE = 0.0064   # [deg]
+        RIPPLE_RMS_BASELINE = 0.0030   # [deg], at DAMPING_PER_STIFFNESS = 0.002 (0.0064 at 0.001)
         RIPPLE_RMS_LIMIT    = 1.5 * RIPPLE_RMS_BASELINE
 
         s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
