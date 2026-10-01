@@ -281,6 +281,16 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
         end
     end
 
+    @testset "Relaxed State Keeps The Orientation It Was Saved With" begin
+        # The tracked relaxed states predate the frame metadata of KiteUtils 0.13.
+        for name in ("relaxed_struc_geometry_dp20", "relaxed_struc_geometry_beam_dp20")
+            path = joinpath(v3_data_path(), "$name.arrow")
+            table = V3Kite.KiteUtils.Arrow.Table(path)
+            saved = first.([table.Qw[1], table.Qx[1], table.Qy[1], table.Qz[1]])
+            @test read_state_log(path).orient ≈ saved
+        end
+    end
+
     @testset "Wing Stations" begin
         config = V3Kite.V3SettleConfig()
         data_path = V3Kite.project_data_path(config.project, nothing)

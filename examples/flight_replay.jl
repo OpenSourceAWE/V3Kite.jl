@@ -247,7 +247,6 @@ function run_physics_replay(h5_path;
         set_data_path(data_path)
         set = Settings(PROJECT)
         set.g_earth = 9.81
-        set.v_wind = row1.v_app
         set.l_tether = tether_len
         set.profile_law = 0
 

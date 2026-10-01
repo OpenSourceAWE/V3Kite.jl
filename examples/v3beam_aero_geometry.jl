@@ -19,10 +19,10 @@ raised by 7.3 m, and `cfd_aero_geometry.yaml` was sliced from it — see
 `obj_to_yaml` rotates but does not translate, so slicing the raised copy at
 `rotation=I` is what puts the sections where the beam wing already is.
 
-The output is a few hundred MB of `Cp`/`cf` tables and is not in git, unlike the
-structural YAML and the relaxed state. `obj_to_yaml` reuses an existing
-`geometry.yaml`, so rerunning is free; `FORCE` regenerates, which is the slow
-NeuralFoil pass.
+The output, about 8 MB of Arrow tables, is not in git, unlike the structural YAML
+and the relaxed state. `obj_to_yaml` reuses an existing `geometry.yaml` and skips
+NeuralFoil, so after changing the slice set `FORCE` to regenerate the tables; the
+NeuralFoil pass takes under a minute.
 
 `DELTA_RANGE` is `nothing` because the V3 has no trailing-edge flap — it steers
 by bridle-induced wing twist — so the section tables are functions of angle of
@@ -51,7 +51,7 @@ GEOMETRY_PATH = joinpath(v3_data_path(), "nf_aero_geometry.yaml")
 N_SECTIONS = 37            # matches the section count of cfd_aero_geometry.yaml
 ALPHA_RANGE = -10:2:30     # deg; every step is another Cp/cf table per section
 DELTA_RANGE = nothing      # the V3 has no trailing-edge flap
-WINGTIP_DISTANCE = 0.15    # [m] of LE arc the outermost sections stay off the tips
+WINGTIP_DISTANCE = 0.05    # [m] of span the outermost sections stay off the tips
 CREASE_FRAC = V3BeamTopology().crease_frac  # the hinge the beam reads its flap δ about
 TABLE_FORMAT = :arrow      # :csv is readable, :arrow loads ~10x faster
 FORCE = false              # true reruns the NeuralFoil pass
