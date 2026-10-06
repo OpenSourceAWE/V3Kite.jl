@@ -15,7 +15,7 @@ submodule consumes the adapter's YAML outputs: it reads the particle-schema
 `struc_geometry.yaml` (with real tube diameters from
 `struc_geometry_all_in_surfplan.yaml` and the mass model from
 `wing_mass_distribution.yaml`) and emits the beam `struc_geometry.yaml` — the
-leading edge and struts as `Body` chains joined by `TimoshenkoJoint`s, with every
+leading edge and struts as `Body` chains joined by Timoshenko `Tube`s, with every
 bridle branch end riding the nearest node body as a `BODY_STATIC` point.
 
 The bridle itself comes from `data/bridle_geometry_full_fem.yaml`, the measured 2025
@@ -35,7 +35,7 @@ module SurfplanAdapter
 
 using LinearAlgebra
 import YAML
-using SymbolicAWEModels: TimoshenkoJoint, TUBE_SHEAR_COEFF, tube_linear_rigidities,
+using SymbolicAWEModels: Tube, TimoshenkoTube, TUBE_SHEAR_COEFF, tube_linear_rigidities,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
 using ..V3Kite: v3_data_path, V3BridleConfig
@@ -63,11 +63,11 @@ bridle_geometry(geom::AdapterGeometry, topo::V3BeamTopology) =
 Read the SurfplanAdapter export in `adapter_dir`, join it with the measured bridle at
 `topo.bridle_file`, and write the beam `struc_geometry.yaml` to `out_yaml`. When
 `wing_only=true` a sibling `<out>_wing.yaml` (the wing subset at CAD, no transform) is
-written too. Returns the full model's `(bodies, joints, points, segments)` counts.
+written too. Returns the full model's `(bodies, tubes, points, segments)` counts.
 
-The emitted file carries constant `EIy`/`EIz` per joint because YAML cannot hold a
-callable; call [`apply_comer_bending!`](@ref) on the loaded structure to swap in the
-curvature-softening Comer-Levy law.
+The emitted tubes take linear rigidities from the `breukels2011` law because YAML
+cannot hold a callable; call [`apply_comer_bending!`](@ref) on the loaded structure
+to swap in the curvature-softening Comer-Levy law.
 """
 function surfplan_to_struc(adapter_dir, out_yaml; topo = V3BeamTopology(),
         wing_only = true)
@@ -83,35 +83,36 @@ function surfplan_to_struc(adapter_dir, out_yaml; topo = V3BeamTopology(),
 end
 
 """
-    apply_comer_bending!(sys, joint_radius, topo) -> sys
+    apply_comer_bending!(sys, tube_radius, topo) -> sys
     apply_comer_bending!(sys, adapter_dir, topo) -> sys
 
-Replace each beam `TimoshenkoJoint`'s constant bending rigidity with the
-curvature-softening Comer-Levy law (`comer_levy_bending_law`) in place, so the
-loaded (linear-YAML) beam gains the post-collapse bending branch. `joint_radius`
-maps each joint name to its tube radius (from [`beam_joint_radii`](@ref)).
-Axial/shear are refreshed from the same `E·t`; torsion and the resolved indices are
-carried over from the loaded joint. Done by element replacement (not a
-`SystemStructure` rebuild) so no reference re-resolution or tether re-expansion is
-triggered.
+Replace each beam `Tube`'s constant bending rigidity with the curvature-softening
+Comer-Levy law (`comer_levy_bending_law`) in place, so the loaded (linear-YAML) beam
+gains the post-collapse bending branch. `tube_radius` maps each tube name to its
+radius (from [`beam_joint_radii`](@ref)). Axial/shear are refreshed from the same
+`E·t`; torsion, damping and the resolved indices are carried over from the loaded
+tube. Done by element replacement (not a `SystemStructure` rebuild) so no reference
+re-resolution or tether re-expansion is triggered.
 """
-function apply_comer_bending!(sys, joint_radius::AbstractDict, topo::V3BeamTopology)
+function apply_comer_bending!(sys, tube_radius::AbstractDict, topo::V3BeamTopology)
     pressure_pa = topo.pressure_bar * 1.0e5
-    for (k, joint) in enumerate(sys.timoshenko_joints)
-        haskey(joint_radius, joint.name) || continue
-        radius = joint_radius[joint.name]
+    for (k, tube) in enumerate(sys.tubes)
+        haskey(tube_radius, tube.name) || continue
+        radius = tube_radius[tube.name]
         et = resolve_membrane_stiffness(topo, radius)
         EA, GA, _ = membrane_linear_rigidities(radius, et)
         law = comer_levy_bending_law(radius, pressure_pa, et)
-        new_joint = TimoshenkoJoint(joint.name, joint.body_a_ref, joint.body_b_ref;
-            anchor_a = joint.anchor_a_b, anchor_b = joint.anchor_b_b,
-            EA, GA, GJ = joint.GJ, EIy = law, EIz = law,
-            shear_coeff = joint.shear_coeff, damping = joint.damping,
-            rest_length = joint.rest_length, radius = joint.radius)
-        new_joint.idx = joint.idx
-        new_joint.body_a_idx = joint.body_a_idx
-        new_joint.body_b_idx = joint.body_b_idx
-        sys.timoshenko_joints[k] = new_joint
+        beam = tube.model
+        new_tube = Tube(tube.name, tube.body_a_ref, tube.body_b_ref;
+            diameter = tube.diameter, pressure = tube.pressure, law = tube.law,
+            anchor_a = tube.anchor_a_b, anchor_b = tube.anchor_b_b,
+            model = TimoshenkoTube(; EA, GA, GJ = beam.GJ, EIy = law, EIz = law,
+                shear_coeff = beam.shear_coeff, damping = beam.damping))
+        new_tube.model.rest_length = beam.rest_length
+        new_tube.idx = tube.idx
+        new_tube.body_a_idx = tube.body_a_idx
+        new_tube.body_b_idx = tube.body_b_idx
+        sys.tubes[k] = new_tube
     end
     return sys
 end

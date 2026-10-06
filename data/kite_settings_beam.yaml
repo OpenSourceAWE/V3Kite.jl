@@ -14,7 +14,7 @@ kite_settings:
   beam_world_damping: [0.0, 0.0, 0.0] # per-axis damping on the world axes
 
   beam_angular_damping: [0.0, 0.0, 0.0]  # brakes the turn rate, so keep it zero
-  beam_joint_damping_scale: 45.0   # multiplies the joints' Rayleigh beta
+  beam_joint_damping_scale: 45.0   # multiplies the tubes' Rayleigh beta
 
   wing_mass: 0.0                 # [kg] mass redistributed over the wing nodes
   wing_mass_le_frac: 0.75        # leading-edge share of `wing_mass`

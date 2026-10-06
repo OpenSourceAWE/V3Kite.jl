@@ -97,7 +97,7 @@ Base.@kwdef mutable struct V3KiteConfig
     beam_angular_damping::Vector{Float64} = [0.0, 0.0, 0.0]
 
     """
-    Scales every Timoshenko joint's Rayleigh β. The geometry emits β for a modal
+    Scales every Timoshenko tube's Rayleigh β. The geometry emits β for a modal
     damping ratio of 1 at each element's transverse mode, which is not enough to
     hold the chord modes: under the flight loads they grow until the implicit
     solver stalls. The beam projects fly at `45`; by `5` the chord modes are back
@@ -230,21 +230,21 @@ end
     apply_kite_material!(sys, kite_set::V3KiteConfig) -> sys
 
 Set the bridle material a kite carries onto a loaded structure, scale the beam
-joints' Rayleigh damping by `kite_set.beam_joint_damping_scale`, and swap the YAML's
+tubes' Rayleigh damping by `kite_set.beam_joint_damping_scale`, and swap the YAML's
 linear Breukels bending for the curvature-softening Comer-Levy law when
 `kite_set.adapter_dir` names the export the beam was built from. All three are no-ops
-on a geometry that has neither bridle tethers nor beam joints.
+on a geometry that has neither bridle tethers nor beam tubes.
 """
 function apply_kite_material!(sys, kite_set::V3KiteConfig)
     if !isnothing(kite_set.adapter_dir) && isdir(kite_set.adapter_dir)
         SurfplanAdapter.apply_comer_bending!(sys, kite_set.adapter_dir,
             SurfplanAdapter.V3BeamTopology(bridle = kite_set.bridle))
-        @info "Comer-Levy bending applied" joints=length(sys.timoshenko_joints)
+        @info "Comer-Levy bending applied" tubes=length(sys.tubes)
     end
     SurfplanAdapter.apply_bridle_material!(sys, kite_set.bridle)
     if kite_set.beam_joint_damping_scale != 1.0
-        for joint in sys.timoshenko_joints
-            joint.damping *= kite_set.beam_joint_damping_scale
+        for tube in sys.tubes
+            tube.model.damping *= kite_set.beam_joint_damping_scale
         end
     end
     return sys
