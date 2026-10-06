@@ -83,7 +83,7 @@ stations:
     - [flap_10, 1, KINEMATIC, [wing_le_10, wing_te_10, wing_ctrl_10_1, wing_ctrl_10_2, wing_ctrl_10_3, wing_ctrl_10_4, wing_ctrl_10_5, wing_ctrl_10_6, wing_ctrl_10_7, wing_ctrl_10_8, wing_ctrl_10_9, wing_ctrl_10_10, wing_ctrl_10_11], [wing_ctrl_10_1, wing_ctrl_10_8, wing_ctrl_10_11], [0, 1, 0]]
 
 points:
-  headers: [name, pos_cad, type, wing_idx, transform_idx, extra_mass, area, drag_coeff, body_idx, joint]
+  headers: [name, pos_cad, type, wing_idx, transform_idx, extra_mass, area, drag_coeff, body_idx, tube]
   data:
     - [wing_le_10     , [  0.2463, -4.1055,     8.276], BODY_STATIC, 1, 1,     0,    0,    0, wing_le_body_10, nothing]
     - [wing_te_10     , [  0.8576, -4.1419,    8.2943], BODY_STATIC, 1, 1,     0,    0,    0, wing_te_body_10, nothing]

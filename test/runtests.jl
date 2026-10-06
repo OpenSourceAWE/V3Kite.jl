@@ -310,6 +310,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
     @testset "Beam Wing Loads Its Tubes" begin
         _, sys = create_v3_model("system_beam.yaml")
         @test length(sys.tubes) == 21
+        @test count(point -> point.tube_idx != 0, sys.points) == 150
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
         @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
