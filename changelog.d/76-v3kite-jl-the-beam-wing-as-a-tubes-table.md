@@ -1,0 +1,4 @@
+### Changed
+
+- BREAKING: requires SymbolicAWEModels after 0.19.0, whose `tubes` replace `timoshenko_joints`. The beam geometry `surfplan_to_struc` emits, and the shipped `struc_geometry_beam.yaml` and `struc_geometry_beam_wing.yaml`, carry a `tubes` table (bodies, diameter, pressure, law, model, shear coefficient, damping) whose rigidities come from the `breukels2011` law, and their points name the tube a rider hangs on in a `tube` column. `surfplan_to_struc` returns a `tubes` count where it returned `joints`.
+- `create_v3_model` places the structure after setting the tether length and elevation, as `init!` no longer does.
