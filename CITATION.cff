@@ -15,7 +15,8 @@ authors:
     given-names: Uwe
 license: MPL-2.0
 repository-code: "https://github.com/OpenSourceAWE/V3Kite.jl"
-date-released: "2026-01-01"
+version: "1.4.1"
+date-released: "2026-09-26"
 references:
   - type: conference-paper
     title: "Coupled aerodynamic-structural simulation of a leading-edge inflatable kite: validating against flight test data"
