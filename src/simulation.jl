@@ -222,6 +222,7 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     end
     isempty(sys.transforms) ||
         (sys.transforms[1].elevation = deg2rad(set.elevation))
+    SymbolicAWEModels.place!(sys)
 
     return sam, sys
 end
@@ -290,7 +291,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         set_steering!(sys, 0.0, kite_set.geom)
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
         with_model_cache(default_cache_path(data_path)) do
-            SymbolicAWEModels.init!(sam; remake=remake_model, ignore_l0=false,
+            SymbolicAWEModels.init!(sam; remake=remake_model,
                                     remake_vsm=true,
                                     analytic_jacobian=kite_set.analytic_jacobian)
         end

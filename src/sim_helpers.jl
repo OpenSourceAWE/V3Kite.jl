@@ -499,8 +499,8 @@ function wing_station_chords(sys, wing=sys.wings[1])
         idxs = sys.stations[station_idx].point_idxs
         length(idxs) < 2 && continue
         station = [sys.points[i] for i in idxs]
-        le = body_pos(argmin(p -> p.pos_cad[1], station))
-        te = body_pos(argmax(p -> p.pos_cad[1], station))
+        le = body_pos(argmin(p -> body_pos(p)[1], station))
+        te = body_pos(argmax(p -> body_pos(p)[1], station))
         push!(stations, (y=(le[2] + te[2]) / 2, le=le, te=te))
     end
     return sort!(stations, by=station -> station.y)
@@ -823,7 +823,7 @@ function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false, remake_vsm=true,
+            remake=false, remake_vsm=true,
             analytic_jacobian=kite_set.analytic_jacobian)
     end
     return sam, sys
