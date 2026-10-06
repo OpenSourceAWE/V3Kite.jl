@@ -250,16 +250,7 @@ function run_physics_replay(h5_path;
         set.l_tether = tether_len
         set.profile_law = 0
 
-        gc = kite_set.geom
-        sys = load_sys_struct_from_yaml(source_struc;
-            system_name=V3_MODEL_NAME, set,
-            dynamics_type=kite_set.wing_type, vsm_set,
-            aero_mode=resolve_aero_mode(kite_set))
-        sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
-        apply_geom_adjustments!(sys, gc)
-        V3Kite.with_model_cache(V3Kite.default_cache_path()) do
-            SymbolicAWEModels.init!(sam; remake=false, remake_vsm=true)
-        end
+        sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
         settle_log = nothing
     end
     set = sam.set

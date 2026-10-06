@@ -251,7 +251,7 @@ function beam_tables(geom, topo)
     end
 
     tube_rows = Vector{Any}[]
-    joint_radius = Dict{Symbol, Float64}()
+    tube_radius = Dict{Symbol, Float64}()
     function beam_tube!(name, a, b, radius, len, mass_a, mass_b, inertia_a, inertia_b)
         EI0 = tube_linear_rigidities(radius, topo.pressure_bar)[3]
         # Rayleigh β from ζ = βω/2, anchored at the transverse mode
@@ -260,7 +260,7 @@ function beam_tables(geom, topo)
         bend_stiffness = 12 * EI0 / len^3
         omega_bend = sqrt(bend_stiffness / min(mass_a, mass_b))
         beta = 2 * topo.damping_ratio / omega_bend
-        joint_radius[Symbol(name)] = radius
+        tube_radius[Symbol(name)] = radius
         push!(tube_rows, [name, [String(a), String(b)], 2radius,
             topo.pressure_bar * 1.0e5, "breukels2011", "timoshenko",
             TUBE_SHEAR_COEFF, beta])
@@ -305,7 +305,7 @@ function beam_tables(geom, topo)
     delta_nodes = flap_delta_nodes(control_fractions, topo.crease_frac)
     flap_points = [["wing_ctrl_$(i)_$j" for j in delta_nodes] for i in 1:n]
 
-    return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, tube_rows, joint_radius,
+    return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, tube_rows, tube_radius,
         wing_pt, wing_body, body_frame, mid, control_specs, flap_points)
 end
 

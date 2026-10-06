@@ -215,16 +215,25 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
 
     sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
 
-    # `l_tethers: [0]` is KiteUtils' "not set" sentinel; overriding with it would
-    # collapse the tether the geometry was placed with.
-    if !isempty(sys.tethers) && set.l_tether > 0
-        sys.tethers[1].init_stretched_len = set.l_tether
-    end
     isempty(sys.transforms) ||
         (sys.transforms[1].elevation = deg2rad(set.elevation))
-    SymbolicAWEModels.place!(sys)
+    place_at_tether_length!(sys, set.l_tether)
 
     return sam, sys
+end
+
+"""
+    place_at_tether_length!(sys, tether_length) -> sys
+
+Stretch the first tether of `sys` to `tether_length` [m] and place the structure there.
+A `tether_length` of `0`, KiteUtils' "not set", keeps the length the geometry gives.
+"""
+function place_at_tether_length!(sys, tether_length)
+    if !isempty(sys.tethers) && tether_length > 0
+        sys.tethers[1].init_stretched_len = tether_length
+    end
+    SymbolicAWEModels.place!(sys)
+    return sys
 end
 
 """

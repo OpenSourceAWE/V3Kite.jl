@@ -762,6 +762,7 @@ function settle_wing(config::V3SettleConfig, init_row;
             dynamics_type=config.kite_set.wing_type, vsm_set,
             aero_mode=resolve_aero_mode(config.kite_set))
         sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
+        place_at_tether_length!(sys, set.l_tether)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, remake_vsm=true,
@@ -841,8 +842,7 @@ function setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
     apply_geom_adjustments!(sys, gc)
-    sys.tethers[1].init_stretched_len = gc.tether_length
-    SymbolicAWEModels.place!(sys)
+    place_at_tether_length!(sys, gc.tether_length)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
             remake_vsm=true,

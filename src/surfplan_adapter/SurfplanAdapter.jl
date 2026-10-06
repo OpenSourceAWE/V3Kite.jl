@@ -159,11 +159,11 @@ apply_bridle_material!(sys, topo::V3BeamTopology) =
 """
     beam_joint_radii(adapter_dir; topo=V3BeamTopology()) -> Dict{Symbol, Float64}
 
-Per-joint tube radius map for the beam a SurfplanAdapter export in `adapter_dir`
+Per-tube radius map for the beam a SurfplanAdapter export in `adapter_dir`
 produces under `topo`.
 """
 beam_joint_radii(adapter_dir; topo = V3BeamTopology()) =
-    beam_tables(adapter_geometry(adapter_dir, topo), topo).joint_radius
+    beam_tables(adapter_geometry(adapter_dir, topo), topo).tube_radius
 
 export V3BeamTopology, V3_ADAPTER_FRAME_OFFSET
 export V3_ADAPTER_CHORD_ALIGN_DEG, V3_BRIDLE_FILE_LIFT

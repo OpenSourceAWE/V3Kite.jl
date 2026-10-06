@@ -313,8 +313,9 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test count(point -> point.tube_idx != 0, sys.points) == 150
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
+        pressure_bar = V3BeamTopology().pressure_bar
         @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
-            tube.diameter / 2, 0.3)[3], sys.tubes)
+            tube.diameter / 2, pressure_bar)[3], sys.tubes)
     end
 
     include("test_ripple_metrics.jl")
