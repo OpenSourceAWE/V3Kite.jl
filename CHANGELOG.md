@@ -10,7 +10,7 @@
 - `test/test_parking_ripple.jl` follows `examples/simple_parking.jl` to 0.002 s; its
   ripple RMS baseline was retaken: 0.0030° (0.00303° in two runs), was 0.0064° at 0.001 s.
 
-## V3Kite v1.4.1 2026-09-26
+## V3Kite v1.4.1 26-09-2026
 
 ### Fixed
 - `identify_turn_rate_law` finds the dead time from the full turn-rate law
@@ -26,7 +26,7 @@
   `delay_corr` is now the correlation at the fitted shift. `estimate_delay` is
   unchanged.
 
-## V3Kite v1.4.0 2026-09-26
+## V3Kite v1.4.0 26-09-2026
 
 ### Fixed
 - `identify_turn_rate_law` no longer reads a longer dead time from a log with a
@@ -158,7 +158,7 @@
   `./bin/install` offers those two and installs from the
   `Manifest-v<version>.toml.default` of the active Julia.
 
-## V3Kite v1.3.0 2026-09-02
+## V3Kite v1.3.0 02-09-2026
 
 ### Added
 - `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
@@ -486,7 +486,7 @@
   home: the geometry paths are project-file keys, the flight condition is
   `Settings`, and the model options are `V3KiteConfig`.
 
-## V3Kite v1.2.0 2026-08-17
+## V3Kite v1.2.0 17-08-2026
 
 ### Changed
 - BREAKING: `step!` is torque-only. It takes `set_torque` [N·m], or applies the
@@ -528,7 +528,7 @@
   0.5`) plus a standing error of `v_ro/winch_pos_kp`. The default `0.0`
   reproduces the previous behaviour exactly.
 
-## V3Kite v1.1.1 2026-08-13
+## V3Kite v1.1.1 13-08-2026
 
 ### Changed
 - The `min_damping` default of `init` is now computed from `body_damping` as
@@ -577,7 +577,7 @@
   `SymbolicAWEModels.vsm_engine(wing.aero)` and returns `NaN` only when the wing genuinely
   carries none. Covered by a new `span_mean_aoa` testset in `test/test-interface.jl`.
 
-## V3Kite v1.1.0 2026-08-10
+## V3Kite v1.1.0 10-08-2026
 
 ### Changed
 - `AtmosphericModels` compat raised to `0.3.8`, which applies `use_turbulence` when the
@@ -620,7 +620,7 @@
 ### Removed
 - The `WING` export, whose wing type was dropped upstream in `SymbolicAWEModels`.
 
-## V3Kite v1.0.3 2026-08-09
+## V3Kite v1.0.3 09-08-2026
 
 ### Added
 - `init(...; use_turbulence)`, which overrides the `default_turbulence` of
@@ -687,7 +687,7 @@
   a field with up to ~15 % sigma error; `set_default_turbulence` now warns
   when a value doesn't round-trip through one decimal.
 
-## V3Kite v1.0.2 2026-08-04
+## V3Kite v1.0.2 04-08-2026
 
 ### Changed
 - Require `KiteUtils` 0.11.11 (previously unbounded, resolving to 0.11.9):
@@ -696,7 +696,7 @@
   `BoundsError` — the form an external controller package uses when it keeps
   its logs in its own directory.
 
-## V3Kite v1.0.1 2026-08-03
+## V3Kite v1.0.1 03-08-2026
 
 ### Added
 - High-level `init(v_wind_gnd, l_tether; ...)` / `step!` simulation interface
