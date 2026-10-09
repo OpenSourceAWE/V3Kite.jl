@@ -66,7 +66,7 @@ Build the wing beam from an [`AdapterGeometry`](@ref): sort the LE/TE stations b
 descending span, give each chord one Timoshenko element between a leading- and a
 trailing-edge node with a tapered tube radius (`harmonic_radius` over the real
 spanwise/along-chord diameters when available, otherwise the area-based mass model),
-lump node masses/inertia, and assemble the node `Body` and `TimoshenkoJoint` rows.
+lump node masses/inertia, and assemble the node `Body` and `Tube` rows.
 Returns everything the emitter needs; the bridle is separate
 (see [`BridleGeometry`](@ref)).
 
@@ -250,19 +250,20 @@ function beam_tables(geom, topo)
         body_frame[le_names[c]] = (p, q)
     end
 
-    joint_rows = Vector{Any}[]
-    joint_radius = Dict{Symbol, Float64}()
-    function beam_joint!(name, a, b, radius, len, mass_a, mass_b, inertia_a, inertia_b)
-        EA, GA, EI0, GJ0 = tube_linear_rigidities(radius, topo.pressure_bar)
+    tube_rows = Vector{Any}[]
+    tube_radius = Dict{Symbol, Float64}()
+    function beam_tube!(name, a, b, radius, len, mass_a, mass_b, inertia_a, inertia_b)
+        EI0 = tube_linear_rigidities(radius, topo.pressure_bar)[3]
         # Rayleigh β from ζ = βω/2, anchored at the transverse mode
         # ω = sqrt(12EI/(L³m)): ζ rises with frequency, so anchoring the softest
         # mode of interest leaves everything stiffer at least as well damped.
         bend_stiffness = 12 * EI0 / len^3
         omega_bend = sqrt(bend_stiffness / min(mass_a, mass_b))
         beta = 2 * topo.damping_ratio / omega_bend
-        joint_radius[Symbol(name)] = radius
-        push!(joint_rows, [name, String(a), String(b), EA, GA, GJ0, EI0, EI0,
-            TUBE_SHEAR_COEFF, beta, radius])
+        tube_radius[Symbol(name)] = radius
+        push!(tube_rows, [name, [String(a), String(b)], 2radius,
+            topo.pressure_bar * 1.0e5, "breukels2011", "timoshenko",
+            TUBE_SHEAR_COEFF, beta])
     end
     le_node_full_mass(c) = le_station_of[c] == 0 ? le_node_tube_mass[c] :
         node_mass_of(le_station_of[c], 1)
@@ -270,12 +271,12 @@ function beam_tables(geom, topo)
         node_inertia_of(le_station_of[c], 1)
     for e in le_edge_specs
         name = e.s == 1 ? "le_beam_$(e.section)" : "le_beam_$(e.section)_$(e.j)"
-        beam_joint!(name, le_names[e.a], le_names[e.b], e.radius, e.len,
+        beam_tube!(name, le_names[e.a], le_names[e.b], e.radius, e.len,
             le_node_full_mass(e.a), le_node_full_mass(e.b),
             le_node_full_inertia(e.a), le_node_full_inertia(e.b))
     end
     for i in 1:n
-        beam_joint!("strut_beam_$i", node_name(i, 1), node_name(i, 2),
+        beam_tube!("strut_beam_$i", node_name(i, 1), node_name(i, 2),
             strut_radius[i], strut_len[i],
             node_mass_of(i, 1), node_mass_of(i, 2),
             node_inertia_of(i, 1), node_inertia_of(i, 2))
@@ -297,14 +298,14 @@ function beam_tables(geom, topo)
         for (j, frac) in enumerate(control_fractions)
             push!(control_specs, (name = "wing_ctrl_$(i)_$j",
                 pos = le_pos[i] .+ frac .* chord_vec, station = i,
-                joint = "strut_beam_$i", frac = frac))
+                tube = "strut_beam_$i", frac = frac))
         end
     end
 
     delta_nodes = flap_delta_nodes(control_fractions, topo.crease_frac)
     flap_points = [["wing_ctrl_$(i)_$j" for j in delta_nodes] for i in 1:n]
 
-    return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, joint_rows, joint_radius,
+    return (; n, le_ids, te_ids, le_pos, te_pos, body_rows, tube_rows, tube_radius,
         wing_pt, wing_body, body_frame, mid, control_specs, flap_points)
 end
 
@@ -325,17 +326,17 @@ function tape_segment_name(bridle, name, nodes)
 end
 
 """
-Nearest beam joint (element) to a world position `p`, by distance to the element's
+Nearest beam tube (element) to a world position `p`, by distance to the element's
 line SEGMENT between its two node bodies (not just the midpoint). This picks the
 element `p` actually projects onto, so the bridle rides that element's deformed
 centerline (corotational Hermite) with a small transverse offset — the midpoint
 metric could pick a nearby wrong element whose projection clamps to an endpoint.
 """
-function nearest_beam_joint(tables, p)
-    best, best_dist = String(tables.joint_rows[1][1]), Inf
-    for row in tables.joint_rows
-        pos_a = tables.body_frame[Symbol(row[2])][1]
-        pos_b = tables.body_frame[Symbol(row[3])][1]
+function nearest_beam_tube(tables, p)
+    best, best_dist = String(tables.tube_rows[1][1]), Inf
+    for row in tables.tube_rows
+        pos_a = tables.body_frame[Symbol(row[2][1])][1]
+        pos_b = tables.body_frame[Symbol(row[2][2])][1]
         chord = pos_b .- pos_a
         len2 = dot(chord, chord)
         frac = len2 < 1e-12 ? 0.0 : clamp(dot(p .- pos_a, chord) / len2, 0.0, 1.0)
@@ -409,7 +410,7 @@ function emit_table(io, name, headers, rows)
 end
 
 const POINT_HEADERS = ["name", "pos_cad", "type", "wing_idx", "transform_idx",
-    "extra_mass", "area", "drag_coeff", "body_idx", "joint"]
+    "extra_mass", "area", "drag_coeff", "body_idx", "tube"]
 const SEG_HEADERS = ["name", "point_i", "point_j", "l0", "diameter_mm",
     "unit_stiffness", "unit_damping", "compression_frac",
     "compression_damping_frac"]
@@ -453,7 +454,7 @@ function canopy_seg_row(name, point_i, point_j, rest_length, topo)
         topo.bridle.compression_damping_frac]
 end
 
-"""Point row with no mass, drag, body or joint anchor."""
+"""Point row with no mass, drag, body or tube anchor."""
 plain_point_row(name, pos, type, transform_idx) =
     Any[name, pos, type, 1, transform_idx, 0.0, 0.0, 0.0, "nothing", "nothing"]
 
@@ -481,7 +482,7 @@ function write_model(path, tables, geom, bridle, topo; full)
     end
     for spec in tables.control_specs
         push!(point_rows, [spec.name, spec.pos, "BODY_STATIC", 1, tf, 0.0, 0.0, 0.0,
-            "nothing", spec.joint])
+            "nothing", spec.tube])
     end
 
     seg_rows = Vector{Any}[]
@@ -540,7 +541,7 @@ function write_model(path, tables, geom, bridle, topo; full)
             if id in attached
                 push!(point_rows, [bridle_pt(id), bridle.pos[id], "BODY_STATIC", 1, 1,
                     0.0, 0.0, 0.0, "nothing",
-                    nearest_beam_joint(tables, bridle.pos[id])])
+                    nearest_beam_tube(tables, bridle.pos[id])])
             else
                 push!(point_rows, plain_point_row(bridle_pt(id), bridle.pos[id],
                     "DYNAMIC", 1))
@@ -616,10 +617,10 @@ function write_model(path, tables, geom, bridle, topo; full)
         emit_table(io, "bodies",
             ["name", "extra_mass", "inertia_principal", "pos", "type", "Q_b_to_w",
              "transform_idx", "wing"], body_emit)
-        emit_table(io, "timoshenko_joints",
-            ["name", "body_a", "body_b", "EA", "GA", "GJ", "EIy", "EIz",
-             "shear_coeff", "damping", "radius"],
-            tables.joint_rows)
+        emit_table(io, "tubes",
+            ["name", "bodies", "diameter", "pressure", "law", "model", "shear_coeff",
+             "damping"],
+            tables.tube_rows)
         station_points(i) = [wing_pt[le_ids[i]]; wing_pt[te_ids[i]];
             [spec.name for spec in tables.control_specs if spec.station == i]]
         flap_rows = [["flap_$i", 1, "KINEMATIC", station_points(i),
@@ -649,6 +650,6 @@ function write_model(path, tables, geom, bridle, topo; full)
             println(io, "      base_point_idx: ground_anchor")
         end
     end
-    return (bodies = length(tables.body_rows), joints = length(tables.joint_rows),
+    return (bodies = length(tables.body_rows), tubes = length(tables.tube_rows),
         points = length(point_rows), segments = length(seg_rows))
 end

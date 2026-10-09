@@ -499,8 +499,8 @@ function wing_station_chords(sys, wing=sys.wings[1])
         idxs = sys.stations[station_idx].point_idxs
         length(idxs) < 2 && continue
         station = [sys.points[i] for i in idxs]
-        le = body_pos(argmin(p -> p.pos_cad[1], station))
-        te = body_pos(argmax(p -> p.pos_cad[1], station))
+        le = body_pos(argmin(p -> body_pos(p)[1], station))
+        te = body_pos(argmax(p -> body_pos(p)[1], station))
         push!(stations, (y=(le[2] + te[2]) / 2, le=le, te=te))
     end
     return sort!(stations, by=station -> station.y)
@@ -807,9 +807,9 @@ end
 
 Build a fresh `SymbolicAWEModel` and `SystemStructure`
 without running settling — load the YAML, apply geometry
-adjustments, and call `init!`. Mirrors the `settle: false`
-path of `flight_replay.jl`, so `flight_replay_plots.jl` can
-draw a saved syslog without re-running the replay. Everything
+adjustments, place it at `set.l_tether`, and call `init!`.
+The `settle: false` path of `flight_replay.jl`, and what
+`flight_replay_plots.jl` draws a saved syslog on. Everything
 the model is built from comes from `kite_set`, so a plot cannot
 be drawn against a different one than the replay flew.
 """
@@ -820,10 +820,11 @@ function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
         aero_mode=resolve_aero_mode(kite_set))
     sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
     apply_geom_adjustments!(sys, kite_set.geom)
+    place_at_tether_length!(sys, set.l_tether)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;
-            remake=false, ignore_l0=false, remake_vsm=true,
+            remake=false, remake_vsm=true,
             analytic_jacobian=kite_set.analytic_jacobian)
     end
     return sam, sys
