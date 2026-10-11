@@ -236,6 +236,17 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix
             @test spanwise == length(table["data"])
         end
 
+        # The y_ref points are a mirror pair, so the body y axis lies along the span.
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            yaml = V3Kite.YAML.load_file(joinpath(v3_data_path(), name))
+            points = yaml["points"]
+            pos_col = findfirst(==("pos_cad"), points["headers"])
+            pos = Dict(row[1] => Float64.(row[pos_col]) for row in points["data"])
+            first_ref, second_ref = (pos[ref]
+                for ref in only(yaml["wings"]["data"])["y_ref_points"])
+            @test first_ref ≈ second_ref .* [1, -1, 1]
+        end
+
         # The hinge is the chord receiver nearest the crease the aero tables
         # were deflected about; the other two are the chord's own ends.
         topo = V3BeamTopology()
