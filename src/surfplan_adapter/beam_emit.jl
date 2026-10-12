@@ -614,7 +614,7 @@ function write_model(path, tables, geom, bridle, topo; full)
                  compression_frac = topo.bridle.compression_frac,
                  compression_damping_frac = topo.bridle.compression_damping_frac)])
         emit_table(io, "bodies",
-            ["name", "mass", "inertia_principal", "pos", "type", "Q_b_to_w",
+            ["name", "extra_mass", "inertia_principal", "pos", "type", "Q_b_to_w",
              "transform_idx", "wing"], body_emit)
         emit_table(io, "timoshenko_joints",
             ["name", "body_a", "body_b", "EA", "GA", "GJ", "EIy", "EIz",

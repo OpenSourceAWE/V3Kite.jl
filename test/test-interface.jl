@@ -18,7 +18,6 @@ isdefined(@__MODULE__, :hold_torque!) ||
     data_path = v3_data_path()
     PROJECT = "system_psm.yaml"
     settings = Settings(PROJECT)
-    settings.v_wind = 10.0
     settings.l_tether = 150.0
     sam, sys = create_v3_model(PROJECT; data_path, settings)
     sam.set.wind_vec = [10.0, 0.0, 0.0]

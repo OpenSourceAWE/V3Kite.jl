@@ -2,7 +2,7 @@
 # by V3Kite.SurfplanAdapter. Edits here are overwritten.
 
 bodies:
-  headers: [name, mass, inertia_principal, pos, type, Q_b_to_w, transform_idx, wing]
+  headers: [name, extra_mass, inertia_principal, pos, type, Q_b_to_w, transform_idx, wing]
   data:
     - [wing_le_body_1      , 0.1777, [0.005581, 0.005581, 0.005581], [ 0.2463,  4.1055,   8.276], DYNAMIC, [ -0.7396,  0.6722,    0.03095,  -0.01195], nothing, nothing]
     - [wing_te_body_1      , 0.1822, [0.001842, 0.001842, 0.001842], [ 0.8576,  4.1419,  8.2943], DYNAMIC, [ -0.7396,  0.6722,    0.03095,  -0.01195], nothing, nothing]
