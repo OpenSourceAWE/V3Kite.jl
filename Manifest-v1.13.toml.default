@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.13.1"
+julia_version = "1.13.0"
 manifest_format = "2.1"
-project_hash = "07c9f6b59a6268b64c4b21111e01220978ba02f9"
+project_hash = "ed0c2e09070ea350c852f0837679e5ea4284758f"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -1722,7 +1722,7 @@ version = "1.9.1+0"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl", "OpenSSL_jll", "Zlib_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
-version = "1.11.104+0"
+version = "1.11.103+0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -3408,11 +3408,11 @@ uuid = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 version = "0.2.8"
 
 [[deps.SymbolicAWEModels]]
-deps = ["ADTypes", "AtmosphericModels", "ControlSystemsBase", "DataInterpolations", "Dates", "DocStringExtensions", "ForwardDiff", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "LinearSolve", "Logging", "ModelingToolkit", "NonlinearSolve", "NonlinearSolveQuasiNewton", "OrderedCollections", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqNonlinearSolve", "Parameters", "Pkg", "PrecompileTools", "Printf", "RecipesBase", "SHA", "Serialization", "SparseArrays", "StaticArrays", "Statistics", "SteadyStateDiffEq", "Suppressor", "SymbolicIndexingInterface", "SymbolicUtils", "Symbolics", "TOML", "Timers", "UnPack", "VortexStepMethod", "YAML"]
-git-tree-sha1 = "93db4072d9e266d11d04ac6a8a677551f2abe719"
+deps = ["ADTypes", "AtmosphericModels", "ControlSystemsBase", "DataInterpolations", "Dates", "DocStringExtensions", "ForwardDiff", "JSON", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "LinearSolve", "Logging", "ModelingToolkit", "NonlinearSolve", "NonlinearSolveQuasiNewton", "OrderedCollections", "OrdinaryDiffEqBDF", "OrdinaryDiffEqCore", "OrdinaryDiffEqNonlinearSolve", "Parameters", "Pkg", "PrecompileTools", "Printf", "RecipesBase", "SHA", "Serialization", "SparseArrays", "StaticArrays", "Statistics", "SteadyStateDiffEq", "Suppressor", "SymbolicIndexingInterface", "SymbolicUtils", "Symbolics", "TOML", "Timers", "UnPack", "VortexStepMethod", "YAML"]
+git-tree-sha1 = "b61425ba0aab52a06cf2ae6fb506c1d15a85a0de"
 registries = "General"
 uuid = "9c9a347c-5289-41db-a9b9-25ccc76c3360"
-version = "0.19.0"
+version = "0.20.0"
 weakdeps = ["GeometryBasics", "MakieControlPlots"]
 
     [deps.SymbolicAWEModels.extensions]
@@ -3663,10 +3663,10 @@ weakdeps = ["GLMakie"]
 
 [[deps.VortexStepMethod]]
 deps = ["Arrow", "Colors", "DefaultApplication", "DelimitedFiles", "DifferentiationInterface", "FiniteDiff", "ForwardDiff", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "Measures", "NPZ", "NonlinearSolve", "Parameters", "Pkg", "PreallocationTools", "PrecompileTools", "Printf", "RecursiveArrayTools", "SciMLBase", "Serialization", "StaticArrays", "Statistics", "StructMapping", "Timers", "Xfoil", "YAML"]
-git-tree-sha1 = "6b2de83658924fef957dca2b1222c85256f42c29"
+git-tree-sha1 = "37da5cdca4a7cc2f031195c355fd489206e8e6d3"
 registries = "General"
 uuid = "ed3cd733-9f0f-46a9-93e0-89b8d4998dd9"
-version = "6.0.0"
+version = "6.1.0"
 weakdeps = ["MakieControlPlots"]
 
     [deps.VortexStepMethod.extensions]
