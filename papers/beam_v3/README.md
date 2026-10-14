@@ -8,7 +8,7 @@ The figures and the numbers in the text are generated, not tracked. From the rep
 include("papers/beam_v3/run_simulations.jl")
 ```
 
-This settles and flies both models, which takes about half an hour, and writes `figures/` and `results.tex`. It settles from a cache of its own under `output/`, so what it reports does not depend on a settled state another run left behind. Then compile `beam_v3.tex`:
+This settles and flies both models, which takes about ten minutes, and writes `figures/` and `results.tex`. It settles from a cache of its own under `output/`, so what it reports does not depend on a settled state another run left behind. Then compile `beam_v3.tex`:
 
 ```sh
 latexmk -pdf beam_v3.tex
