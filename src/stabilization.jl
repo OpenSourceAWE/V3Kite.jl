@@ -260,10 +260,7 @@ Restore the state logged at `path` onto `sys` and push it onto `sam`'s
 integrator, so a run starts where that log left off. Returns `false` when the log
 is missing or unreadable.
 
-Call after `init!`, not before: the log carries positions and velocities, and the
-rest lengths they belong with are the ones `init!` computes, so restoring first
-and skipping the recompute would pair a relaxed geometry with the rest lengths of
-the YAML instead.
+Call after `init!`, which builds the integrator the restored state is pushed onto.
 """
 function start_from_state!(sam, sys, path)
     state = read_state_log(path)
@@ -747,13 +744,11 @@ function settle_wing(config::V3SettleConfig, init_row;
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
-        sys.tethers[1].init_stretched_len = gc.tether_length
         with_model_cache(cache_path) do
             # Settling already rebuilt into this cache, and the bin carries a
             # structure hash that rejects it if the settled structure differs.
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                reinit_sys=false,
                 analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     else
@@ -767,10 +762,10 @@ function settle_wing(config::V3SettleConfig, init_row;
             dynamics_type=config.kite_set.wing_type, vsm_set,
             aero_mode=resolve_aero_mode(config.kite_set))
         sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
+        place_at_tether_length!(sys, set.l_tether)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
-                remake=remake_model && !settling_rebuilt, ignore_l0=false,
-                remake_vsm=true,
+                remake=remake_model && !settling_rebuilt, remake_vsm=true,
                 analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     end
@@ -847,10 +842,10 @@ function setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
     apply_geom_adjustments!(sys, gc)
-    sys.tethers[1].init_stretched_len = gc.tether_length
+    place_at_tether_length!(sys, gc.tether_length)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
-            ignore_l0=false, remake_vsm=true,
+            remake_vsm=true,
             analytic_jacobian=config.kite_set.analytic_jacobian)
     end
 
