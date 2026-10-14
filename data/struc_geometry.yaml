@@ -346,6 +346,24 @@ stations:
     - [10, [20, 21], STATIC, 0.75, 50.0]
 
 ###########################
+## Canopy faces ###########
+###########################
+# Quads of the canopy surface between adjacent stations, as LE_i, TE_i, TE_i+1,
+# LE_i+1; not read by the model build.
+canopy_faces:
+  headers: [name, wing, points]
+  data:
+    - [canopy_1, 1, [2, 3, 5, 4]]
+    - [canopy_2, 1, [4, 5, 7, 6]]
+    - [canopy_3, 1, [6, 7, 9, 8]]
+    - [canopy_4, 1, [8, 9, 11, 10]]
+    - [canopy_5, 1, [10, 11, 13, 12]]
+    - [canopy_6, 1, [12, 13, 15, 14]]
+    - [canopy_7, 1, [14, 15, 17, 16]]
+    - [canopy_8, 1, [16, 17, 19, 18]]
+    - [canopy_9, 1, [18, 19, 21, 20]]
+
+###########################
 ## Wings ##################
 ###########################
 # Wing aerodynamic bodies

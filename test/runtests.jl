@@ -253,6 +253,24 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             end
         end
 
+        # Each canopy face is a quad across one bay: two points down station i's
+        # chord, then two down station i + 1's, no chord cell covered twice.
+        for (name, n_faces) in ("struc_geometry.yaml" => 9,
+                "struc_geometry_beam.yaml" => 90, "struc_geometry_beam_wing.yaml" => 90)
+            yaml = V3Kite.YAML.load_file(joinpath(v3_data_path(), name))
+            stations = yaml["stations"]
+            point_col = something(findfirst(==("points"), stations["headers"]),
+                findfirst(==("point_idxs"), stations["headers"]))
+            chords = [row[point_col] for row in stations["data"]]
+            faces = yaml["canopy_faces"]["data"]
+            @test length(faces) == n_faces
+            @test allunique(face[3][1:2] for face in faces)
+            @test all(faces) do face
+                any(face[3][1:2] ⊆ chords[i] && face[3][3:4] ⊆ chords[i + 1]
+                    for i in 1:length(chords) - 1)
+            end
+        end
+
         # A geometry carrying polars alone cannot fly `pressure`, and says so
         # when the project loads rather than inside the model build.
         @test_throws ErrorException aero_geometry_path("system_psm.yaml";
