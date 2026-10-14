@@ -348,8 +348,7 @@ stations:
 ###########################
 ## Canopy faces ###########
 ###########################
-# Quads of the canopy surface between adjacent stations, as LE_i, TE_i, TE_i+1,
-# LE_i+1; not read by the model build.
+# Quads of the canopy surface between adjacent stations, as LE_i, TE_i, TE_i+1, LE_i+1
 canopy_faces:
   headers: [name, wing, points]
   data:

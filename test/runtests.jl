@@ -253,8 +253,6 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             end
         end
 
-        # Each canopy face is a quad across one bay: two points down station i's
-        # chord, then two down station i + 1's, no chord cell covered twice.
         for (name, n_faces) in ("struc_geometry.yaml" => 9,
                 "struc_geometry_beam.yaml" => 90, "struc_geometry_beam_wing.yaml" => 90)
             yaml = V3Kite.YAML.load_file(joinpath(v3_data_path(), name))
@@ -262,13 +260,46 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             point_col = something(findfirst(==("points"), stations["headers"]),
                 findfirst(==("point_idxs"), stations["headers"]))
             chords = [row[point_col] for row in stations["data"]]
-            faces = yaml["canopy_faces"]["data"]
+            faces = [face[3] for face in yaml["canopy_faces"]["data"]]
             @test length(faces) == n_faces
-            @test allunique(face[3][1:2] for face in faces)
-            @test all(faces) do face
-                any(face[3][1:2] ⊆ chords[i] && face[3][3:4] ⊆ chords[i + 1]
-                    for i in 1:length(chords) - 1)
+            per_bay = n_faces ÷ (length(chords) - 1)
+            for (i, bay) in enumerate(Iterators.partition(faces, per_bay))
+                near = [first.(bay); bay[end][2]]
+                far = [getindex.(bay, 4); bay[end][3]]
+                @test near[[1, end]] == chords[i][1:2]
+                @test far[[1, end]] == chords[i + 1][1:2]
+                @test allunique(near) && near ⊆ chords[i]
+                @test allunique(far) && far ⊆ chords[i + 1]
+                @test getindex.(bay, 2) == near[2:end]
+                @test getindex.(bay, 3) == far[2:end]
             end
+        end
+
+        # A two-station wing with one interior receiver: two cells, LE half first.
+        mktempdir() do dir
+            spec(i, j, frac) = (name = "wing_ctrl_$(i)_$j", pos = [frac, i - 1.0, 0.0],
+                station = i, frac, tube = "strut_$i")
+            tables = (n = 2, mid = 1, le_ids = [1, 3], te_ids = [2, 4],
+                wing_pt = Dict(1 => "wing_le_1", 2 => "wing_te_1",
+                    3 => "wing_le_2", 4 => "wing_te_2"),
+                wing_body = Dict(k => "b" for k in 1:4),
+                control_specs = [spec(i, j, frac)
+                                 for i in 1:2 for (j, frac) in enumerate((0.0, 0.5, 1.0))],
+                body_rows = [["b", 0.0, [1.0, 1.0, 1.0], [0.0, 0.0, 0.0], "DYNAMIC",
+                    [1.0, 0.0, 0.0, 0.0]]],
+                tube_rows = [["t", ["b"], 0.1, 0.0, "x", "y", 0.5, 0.0]],
+                flap_points = [["wing_ctrl_1_1"], ["wing_ctrl_2_1"]])
+            geom = (pos = Dict(1 => [0.0, 0.0, 0.0], 2 => [1.0, 0.0, 0.0],
+                    3 => [0.0, 1.0, 0.0], 4 => [1.0, 1.0, 0.0]),
+                wing_connections = [("te_1", 2, 4)])
+            path = joinpath(dir, "wing.yaml")
+            V3Kite.SurfplanAdapter.write_model(path, tables, geom, nothing,
+                V3BeamTopology(); full = false)
+            @test V3Kite.YAML.load_file(path)["canopy_faces"]["data"] == [
+                ["canopy_1_1", 1,
+                    ["wing_le_1", "wing_ctrl_1_2", "wing_ctrl_2_2", "wing_le_2"]],
+                ["canopy_1_2", 1,
+                    ["wing_ctrl_1_2", "wing_te_1", "wing_te_2", "wing_ctrl_2_2"]]]
         end
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so

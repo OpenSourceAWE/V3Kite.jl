@@ -467,7 +467,7 @@ writes the wing-only subset placed at CAD with no transform.
 
 `topo.cell_diagonals` decides how the canopy is braced: per cell of the net, or
 with the export's single full-chord `dia` pair per bay. Each cell of the net is also
-written as a `canopy_faces` quad, which the model build does not read.
+written as a `canopy_faces` quad.
 """
 function write_model(path, tables, geom, bridle, topo; full)
     tf = full ? 1 : "nothing"
