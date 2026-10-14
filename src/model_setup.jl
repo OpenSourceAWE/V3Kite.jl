@@ -72,13 +72,13 @@ Both were fitted against the particle lattice and address segments by position, 
 they are skipped with a warning on a structure whose segments are laid out
 differently — the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) must not
 inherit a correction fitted for another structure. A beam wing is recognised by its
-`TimoshenkoJoint`s; being the larger structure, it has a segment at every one of
+`tubes`; being the larger structure, it has a segment at every one of
 these indices, so an in-range check alone would let the corrections land on canopy
 membranes instead.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
-    if !isempty(sys.timoshenko_joints) &&
+    if !isempty(sys.tubes) &&
             (config.reduce_tip || config.reduce_te)
         @warn "Skipping the tip/TE reductions on a beam wing: they are indices " *
               "into the particle lattice, whose wing segments this has none of"
@@ -245,25 +245,45 @@ end
 """
     beam_rigidities(sys) -> Vector{NamedTuple}
 
-One row per `TimoshenkoJoint` of `sys`: `name`, `member` (`:leading_edge` or
-`:strut`), `span` (mean y of its two node bodies in CAD [m]), `length` between
-those bodies [m], tube `radius` [m], and the rigidities `EA`, `GA` [N], `GJ`,
-`EI` [N·m²] with the shear correction factor `shear_coeff`. A rigidity given as a
-law is evaluated at zero deformation.
+One row per tube of `sys`: `name`, `member` (`:leading_edge` or `:strut`), `span`
+(mean spanwise position of its two node bodies [m], from mid-span toward the end
+the leading edge starts at), `length` between those bodies [m], `radius` [m], and
+the rigidities `EA`, `GA` [N], `GJ`, `EI` [N·m²] with the shear correction factor
+`shear_coeff`. A rigidity given as a law is evaluated at zero deformation.
 """
 function beam_rigidities(sys)
-    return map(sys.timoshenko_joints) do joint
-        pos_a = sys.bodies[joint.body_a_idx].pos_cad
-        pos_b = sys.bodies[joint.body_b_idx].pos_cad
-        (name = joint.name,
-         member = startswith(String(joint.name), "strut") ? :strut : :leading_edge,
-         span = (pos_a[2] + pos_b[2]) / 2,
+    origin, axis = leading_edge_span_axis(sys,
+        filter(tube -> tube_member(tube) === :leading_edge, collect(sys.tubes)))
+    return map(sys.tubes) do tube
+        pos_a = sys.bodies[tube.body_a_idx].pos_ENU
+        pos_b = sys.bodies[tube.body_b_idx].pos_ENU
+        model = tube.model
+        (name = tube.name, member = tube_member(tube),
+         span = dot((pos_a + pos_b) / 2 - origin, axis),
          length = norm(pos_b - pos_a),
-         radius = joint.radius,
-         EA = rigidity(joint.EA), GA = rigidity(joint.GA), GJ = rigidity(joint.GJ),
-         EI = rigidity(joint.EIy), shear_coeff = joint.shear_coeff)
+         radius = tube.diameter / 2,
+         EA = rigidity(model.EA), GA = rigidity(model.GA), GJ = rigidity(model.GJ),
+         EI = rigidity(model.EIy), shear_coeff = model.shear_coeff)
     end
 end
+
+"""
+    leading_edge_span_axis(sys, leading_edge) -> (origin, axis)
+
+Midpoint of the two tip bodies of the `leading_edge` tube chain, and the unit
+vector from it toward the tip the first tube starts at.
+"""
+function leading_edge_span_axis(sys, leading_edge)
+    ends = vcat([[tube.body_a_idx, tube.body_b_idx] for tube in leading_edge]...)
+    tips = filter(idx -> count(==(idx), ends) == 1, unique(ends))
+    first_tip = leading_edge[1].body_a_idx
+    other_tip = only(filter(!=(first_tip), tips))
+    pos_first = sys.bodies[first_tip].pos_ENU
+    pos_other = sys.bodies[other_tip].pos_ENU
+    return (pos_first + pos_other) / 2, normalize(pos_first - pos_other)
+end
+
+tube_member(tube) = startswith(String(tube.name), "strut") ? :strut : :leading_edge
 
 rigidity(value::Real) = Float64(value)
 rigidity(law) = Float64(law(0.0))

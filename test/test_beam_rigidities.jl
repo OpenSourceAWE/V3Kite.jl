@@ -11,15 +11,15 @@
             aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
     elements = beam_rigidities(sys)
 
-    @test length(elements) == length(sys.timoshenko_joints) == 21
+    @test length(elements) == length(sys.tubes) == 21
     @test count(element -> element.member === :leading_edge, elements) == 11
     @test count(element -> element.member === :strut, elements) == 10
 
     stiffest = elements[argmax([element.EI for element in elements])]
     @test stiffest.name === :le_beam_5
-    @test stiffest.EI ≈ 605.0797
+    @test stiffest.EI ≈ 605.02052
     @test abs(stiffest.span) < 1e-9
-    @test stiffest.radius ≈ 0.1008
+    @test stiffest.radius ≈ 0.10075
 
     leading_edge = sort(filter(element -> element.member === :leading_edge, elements);
         by = element -> element.span)
