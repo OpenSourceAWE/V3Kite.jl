@@ -38,60 +38,16 @@ MAX_HEADING = 40.0    # setpoint amplitude [deg]
 PERIOD = 30.0         # setpoint period [s]
 
 # =============================================================================
-# Model
+# Simulation
 # =============================================================================
 
 @info "V3 Kite Simulation Example" PROJECT
 @info "Calibration:" steering_l0=V3_STEERING_L0_BASE depower_l0=V3_DEPOWER_L0_BASE
 
 set_data_path(v3_data_path())
-kite_set = load_kite(PROJECT)
-heading = load_heading(PROJECT)
-set = Settings(PROJECT)
-
 sam, sys = build_v3_model(PROJECT)
-
-n_steps = Int(round(set.sample_freq * set.sim_time))
-dt = set.sim_time / n_steps
-logger, sys_state = create_logger(sam, n_steps)
-
-nominal_steering = V3Kite.get_steering(sys, kite_set.geom)
-max_heading_rad = deg2rad(MAX_HEADING)
-angular_freq = 2pi / PERIOD
-
-pid = heading_pid(heading, dt)
-
-# =============================================================================
-# Simulation loop
-# =============================================================================
-
-@info "Starting simulation" n_steps dt
-sim_start = time()
-
-for step in 1:n_steps
-    t = step * dt
-
-    target_rad = max_heading_rad * sin(angular_freq * t)
-    measured = sys.wings[1].heading
-    schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
-    steering = nominal_steering + pid(target_rad, measured, 0.0)
-    sys_state.bearing = target_rad
-
-    set_steering!(sys, steering, kite_set.geom)
-
-    if !sim_step!(sam; dt, vsm_interval = kite_set.vsm_interval)
-        @error "Simulation failed" step
-        break
-    end
-    log_state!(logger, sys_state, sam, t; steering)
-
-    if should_report(step, n_steps)
-        elapsed = time() - sim_start
-        @info "Step $step/$n_steps" times_realtime=round(t/elapsed, digits=2)
-    end
-end
-
-report_performance(set.sim_time, time() - sim_start)
+logger, _, _ = fly_heading_sine(sam, sys, PROJECT; max_heading = MAX_HEADING,
+    period = PERIOD)
 
 log_name = "v3kite_$(splitext(PROJECT)[1])"
 save_log(logger, log_name)
@@ -102,14 +58,15 @@ syslog = load_log(log_name)
 # =============================================================================
 
 @info "Creating visualization..."
-sl = syslog.syslog
-plot_window = plotx(sl.time,
-    rad2deg.(sl.elevation),
-    rad2deg.(sl.azimuth),
-    [rad2deg.(wrap_to_pi.(sl.heading)), rad2deg.(sl.bearing), rad2deg.(sl.course)],
-    100.0 .* sl.steering,
-    rad2deg.(sl.AoA),
-    first.(sl.winch_force);
+states = syslog.syslog
+plot_window = plotx(states.time,
+    rad2deg.(states.elevation),
+    rad2deg.(states.azimuth),
+    [rad2deg.(wrap_to_pi.(states.heading)), rad2deg.(states.bearing),
+        rad2deg.(states.course)],
+    100.0 .* states.steering,
+    rad2deg.(states.AoA),
+    first.(states.winch_force);
     xlabel = L"\mathrm{time}~[\mathrm{s}]",
     ysize = 18,
     legendsize = 16,

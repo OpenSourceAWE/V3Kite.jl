@@ -243,6 +243,52 @@ function set_damping_per_stiffness!(sys, seg_idxs, ratio)
 end
 
 """
+    beam_rigidities(sys) -> Vector{NamedTuple}
+
+One row per tube of `sys`: `name`, `member` (`:leading_edge` or `:strut`), `span`
+(mean spanwise position of its two node bodies [m], from mid-span toward the end
+the leading edge starts at), `length` between those bodies [m], `radius` [m], and
+the rigidities `EA`, `GA` [N], `GJ`, `EI` [N·m²] with the shear correction factor
+`shear_coeff`. A rigidity given as a law is evaluated at zero deformation.
+"""
+function beam_rigidities(sys)
+    origin, axis = leading_edge_span_axis(sys,
+        filter(tube -> tube_member(tube) === :leading_edge, collect(sys.tubes)))
+    return map(sys.tubes) do tube
+        pos_a = sys.bodies[tube.body_a_idx].pos_ENU
+        pos_b = sys.bodies[tube.body_b_idx].pos_ENU
+        model = tube.model
+        (name = tube.name, member = tube_member(tube),
+         span = dot((pos_a + pos_b) / 2 - origin, axis),
+         length = norm(pos_b - pos_a),
+         radius = tube.diameter / 2,
+         EA = rigidity(model.EA), GA = rigidity(model.GA), GJ = rigidity(model.GJ),
+         EI = rigidity(model.EIy), shear_coeff = model.shear_coeff)
+    end
+end
+
+"""
+    leading_edge_span_axis(sys, leading_edge) -> (origin, axis)
+
+Midpoint of the two tip bodies of the `leading_edge` tube chain, and the unit
+vector from it toward the tip the first tube starts at.
+"""
+function leading_edge_span_axis(sys, leading_edge)
+    ends = vcat([[tube.body_a_idx, tube.body_b_idx] for tube in leading_edge]...)
+    tips = filter(idx -> count(==(idx), ends) == 1, unique(ends))
+    first_tip = leading_edge[1].body_a_idx
+    other_tip = only(filter(!=(first_tip), tips))
+    pos_first = sys.bodies[first_tip].pos_ENU
+    pos_other = sys.bodies[other_tip].pos_ENU
+    return (pos_first + pos_other) / 2, normalize(pos_first - pos_other)
+end
+
+tube_member(tube) = startswith(String(tube.name), "strut") ? :strut : :leading_edge
+
+rigidity(value::Real) = Float64(value)
+rigidity(law) = Float64(law(0.0))
+
+"""
     generate_drag_adjusted_polars(drag_factor; data_path, src_dir, dst_dir)
 
 Read 2D polar CSVs, multiply the `Cd` column by `drag_factor`, and
