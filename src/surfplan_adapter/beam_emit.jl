@@ -466,7 +466,8 @@ the flying model (bridle, KCU, tapes, pulleys, tether, winch, transform); `full=
 writes the wing-only subset placed at CAD with no transform.
 
 `topo.cell_diagonals` decides how the canopy is braced: per cell of the net, or
-with the export's single full-chord `dia` pair per bay.
+with the export's single full-chord `dia` pair per bay. Each cell of the net is also
+written as a `canopy_faces` quad.
 """
 function write_model(path, tables, geom, bridle, topo; full)
     tf = full ? 1 : "nothing"
@@ -517,15 +518,17 @@ function write_model(path, tables, geom, bridle, topo; full)
         push!(nodes, (wing_pt[te_ids[i]], geom.pos[te_ids[i]]))
         return nodes
     end
-    if topo.cell_diagonals
-        for i in 1:n - 1
-            here, there = net_nodes(i), net_nodes(i + 1)
-            for k in 1:length(here) - 1
-                push_seg!(canopy_seg_row("cross_$(i)_$(k)a", here[k][1],
-                    there[k + 1][1], norm(here[k][2] - there[k + 1][2]), topo))
-                push_seg!(canopy_seg_row("cross_$(i)_$(k)b", here[k + 1][1],
-                    there[k][1], norm(here[k + 1][2] - there[k][2]), topo))
-            end
+    canopy_rows = Vector{Any}[]
+    for i in 1:n - 1
+        here, there = net_nodes(i), net_nodes(i + 1)
+        for k in 1:length(here) - 1
+            push!(canopy_rows, ["canopy_$(i)_$k", 1,
+                first.([here[k], here[k + 1], there[k + 1], there[k]])])
+            topo.cell_diagonals || continue
+            push_seg!(canopy_seg_row("cross_$(i)_$(k)a", here[k][1],
+                there[k + 1][1], norm(here[k][2] - there[k + 1][2]), topo))
+            push_seg!(canopy_seg_row("cross_$(i)_$(k)b", here[k + 1][1],
+                there[k][1], norm(here[k + 1][2] - there[k][2]), topo))
         end
     end
 
@@ -627,6 +630,7 @@ function write_model(path, tables, geom, bridle, topo; full)
             tables.flap_points[i], [0.0, 1.0, 0.0]] for i in 1:n]
         emit_table(io, "stations",
             ["name", "wing", "type", "points", "flap_points", "flap_axis"], flap_rows)
+        emit_table(io, "canopy_faces", ["name", "wing", "points"], canopy_rows)
         emit_table(io, "points", POINT_HEADERS, point_rows)
         emit_table(io, "segments", SEG_HEADERS, seg_rows)
         isempty(pulley_rows) ||
