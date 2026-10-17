@@ -48,6 +48,14 @@ jobs:
 
       - uses: julia-actions/julia-buildpkg@v1
 
+      - name: Slice the beam wing's surface-resolved aero geometry
+        env:
+          JULIA_PKG_PRECOMPILE_AUTO: 0
+        run: |
+          cp "Manifest-v${{ matrix.version }}.toml.default" "examples/Manifest-v${{ matrix.version }}.toml"
+          julia --project=examples -e 'using Pkg; Pkg.resolve()'
+          julia --project=examples examples/v3beam_aero_geometry.jl
+
       - uses: julia-actions/julia-runtest@v1
         with:
           coverage: true
