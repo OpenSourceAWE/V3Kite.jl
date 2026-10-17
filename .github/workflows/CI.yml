@@ -17,7 +17,7 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +47,13 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - uses: julia-actions/julia-buildpkg@v1
+
+      - name: Slice the beam wing's surface-resolved aero geometry
+        env:
+          JULIA_PKG_PRECOMPILE_AUTO: 0
+        run: |
+          julia --project=examples -e 'using Pkg; Pkg.resolve()'
+          julia --project=examples examples/v3beam_aero_geometry.jl
 
       - uses: julia-actions/julia-runtest@v1
         with:
