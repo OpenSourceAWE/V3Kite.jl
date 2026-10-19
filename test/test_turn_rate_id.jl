@@ -368,6 +368,20 @@ end
         @test r.n == 2 * (1200 - round(Int, 0.5 / dt))
     end
 
+    @testset "joint_delay_lag_fit c3" begin
+        dt, d, T, c1, c3 = 0.05, 4, 0.15, 0.2, 0.23
+        grav = (va, psi, beta) -> c3 * sin(psi) * cos(beta)
+        fits = [delay_lag_flight(; dt, n = 1200, d, T, c1, grav, phase) for phase in (0.0, 1.3)]
+        r = joint_delay_lag_fit(fits, dt; lag_max = 0.5, t_max = 0.5, c3)
+        @test r.d == d
+        @test r.lag ≈ T atol = 1e-9
+        @test r.c1 ≈ c1 rtol = 1e-6
+        dmax = round(Int, 0.5 / dt)
+        @test r.c2 ≈ c3 * sum(reduce(vcat, [f.v_app[dmax + 1:end] for f in fits])) / r.n
+        @test r.rms_lag < 1e-6
+        @test r.rms_delay > 100r.rms_lag
+    end
+
     @testset "format_turn_rate_report" begin
         dt = 0.05
         sl, _ = consistent_log(; dt, n = 601)

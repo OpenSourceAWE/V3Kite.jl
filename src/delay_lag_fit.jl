@@ -140,7 +140,7 @@ function fit_c1_c3(v_app::AbstractVector, psi::AbstractVector, beta::AbstractVec
 end
 
 """
-    joint_delay_lag_fit(fits, dt; lag_max=1.0, t_max=0.8) -> NamedTuple
+    joint_delay_lag_fit(fits, dt; lag_max=1.0, t_max=0.8, c3=nothing) -> NamedTuple
 
 One dead time, first-order lag, `c1` and `c2` for all `fits` (each an
 `identify_turn_rate_law` result, sampled at `dt`): [`fit_delay_lag`](@ref) over
@@ -149,13 +149,16 @@ several flights. For every lag `T` in `0:dt:lag_max` and dead time of `d` sample
 first `t_max/dt` samples of every flight are dropped (so every candidate is
 scored on the same samples, none of them padded by the shift), and `fit_c1_c2`
 is fitted on all flights stacked. The pair with the smallest residual wins.
+With `c3` given, the gravity term `c3·sin(ψ)·cos(β)` is held fixed and only `c1`
+is fitted ([`fit_c1_c3`](@ref)), as in `fit_delay_lag`; `c2` is then `c3·mean(v_a)`.
 
 Returns `(; dead_time, lag, d, c1, c2, rms_lag, rms_delay, n)`: the dead time [s]
 as `delay_sec` counts it (whole samples less half a sample), the lag [s], the
 shift in samples, the coefficients, the residual RMS [rad/s] of this fit and of
 the best pure delay (`T = 0`), and the number of samples.
 """
-function joint_delay_lag_fit(fits, dt; lag_max = 1.0, t_max = 0.8)
+function joint_delay_lag_fit(fits, dt; lag_max = 1.0, t_max = 0.8,
+                             c3::Union{Nothing, Real} = nothing)
     dmax = round(Int, t_max / dt)
     trim(x) = x[dmax + 1:end]
     stack(field) = reduce(vcat, [Float64.(getfield(f, field))[dmax + 1:end] for f in fits])
@@ -166,7 +169,8 @@ function joint_delay_lag_fit(fits, dt; lag_max = 1.0, t_max = 0.8)
         ufs = [lag_filter(f.us, T, dt) for f in fits]
         for d in 0:dmax
             us = reduce(vcat, [trim(shift_delay(u, d)) for u in ufs])
-            c = fit_c1_c2(v_app, psi, beta, rate, us)
+            c = isnothing(c3) ? fit_c1_c2(v_app, psi, beta, rate, us) :
+                                fit_c1_c3(v_app, psi, beta, rate, us; c3)
             T == 0 && (rms_delay = min(rms_delay, c.rms))
             (isnothing(best) || c.rms < best.rms) && (best = (; T, d, c1 = c.c1, c2 = c.c2, rms = c.rms))
         end
