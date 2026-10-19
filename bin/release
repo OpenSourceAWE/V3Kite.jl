@@ -1,0 +1,146 @@
+#!/bin/bash
+# Copyright (c) 2026 Bart van de Lint
+# SPDX-License-Identifier: MIT
+
+set -euo pipefail
+
+_dry_run=false
+_assume_yes=false
+_sha=""
+
+print_usage() {
+    echo "Usage:"
+    echo "  ./bin/release            Register the head of the default branch"
+    echo "  ./bin/release --dry-run  Print the version, commit and release notes, then exit"
+    echo "  ./bin/release --yes      Skip the confirmation prompt"
+    echo "  ./bin/release --sha SHA  Register a specific commit instead"
+    echo "  ./bin/release -h"
+    echo
+    echo "The version and the release notes are read from Project.toml and"
+    echo "CHANGELOG.md as that commit carries them, never from the working tree,"
+    echo "so this runs from any branch and from any directory in the repository."
+    echo "It posts a '@JuliaRegistrator register' comment on the commit via the"
+    echo "GitHub API; the commit must already be on the remote."
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) print_usage; exit 0 ;;
+        -n|--dry-run) _dry_run=true; shift ;;
+        -y|--yes) _assume_yes=true; shift ;;
+        --sha) _sha="${2:?--sha needs an argument}"; shift 2 ;;
+        *) echo "Unknown option: $1" >&2; print_usage >&2; exit 1 ;;
+    esac
+done
+
+for cmd in git gh awk; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Required command not found: $cmd" >&2
+        exit 1
+    fi
+done
+
+if ! gh auth status >/dev/null 2>&1; then
+    echo "gh is not authenticated. Run 'gh auth login' first." >&2
+    exit 1
+fi
+
+if [[ -z "$_sha" ]]; then
+    _default=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [[ -z "$_default" ]]; then
+        echo "origin/HEAD is unset, so the default branch is unknown. Run" >&2
+        echo "'git remote set-head origin --auto', or pass --sha yourself." >&2
+        exit 1
+    fi
+    git fetch --quiet origin "${_default#origin/}"
+    _sha="$_default"
+fi
+
+_sha=$(git rev-parse --verify "$_sha^{commit}" 2>/dev/null) || {
+    echo "Not a commit in this repository: $_sha" >&2
+    exit 1
+}
+
+_project=$(git show "$_sha:Project.toml" 2>/dev/null) || {
+    echo "No Project.toml at $_sha." >&2
+    exit 1
+}
+_changelog=$(git show "$_sha:CHANGELOG.md" 2>/dev/null) || {
+    echo "No CHANGELOG.md at $_sha." >&2
+    exit 1
+}
+
+_version=$(printf '%s\n' "$_project" |
+    awk -F'"' '/^version[[:space:]]*=/ {print $2; exit}')
+if [[ -z "$_version" ]]; then
+    echo "Could not read version from Project.toml at $_sha" >&2
+    exit 1
+fi
+
+_changelog_version=$(printf '%s\n' "$_changelog" |
+    awk '/^## / {for (i = 1; i <= NF; i++) if ($i ~ /^v[0-9]/) {print $i; break}; exit}')
+if [[ "$_changelog_version" != "v$_version" ]]; then
+    echo "Version mismatch: Project.toml is $_version but CHANGELOG top is" \
+         "$_changelog_version (expected v$_version)." >&2
+    echo "Update CHANGELOG.md so its first '## ' header matches the package version." >&2
+    exit 1
+fi
+
+_notes=$(printf '%s\n' "$_changelog" | awk '
+    /^## / { n++; if (n == 1) next }
+    n == 1 { print }
+' | awk '
+    { lines[NR] = $0 }
+    END {
+        start = 1; while (start <= NR && lines[start] ~ /^[[:space:]]*$/) start++
+        end = NR; while (end >= start && lines[end] ~ /^[[:space:]]*$/) end--
+        for (i = start; i <= end; i++) print lines[i]
+    }
+')
+
+if [[ -z "$_notes" ]]; then
+    echo "No release notes found under the '## v$_version' section." >&2
+    exit 1
+fi
+
+# gh repo view ignores GH_REPO, which gh also takes as HOST/OWNER/REPO.
+_repo=${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}
+[[ $_repo == */*/* ]] && _repo=${_repo#*/}
+
+if ! gh api "repos/$_repo/commits/$_sha" >/dev/null 2>&1; then
+    echo "Commit $_sha was not found on $_repo. Push it first:" >&2
+    echo "  git push" >&2
+    exit 1
+fi
+
+_body=$(printf '@JuliaRegistrator register\n\nRelease notes:\n\n%s\n' "$_notes")
+
+echo "Repository:   $_repo"
+echo "Version:      v$_version"
+echo "Commit:       $_sha"
+echo
+echo "Release notes:"
+echo "--------------------------------------------------------------------------"
+echo "$_notes"
+echo "--------------------------------------------------------------------------"
+
+if [[ "$_dry_run" == true ]]; then
+    echo
+    echo "Dry run: no comment posted."
+    exit 0
+fi
+
+if [[ "$_assume_yes" != true ]]; then
+    echo
+    read -r -p "Post this comment and trigger JuliaRegistrator? [y/N] " _reply
+    if [[ ! "$_reply" =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
+
+_url=$(gh api "repos/$_repo/commits/$_sha/comments" -f body="$_body" -q .html_url)
+
+echo
+echo "Posted: $_url"
+echo "JuliaRegistrator will open a PR to the General registry shortly."
