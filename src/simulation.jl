@@ -263,9 +263,10 @@ end
                    remake_settled_state=nothing, kite_set=nothing,
                    settle=nothing) -> (sam, sys)
 
-Bring up the model a project file describes, ready to step. Both `remake` flags
-default to the project's `remake_model` / `remake_settled_state`; they are
-independent caches, the serialized equations and the settled geometry.
+Bring up the model a project file describes, ready to step, and return it with its
+structure `sys`. Both `remake` flags default to the project's `remake_model` /
+`remake_settled_state`; they are independent caches, the serialized equations and the
+settled geometry.
 
 `init_mode: settle` runs power-zone settling at the flight condition of the
 project's `sim_settings:`, starting from the kite's `init_state` when it has one.

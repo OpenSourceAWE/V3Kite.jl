@@ -165,15 +165,16 @@ function draw_incidence!(ax, kcu_2d, cr_2d,
 end
 
 """
-    kcu_body_positions(state) -> Vector
+    kcu_body_positions(state[, positions_w]) -> Vector
 
-Every point of the run state `state` in its wing's body frame, with the KCU
-(point 1) as origin.
+World positions `positions_w` [m], by default every point of the run state `state`,
+in the wing's body frame of `state` with the KCU (point 1) as origin.
 """
-function kcu_body_positions(state)
+function kcu_body_positions(state,
+        positions_w=(point.pos_w for point in state.points))
     R_w_b = V3Kite.calc_R_b_w(state)'
     kcu = state.points[1].pos_w
-    return [R_w_b * (point.pos_w - kcu) for point in state.points]
+    return [R_w_b * (pos_w - kcu) for pos_w in positions_w]
 end
 
 """
@@ -492,10 +493,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
     if show_incidence && dir == :side
         # Sim incidence from first sys_struct
         sys1 = structs[1]
-        R_w_b = V3Kite.calc_R_b_w(sys1)'
-        kcu = sys1.points[1].pos_w
         pos_b = kcu_body_positions(sys1)
-        kcu_b = zeros(3)
+        kcu_b = pos_b[1]
         le_3_b = pos_b[10]
         te_3_b = pos_b[11]
         le_4_b = pos_b[12]
@@ -512,8 +511,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         # Photogrammetry incidence (when extra data given)
         if !isnothing(extra_points) &&
                 !isnothing(extra_groups)
-            eb = [R_w_b * (collect(p) - kcu)
-                  for p in extra_points]
+            eb = kcu_body_positions(sys1, collect.(extra_points))
             s3_idx = nothing
             s4_idx = nothing
             for (gname, indices) in extra_groups
@@ -1017,7 +1015,7 @@ tether force, apparent wind, wind speed, kite velocity, force
 coefficient, steering gain, and steering input.
 """
 function V3Kite.plot_replay(
-        syss::Vector,
+        syss::Vector{<:SymbolicAWEModels.SystemState},
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
         tape_lengths=nothing,
         suffixes=nothing,

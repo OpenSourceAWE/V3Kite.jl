@@ -82,10 +82,10 @@ end
 Initialize the winch torque of a run state from its current tether force.
 Sets `winch.set_value` and returns the computed torque.
 """
-function init_winch_torque!(sys)
-    winch = sys.winches[1]
+function init_winch_torque!(state)
+    winch = state.winches[1]
     initial_force = norm(winch.force)
-    torque = force_to_torque(initial_force, sys)
+    torque = force_to_torque(initial_force, state)
     winch.set_value = torque
     return torque
 end

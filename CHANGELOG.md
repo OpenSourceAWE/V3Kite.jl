@@ -12,6 +12,11 @@
   uses them when given `c3`.
 
 ### Changed
+- BREAKING: a run is read and written through the model's run state (`sam.state`),
+  not its structure, for the SymbolicAWEModels that splits the two. `s.sys` of the
+  kite model is that state; steering, depower, `update_sys_struct_from_data!`,
+  `init_winch_torque!`, `plot_body_frame_local` and `plot_replay` take it.
+  `start_from_state!(sam, path)` drops its structure argument.
 - `damping_per_stiffness` of the precompile workload (`src/precompile.jl`), of
   `examples/reel_out_v3.jl`, `examples/simple_parking.jl` and
   `examples/simple_auto_parking.jl` raised from 0.001 s to 0.002 s. The lower value only
