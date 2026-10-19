@@ -213,13 +213,11 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     SymbolicAWEModels.set_angular_damping(sys.bodies,
         kite_set.beam_angular_damping, beam_idxs)
 
-    sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
-
     isempty(sys.transforms) ||
         (sys.transforms[1].elevation = deg2rad(set.elevation))
     place_at_tether_length!(sys, set.l_tether)
 
-    return sam, sys
+    return SymbolicAWEModel(set, sys; backend = kite_set.backend), sys
 end
 
 """
@@ -296,8 +294,8 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
                   "the kite_settings of $project")
         sam, sys = create_v3_model(project; data_path, kite_set)
         apply_kite_material!(sys, kite_set)
-        set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
-        set_steering!(sys, 0.0, kite_set.geom)
+        set_depower!(sam.state, set.depower / 100.0, 0.0, kite_set.geom)
+        set_steering!(sam.state, 0.0, kite_set.geom)
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
         with_model_cache(default_cache_path(data_path)) do
             SymbolicAWEModels.init!(sam; remake=remake_model,
@@ -307,7 +305,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         sys.winches[1].brake = kite_set.brake
 
         state_path = project_file(project, kite_set.init_state; data_path)
-        start_from_state!(sam, sys, state_path) ||
+        start_from_state!(sam, state_path) ||
             error("No relaxed state at $state_path; run " *
                   "examples/relax_bridle.jl for this geometry first")
         @info "Started from the relaxed state" state_path

@@ -311,13 +311,13 @@ end
         extra_vel_body_x=0.0,
         config=V3GeomAdjustConfig())
 
-Update system structure from a single data row.
+Update a run state from a single data row.
 Updates wing orientation from Euler angles and position
 via transform system. Sets steering/depower from CSV data
 using the provided geometry config.
 
 # Arguments
-- `sys`: System structure to update
+- `sys`: Run state to update (`sam.state`)
 - `row`: NamedTuple with roll, pitch, yaw, x, y, z, vx,
   vy, vz, steering, depower fields
 - `extra_vel_body_x`: Extra velocity in body x direction
@@ -360,7 +360,6 @@ function update_sys_struct_from_data!(sys, row;
             cross(omega_w, body.pos_w - wing.pos_w)
         body.ω_b .= body.R_b_to_w' * omega_w
     end
-    SymbolicAWEModels.init_principal_frame!(bodies, points)
 
     # update winch
     winches[1].brake = true

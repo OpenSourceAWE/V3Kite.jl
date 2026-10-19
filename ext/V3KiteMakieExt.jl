@@ -165,13 +165,25 @@ function draw_incidence!(ax, kcu_2d, cr_2d,
 end
 
 """
+    kcu_body_positions(state) -> Vector
+
+Every point of the run state `state` in its wing's body frame, with the KCU
+(point 1) as origin.
+"""
+function kcu_body_positions(state)
+    R_w_b = V3Kite.calc_R_b_w(state)'
+    kcu = state.points[1].pos_w
+    return [R_w_b * (point.pos_w - kcu) for point in state.points]
+end
+
+"""
     plot_body_frame_local(sys_structs; extra_points, extra_groups, dir, labels)
 
-Plot wing points in 2D body frame. Accepts single sys_struct or vector of them.
-Extra points connected per-strut and LE.
+Plot wing points in 2D body frame, with the KCU as origin. Accepts a single run
+state or a vector of them. Extra points connected per-strut and LE.
 
 # Arguments
-- `sys_structs`: System structure or vector of system structures to plot
+- `sys_structs`: Run state (`sam.state`) or vector of run states to plot
 - `extra_points`: Optional vector of (x,y,z) tuples from load_extra_points
 - `extra_groups`: Optional groups from load_extra_points
 - `dir::Symbol`: Viewing direction (:side, :front, or :top)
@@ -262,22 +274,10 @@ function V3Kite.plot_body_frame_local(sys_structs;
     # Plot each sys_struct
     for (s_idx, sys_struct) in enumerate(structs)
         points = sys_struct.points
-        wings = sys_struct.wings
         segments = sys_struct.segments
         color = PLOT_COLORS[mod1(s_idx, length(PLOT_COLORS))]
 
-        # Update pos_b for PARTICLE_DYNAMICS wing points
-        for wing in wings
-            if wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS
-                R_w_b = V3Kite.calc_R_b_w(sys_struct)'
-                wing.pos_w .= points[1].pos_w
-                for point in points
-                    if point.wing_idx == wing.idx
-                        point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
-                    end
-                end
-            end
-        end
+        pos_b = kcu_body_positions(sys_struct)
 
         if show_twist
             wing_pts = sort(
@@ -285,14 +285,14 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 by=p -> p.idx)
             span_ys = Float64[]
             aoas = Float64[]
-            le_pos = [wing_pts[i].pos_b
+            le_pos = [pos_b[wing_pts[i].idx]
                       for i in 1:2:length(wing_pts)]
             n_le = length(le_pos)
             body_x = [1.0, 0.0, 0.0]
             for k in 1:n_le
                 le = wing_pts[2k - 1]
                 te = wing_pts[2k]
-                chord_b = te.pos_b - le.pos_b
+                chord_b = pos_b[te.idx] - pos_b[le.idx]
                 y_airf = if k == 1
                     normalize(le_pos[2] - le_pos[1])
                 elseif k == n_le
@@ -305,7 +305,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                     dot(chord_b, z_loc),
                     dot(chord_b, body_x))))
                 push!(span_ys,
-                    (le.pos_b[2] + te.pos_b[2]) / 2)
+                    (pos_b[le.idx][2] + pos_b[te.idx][2]) / 2)
             end
             push!(sim_aoa_data,
                 (span_ys, aoas, color,
@@ -320,11 +320,11 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
         # Extract 2D coords based on viewing direction
         if dir == :top
-            coords = [(p.pos_b[2], p.pos_b[1]) for p in plot_points]
+            coords = [(pos_b[p.idx][2], pos_b[p.idx][1]) for p in plot_points]
         elseif dir == :side
-            coords = [(p.pos_b[1], p.pos_b[3]) for p in plot_points]
+            coords = [(pos_b[p.idx][1], pos_b[p.idx][3]) for p in plot_points]
         else  # :front
-            coords = [(p.pos_b[2], p.pos_b[3]) for p in plot_points]
+            coords = [(pos_b[p.idx][2], pos_b[p.idx][3]) for p in plot_points]
         end
 
         x_vals = [c[1] for c in coords]
@@ -340,10 +340,8 @@ function V3Kite.plot_body_frame_local(sys_structs;
             end
             from_idx, to_idx = seg.point_idxs
             if from_idx in plot_point_idxs && to_idx in plot_point_idxs
-                p1 = points[from_idx]
-                p2 = points[to_idx]
-                c1 = get_2d(p1.pos_b)
-                c2 = get_2d(p2.pos_b)
+                c1 = get_2d(pos_b[from_idx])
+                c2 = get_2d(pos_b[to_idx])
                 is_le = seg.idx <= 9
                 lw = is_le ? 5 : 3
                 clr = is_le ? color : (color, 0.5)
@@ -386,27 +384,18 @@ function V3Kite.plot_body_frame_local(sys_structs;
         end
     end
 
-    # Plot KCU (point 1) for each sys_struct
+    # The KCU (point 1) is the origin of every body frame drawn here
     if show_kcu
-        for sys_struct in structs
-            wing = sys_struct.wings[1]
-            R_w_b = V3Kite.calc_R_b_w(sys_struct)'
-            kcu_b = R_w_b *
-                (sys_struct.points[1].pos_w - wing.pos_w)
-            kx, ky = get_2d(kcu_b)
-            push!(all_x_vals, kx)
-            push!(all_y_vals, ky)
-            scatter!(ax, [kx], [ky];
-                color=:green, markersize=12,
-                marker=:circle)
-        end
+        push!(all_x_vals, 0.0)
+        push!(all_y_vals, 0.0)
+        scatter!(ax, [0.0], [0.0]; color=:green, markersize=12, marker=:circle)
     end
 
     # Plot extra points with connections (use first struct's wing for transform)
     if !isnothing(extra_points) && !isnothing(extra_groups)
-        wing = structs[1].wings[1]
         R_w_b = V3Kite.calc_R_b_w(structs[1])'
-        extra_body = [R_w_b * (collect(p) - wing.pos_w) for p in extra_points]
+        kcu = structs[1].points[1].pos_w
+        extra_body = [R_w_b * (collect(p) - kcu) for p in extra_points]
 
         if dir == :top
             extra_coords = [(p[2], p[1]) for p in extra_body]
@@ -503,14 +492,14 @@ function V3Kite.plot_body_frame_local(sys_structs;
     if show_incidence && dir == :side
         # Sim incidence from first sys_struct
         sys1 = structs[1]
-        pts1 = sys1.points
-        wing1 = sys1.wings[1]
         R_w_b = V3Kite.calc_R_b_w(sys1)'
-        kcu_b = R_w_b * (pts1[1].pos_w - wing1.pos_w)
-        le_3_b = pts1[10].pos_b
-        te_3_b = pts1[11].pos_b
-        le_4_b = pts1[12].pos_b
-        te_4_b = pts1[13].pos_b
+        kcu = sys1.points[1].pos_w
+        pos_b = kcu_body_positions(sys1)
+        kcu_b = zeros(3)
+        le_3_b = pos_b[10]
+        te_3_b = pos_b[11]
+        le_4_b = pos_b[12]
+        te_4_b = pos_b[13]
         cr_b = chord_ref_mid(
             le_3_b, te_3_b, le_4_b, te_4_b)
         le_center_b = (le_3_b + le_4_b) / 2
@@ -523,7 +512,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         # Photogrammetry incidence (when extra data given)
         if !isnothing(extra_points) &&
                 !isnothing(extra_groups)
-            eb = [R_w_b * (collect(p) - wing1.pos_w)
+            eb = [R_w_b * (collect(p) - kcu)
                   for p in extra_points]
             s3_idx = nothing
             s4_idx = nothing
@@ -667,7 +656,7 @@ Computes local twist at each LE/TE pair from sim
 sys_structs and optionally from photogrammetry data.
 
 # Arguments
-- `sys_structs`: System structure or vector of them
+- `sys_structs`: Run state (`sam.state`) or vector of them
 - `extra_points`: Optional photogrammetry points
 - `extra_groups`: Optional photogrammetry groups
 - `labels`: Optional vector of labels
@@ -1028,7 +1017,7 @@ tether force, apparent wind, wind speed, kite velocity, force
 coefficient, steering gain, and steering input.
 """
 function V3Kite.plot_replay(
-        syss::Vector{<:SymbolicAWEModels.SystemStructure},
+        syss::Vector,
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
         tape_lengths=nothing,
         suffixes=nothing,

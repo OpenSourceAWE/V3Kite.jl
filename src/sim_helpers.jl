@@ -77,9 +77,9 @@ function ramp_factor(t, t_start, t_end)
 end
 
 """
-    init_winch_torque!(sys) -> initial_torque
+    init_winch_torque!(state) -> initial_torque
 
-Initialize winch torque from current tether force.
+Initialize the winch torque of a run state from its current tether force.
 Sets `winch.set_value` and returns the computed torque.
 """
 function init_winch_torque!(sys)
@@ -132,7 +132,7 @@ Wing drag force [N]: VSM aero drag plus parasitic drag
 from the wing nodes.
 """
 function compute_drag(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     va_b = wing.va_b
     v_app = norm(va_b)
@@ -163,7 +163,7 @@ from the wing nodes. Together with tether, bridle, and
 KCU drag coefficients, the four sum to the total CD.
 """
 function compute_drag_coeff(sam)
-    wing = sam.sys_struct.wings[1]
+    wing = sam.state.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     _, q_ref = drag_coeff_ref(wing)
     return compute_drag(sam) / q_ref
@@ -176,7 +176,7 @@ Compute lift force [N] from the first wing's aero force
 component perpendicular to the apparent wind direction.
 """
 function compute_lift(sam)
-    wing = sam.sys_struct.wings[1]
+    wing = sam.state.wings[1]
     va_b = wing.va_b
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
@@ -196,7 +196,7 @@ wing drag from `compute_drag`, this gives the total system
 drag (see `total_drag`).
 """
 function compute_tether_drag(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     va_b = wing.va_b
     v_app = norm(va_b)
@@ -221,7 +221,7 @@ component perpendicular to the apparent wind direction,
 normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
 """
 function compute_lift_coeff(sam)
-    wing = sam.sys_struct.wings[1]
+    wing = sam.state.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     _, q_ref = drag_coeff_ref(wing)
     return compute_lift(sam) / q_ref
@@ -263,7 +263,7 @@ Returns `Inf` when there is no apparent wind at all, so every ratio
 formed against it is `NaN`.
 """
 function drag_floor(sam; cd_min = LD_CD_MIN)
-    wing = sam.sys_struct.wings[1]
+    wing = sam.state.wings[1]
     norm(wing.va_b) < 1e-6 && return Inf
     _, q_ref = drag_coeff_ref(wing)
     return cd_min * q_ref
@@ -311,7 +311,7 @@ projected onto the kite apparent wind and normalized by
 `q * A_proj`.
 """
 function compute_tether_drag_coeff(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     return point_drag_cd(sys, wing,
@@ -326,7 +326,7 @@ points (excluding KCU / point 1), normalized by
 `q * A_proj`.
 """
 function compute_bridle_drag_coeff(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     tether_pts = Set(tether_point_idxs(sys))
@@ -347,7 +347,7 @@ KCU drag coefficient from point 1's drag force,
 normalized by `q * A_proj`.
 """
 function compute_kcu_drag_coeff(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     norm(wing.va_b) < 1e-6 && return 0.0
     return point_drag_cd(sys, wing, Set([1]))
@@ -360,7 +360,7 @@ Mean force of trailing-edge-connected segments (indices
 3, 5, 7, …, 21).
 """
 function mean_te_segment_force(sam)
-    return mean(sam.sys_struct.segments[i].force
+    return mean(sam.state.segments[i].force
                 for i in 3:2:21)
 end
 
@@ -381,7 +381,7 @@ end
 """
     chord_ref_mid(sys; frac=0.3)
 
-Chord reference point from sys_struct points 10-13.
+Chord reference point from points 10-13 of a run state.
 """
 function chord_ref_mid(sys; frac=0.3)
     return chord_ref_mid(
@@ -406,11 +406,9 @@ end
 """
     compute_kite_aoa(sys) -> Float64
 
-Convenience wrapper extracting R_b_w and apparent wind
-from the system structure.
+Convenience wrapper reading the apparent wind of a run state.
 """
 function compute_kite_aoa(sys)
-    R_b_w = calc_R_b_w(sys)
     v_app_b = sys.wings[1].va_b
     return atan(v_app_b[3], v_app_b[1])
 end
@@ -598,7 +596,7 @@ the body xz plane. Positive when the bridle pitches forward
 
 The two-argument form allows passing an explicit `R_b_w`
 (e.g. built from EKF Euler angles) instead of deriving it
-from the sys_struct geometry.
+from a run state.
 """
 function compute_bridle_pitch_angle(sys)
     return compute_bridle_pitch_angle(sys, calc_R_b_w(sys))
@@ -625,7 +623,7 @@ the force-magnitude-weighted average of `pos_b[1]` for wing
 points 2:21.
 """
 function compute_cop_x(sam)
-    sys = sam.sys_struct
+    sys = sam.state
     wing = sys.wings[1]
     R_w_b = calc_R_b_w(sys)'
     total_force = 0.0
@@ -676,18 +674,18 @@ function log_state!(logger, sys_state, sam, t;
     sys_state.var_01 = compute_drag_coeff(sam)
     sys_state.var_02 = compute_lift_coeff(sam)
     sys_state.var_03 = mean_te_segment_force(sam)
-    sys_state.var_04 = compute_kite_aoa(sam.sys_struct)
-    yaw, pitch, roll = compute_bridle_euler(sam.sys_struct)
+    sys_state.var_04 = compute_kite_aoa(sam.state)
+    yaw, pitch, roll = compute_bridle_euler(sam.state)
     sys_state.var_05 = yaw
     sys_state.var_06 = pitch
     sys_state.var_07 = roll
     sys_state.var_08 = compute_bridle_pitch_angle(
-        sam.sys_struct)
+        sam.state)
     sys_state.var_09 = compute_tether_drag_coeff(sam)
     sys_state.var_10 = compute_bridle_drag_coeff(sam)
     sys_state.var_11 = compute_kcu_drag_coeff(sam)
     sys_state.var_12 = compute_wing_incidence(
-        sam.sys_struct)
+        sam.state)
     sys_state.var_13 = compute_cop_x(sam)
     if steering !== nothing
         sys_state.steering = steering
@@ -818,9 +816,9 @@ function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
         system_name=v3_model_name(kite_set), set,
         dynamics_type=kite_set.wing_type, vsm_set,
         aero_mode=resolve_aero_mode(kite_set))
-    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
     apply_geom_adjustments!(sys, kite_set.geom)
     place_at_tether_length!(sys, set.l_tether)
+    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;

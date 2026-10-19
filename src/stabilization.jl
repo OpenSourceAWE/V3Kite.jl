@@ -243,7 +243,7 @@ end
 """
     reinit_integrator!(sam; prn=true)
 
-Reset `sam`'s integrator from the current `SystemStructure`, reusing the solver
+Reset `sam`'s integrator from its current state, reusing the solver
 `init!` built it with. `SymbolicAWEModels.reinit!` takes that solver as a required
 argument, and a bare `FBDF()` differentiates forward, which makes the monolith
 backend compile its right-hand side a second time at `ForwardDiff.Dual`.
@@ -254,18 +254,18 @@ reinit_integrator!(sam; prn=true, lin_vsm=true) =
     SymbolicAWEModels.reinit!(sam, sam.prob, sam.integrator.alg; prn, lin_vsm)
 
 """
-    start_from_state!(sam, sys, path) -> Bool
+    start_from_state!(sam, path) -> Bool
 
-Restore the state logged at `path` onto `sys` and push it onto `sam`'s
+Restore the state logged at `path` onto `sam`'s state and push it onto its
 integrator, so a run starts where that log left off. Returns `false` when the log
 is missing or unreadable.
 
 Call after `init!`, which builds the integrator the restored state is pushed onto.
 """
-function start_from_state!(sam, sys, path)
+function start_from_state!(sam, path)
     state = read_state_log(path)
     isnothing(state) && return false
-    update_from_sysstate!(sys, state)
+    update_from_sysstate!(sam.state, state)
     reinit_integrator!(sam)
     return true
 end
@@ -340,17 +340,17 @@ apply_settled_damping!(sys, config::V3SettleConfig) = apply_decayed_damping!(
     sys, config, max(0.0, 1.0 - config.num_steps / config.decay_steps))
 
 """
-    apply_settled_state!(sys, config, path) -> Bool
+    apply_settled_state!(state, config, path) -> Bool
 
-Restore the settled state at `path` into `sys` and re-apply the settled
-damping. Returns `false` when the file is missing or unreadable, so the caller
-can fall back to the source geometry rather than crash.
+Restore the settled state at `path` into the run state `state` and re-apply the
+settled damping to its structure. Returns `false` when the file is missing or
+unreadable, so the caller can fall back to the source geometry rather than crash.
 """
-function apply_settled_state!(sys, config::V3SettleConfig, path)
-    state = read_state_log(path)
-    isnothing(state) && return false
-    update_from_sysstate!(sys, state)
-    apply_settled_damping!(sys, config)
+function apply_settled_state!(state, config::V3SettleConfig, path)
+    settled = read_state_log(path)
+    isnothing(settled) && return false
+    update_from_sysstate!(state, settled)
+    apply_settled_damping!(state.structure, config)
     return true
 end
 
@@ -359,9 +359,9 @@ end
                         data_path=nothing, cache_path=nothing,
                         set=nothing)
 
-Rebuild the settling `SystemStructure` from the source YAML and restore the
-settled state logged for `config`/`init_row` (see
-[`settled_state_path`](@ref)) onto it, assigning `set` when given. Errors when
+Rebuild the settling `SystemStructure` from the source YAML, placed in the
+settled pose logged for `config`/`init_row` (see [`settled_state_path`](@ref)),
+assigning `set` when given. A model of it starts at rest in that pose. Errors when
 the state is missing; run [`settle_wing`](@ref) first to create it.
 """
 function load_settled_struct(config::V3SettleConfig, init_row;
@@ -374,8 +374,10 @@ function load_settled_struct(config::V3SettleConfig, init_row;
         source_struc = struc_geometry_path(config.project; data_path),
         source_aero = aero_geometry_path(config.project; data_path,
             aero_mode = resolve_aero_mode(config.kite_set)))
-    apply_settled_state!(sys, config, path) ||
+    state = SystemState(sys)
+    apply_settled_state!(state, config, path) ||
         error("No settled state at $path; run settle_wing first")
+    SymbolicAWEModels.store_initial_pose!(state)
     sys.set = isnothing(set) ? yaml_set : set
     return sys
 end
@@ -729,29 +731,20 @@ function settle_wing(config::V3SettleConfig, init_row;
 
     # `nothing` until a cached state has actually been read back: the file
     # existing is not enough.
-    sys = nothing
+    sam = nothing
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled state" dest_struc
-        candidate, _ = build_settling_struct(config;
+        sys, _ = build_settling_struct(config;
             data_path, source_struc, source_aero)
-        apply_settled_state!(candidate, config, dest_struc) &&
-            (sys = candidate)
-    end
-
-    if !isnothing(sys)
-        sys.set = set
-        sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
-        with_model_cache(cache_path) do
-            # Settling already rebuilt into this cache, and the bin carries a
-            # structure hash that rejects it if the settled structure differs.
-            SymbolicAWEModels.init!(sam;
-                remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                analytic_jacobian=config.kite_set.analytic_jacobian)
-        end
-    else
+        sys.set = set
+        sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
+        apply_settled_state!(sam.state, config, dest_struc) || (sam = nothing)
+    end
+
+    if isnothing(sam)
         @info "Loading source geometry" source_struc
         vsm_path = vsm_settings_path(config.project; data_path)
         vsm_set = VortexStepMethod.VSMSettings(
@@ -761,13 +754,16 @@ function settle_wing(config::V3SettleConfig, init_row;
             system_name=v3_model_name(config.kite_set), set,
             dynamics_type=config.kite_set.wing_type, vsm_set,
             aero_mode=resolve_aero_mode(config.kite_set))
-        sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
         place_at_tether_length!(sys, set.l_tether)
-        with_model_cache(cache_path) do
-            SymbolicAWEModels.init!(sam;
-                remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                analytic_jacobian=config.kite_set.analytic_jacobian)
-        end
+        sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
+    end
+
+    with_model_cache(cache_path) do
+        # Settling already rebuilt into this cache, and the bin carries a
+        # structure hash that rejects it if the settled structure differs.
+        SymbolicAWEModels.init!(sam;
+            remake=remake_model && !settling_rebuilt, remake_vsm=true,
+            analytic_jacobian=config.kite_set.analytic_jacobian)
     end
 
     return sam, syslog, settle_failed
@@ -830,7 +826,7 @@ end
 
 """
 Set up a settling model: settings, VSM, sys struct, damping,
-SAM creation, geometry adjustments, init, and lock tether.
+geometry adjustments, SAM creation, init, and lock tether.
 Returns `(sam, sys, gc)`.
 """
 function setup_settling_model(config::V3SettleConfig;
@@ -840,9 +836,9 @@ function setup_settling_model(config::V3SettleConfig;
     sys, set = build_settling_struct(config;
         data_path, source_struc, source_aero)
 
-    sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
     apply_geom_adjustments!(sys, gc)
     place_at_tether_length!(sys, gc.tether_length)
+    sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
             remake_vsm=true,
@@ -872,13 +868,14 @@ function run_power_zone_settling!(config::V3SettleConfig;
     if !isnothing(config.kite_set.init_state)
         state_path = project_file(config.project, config.kite_set.init_state;
             data_path)
-        start_from_state!(sam, sys, state_path) ||
+        start_from_state!(sam, state_path) ||
             error("No relaxed state at $state_path; run the relaxation " *
                   "example for $(basename(source_struc)) first")
         @info "Settling from a relaxed state" state_path
     end
 
-    update_sys_struct_from_data!(sys, init_row; config=gc)
+    state = sam.state
+    update_sys_struct_from_data!(state, init_row; config=gc)
 
     data_pos = [init_row.x, init_row.y, init_row.z]
     data_vel = [init_row.vx, init_row.vy, init_row.vz]
@@ -893,7 +890,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
-        set_depower!(sys, config.start_depower / 100.0, 0.0, gc)
+        set_depower!(state, config.start_depower / 100.0, 0.0, gc)
     end
 
     reinit_integrator!(sam)
@@ -915,7 +912,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     logger, sys_state = create_logger(sam, total_steps)
 
     @info "Starting power-zone settling..." num_substeps=config.num_substeps
-    wing = sys.wings[1]
+    wing = state.wings[1]
     failed = false
     try
         for step in 1:config.num_steps
@@ -931,11 +928,10 @@ function run_power_zone_settling!(config::V3SettleConfig;
                     max(config.num_steps - 1, 1)
                 dp = config.start_depower +
                     frac * (dp_end - config.start_depower)
-                set_depower!(sys, dp / 100.0, 0.0, gc)
+                set_depower!(state, dp / 100.0, 0.0, gc)
             end
 
-            SymbolicAWEModels.reposition!(
-                sys.transforms, sys)
+            SymbolicAWEModels.reposition!(sys.transforms, state)
             try
                 reinit_integrator!(sam; prn=false)
             catch failure
@@ -984,12 +980,12 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
             # reposition! does not rotate vel_w
             transform = sys.transforms[1]
-            base_pos = sys.points[
+            base_pos = state.points[
                 transform.base_point_idx].pos_w
             k = normalize(wing.pos_w - base_pos)
             wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(
                 wing.vel_w, k, delta_heading)
-            for point in sys.points
+            for point in state.points
                 point.transform_idx == transform.idx ||
                     continue
                 point.vel_w .=
@@ -1019,7 +1015,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
                     "$(config.num_steps) steps; state not saved")
 
     # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
-    SymbolicAWEModels.reposition!(sys.transforms, sys)
+    SymbolicAWEModels.reposition!(sys.transforms, state)
 
     @info "Saving settled state..."
     save_state_log(sam, dest_struc)

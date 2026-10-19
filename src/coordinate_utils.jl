@@ -68,18 +68,18 @@ function calc_csv_heading(roll, pitch, yaw, pos_w)
 end
 
 """
-    calc_R_b_w(sys_struct::SystemStructure)
+    calc_R_b_w(state::SystemState)
 
 Calculate the body-to-world rotation matrix for PARTICLE_DYNAMICS wing type.
 
 # Arguments
-- `sys_struct`: System structure with PARTICLE_DYNAMICS wing
+- `state`: Run state of a structure with a PARTICLE_DYNAMICS wing
 
 # Returns
 - 3x3 rotation matrix R_b_w
 """
-function calc_R_b_w(sys_struct::SymbolicAWEModels.SystemStructure)
-    @unpack points, wings = sys_struct
+function calc_R_b_w(state::SymbolicAWEModels.SystemState)
+    @unpack points, wings = state
     wing = wings[1]
     R_b_w, origin = SymbolicAWEModels.calc_particle_dynamics_wing_frame(
         points,

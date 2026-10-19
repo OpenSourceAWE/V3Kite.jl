@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
-    tube_linear_rigidities
+    tube_linear_rigidities, SystemState
 
 @testset "V3Kite.jl" begin
 
@@ -350,8 +350,8 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
         @test length(sys.stations) == 10
         @test length(sys.wings[1].station_idxs) == 10
-        @test length(wing_station_chords(sys)) == 10
-        span_y, twist = wing_twist_dist(sys)
+        @test length(wing_station_chords(SystemState(sys))) == 10
+        span_y, twist = wing_twist_dist(SystemState(sys))
         @test length(span_y) == 10
         @test length(twist) == 10
     end
