@@ -1,8 +1,9 @@
 # Changelog
 
-## V3Kite v1.5.0 (unreleased)
+## V3Kite v2.0.0 2026-10-19
 
 ### Added
+
 - `src/delay_lag_fit.jl`, moved from `examples/delay_lag_fit.jl` of
   SimpleKiteControllers.jl: `fit_delay_lag` splits the kite's response to the
   applied steering into a dead time and a first-order lag (`lag_filter`), on one
@@ -10,14 +11,52 @@
   `estimate_delay_fit_c3` and `fit_c1_c3` are `estimate_delay_fit` and
   `fit_c1_c2` with the gravity term `c3·sin(ψ)·cos(β)` held fixed; `fit_delay_lag`
   uses them when given `c3`.
+- The PSM and beam structure geometries carry a `canopy_faces` table (`name, wing,
+  points`) of the canopy's quads between adjacent stations, and the SurfplanAdapter
+  writes it for the beam. The model build ignores it.
 
 ### Changed
+
 - `damping_per_stiffness` of the precompile workload (`src/precompile.jl`), of
   `examples/reel_out_v3.jl`, `examples/simple_parking.jl` and
   `examples/simple_auto_parking.jl` raised from 0.001 s to 0.002 s. The lower value only
   worked around a bug of old SymbolicAWEModels versions.
 - `test/test_parking_ripple.jl` follows `examples/simple_parking.jl` to 0.002 s; its
   ripple RMS baseline was retaken: 0.0030° (0.00303° in two runs), was 0.0064° at 0.001 s.
+- V3Kite runs on VortexStepMethod v6, SymbolicAWEModels 0.20 and KiteUtils 0.13, and
+  no longer on the versions before them.
+- SymbolicAWEModels 0.20's `tubes` replace `timoshenko_joints`. The beam geometry
+  `surfplan_to_struc` emits, and the shipped `struc_geometry_beam.yaml` and
+  `struc_geometry_beam_wing.yaml`, carry a `tubes` table (bodies, diameter, pressure,
+  law, model, shear coefficient, damping) whose rigidities come from the
+  `breukels2011` law, and their points name the tube a rider hangs on in a `tube`
+  column. `surfplan_to_struc` returns a `tubes` count where it returned `joints`.
+- `create_v3_model`, `build_replay_sys_struct` and the settling paths place the
+  structure at their tether length before `init!`, which no longer places it. The
+  `settle: false` flight replay builds through `build_replay_sys_struct`, so it starts
+  at the logged tether length rather than the YAML's.
+- BREAKING: the `bodies` table of a beam geometry names a body's own mass
+  `extra_mass`, as SymbolicAWEModels 0.19 and later read it; the SurfplanAdapter
+  writes it so, and a file of your own still saying `mass` errors when it loads.
+- `read_state_log` and settling read a state log that declares no frame convention as
+  KiteUtils 0.13's `KA`, which is what SymbolicAWEModels wrote into it. Read as `KS`,
+  the default for such a log, the tracked relaxed states come back turned about 90 deg.
+- `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
+  artificial damping keys, as VortexStepMethod v6 reads them.
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh at `WINGTIP_DISTANCE = 0.05`
+  m of span instead of 0.15 m of leading-edge arc: VortexStepMethod v6 spreads the
+  sections evenly over the span of the quarter-chord line and measures the distance
+  along it. The tip sections stay where 0.15 m of arc put them, on 0.87 m of chord,
+  covering 8.311 m of the 8.333 m span; the interior sections move to even spanwise
+  spacing, and every beam aero result moves with them. `data/nf_aero_geometry.yaml`
+  is not in git, so regenerate it and rebuild the model once.
+
+### Fixed
+
+- `batch_run_circles.jl` and `batch_run_zenith_then_circles.jl` ramp the wind speed
+  through `wind_vec`. The `v_wind` they assigned was discarded, because every
+  `sim_settings_*.yaml` sets `use_wind_vec: true`, and KiteUtils 0.13 makes that
+  assignment throw.
 
 ## V3Kite v1.4.1 2026-09-26
 
