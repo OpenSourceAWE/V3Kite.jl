@@ -47,6 +47,7 @@ include("model_setup.jl")
 include("calibration.jl")
 include("coordinate_utils.jl")
 include("turn_rate_id.jl")
+include("delay_lag_fit.jl")
 include("ripple_metrics.jl")
 include("flight_data.jl")
 include("photogrammetry.jl")
@@ -95,6 +96,7 @@ export COURSE_RATE_WINDOW_SEC
 # Turn-rate-law identification exports
 export identify_turn_rate_law, format_turn_rate_report
 export estimate_delay, estimate_delay_fit, shift_delay, turn_rate_gain, fit_c1_c2, est_steering
+export lag_filter, fit_delay_lag, joint_delay_lag_fit, estimate_delay_fit_c3, fit_c1_c3
 
 # AoA-ripple analysis exports
 export RippleSettings, ripple_metrics, aoa_ripple, format_ripple_report,

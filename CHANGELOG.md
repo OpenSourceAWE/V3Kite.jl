@@ -1,6 +1,19 @@
 # Changelog
 
-## V3Kite v2.0.0 2026-10-12
+## V3Kite v2.0.0 2026-10-19
+
+### Added
+
+- `src/delay_lag_fit.jl`, moved from `examples/delay_lag_fit.jl` of
+  SimpleKiteControllers.jl: `fit_delay_lag` splits the kite's response to the
+  applied steering into a dead time and a first-order lag (`lag_filter`), on one
+  `identify_turn_rate_law` result, and `joint_delay_lag_fit` on several.
+  `estimate_delay_fit_c3` and `fit_c1_c3` are `estimate_delay_fit` and
+  `fit_c1_c2` with the gravity term `c3·sin(ψ)·cos(β)` held fixed; `fit_delay_lag`
+  uses them when given `c3`.
+- The PSM and beam structure geometries carry a `canopy_faces` table (`name, wing,
+  points`) of the canopy's quads between adjacent stations, and the SurfplanAdapter
+  writes it for the beam. The model build ignores it.
 
 ### Changed
 
@@ -10,11 +23,21 @@
   worked around a bug of old SymbolicAWEModels versions.
 - `test/test_parking_ripple.jl` follows `examples/simple_parking.jl` to 0.002 s; its
   ripple RMS baseline was retaken: 0.0030° (0.00303° in two runs), was 0.0064° at 0.001 s.
-- V3Kite runs on VortexStepMethod v6, SymbolicAWEModels 0.19 and KiteUtils 0.13, and
+- V3Kite runs on VortexStepMethod v6, SymbolicAWEModels 0.20 and KiteUtils 0.13, and
   no longer on the versions before them.
+- SymbolicAWEModels 0.20's `tubes` replace `timoshenko_joints`. The beam geometry
+  `surfplan_to_struc` emits, and the shipped `struc_geometry_beam.yaml` and
+  `struc_geometry_beam_wing.yaml`, carry a `tubes` table (bodies, diameter, pressure,
+  law, model, shear coefficient, damping) whose rigidities come from the
+  `breukels2011` law, and their points name the tube a rider hangs on in a `tube`
+  column. `surfplan_to_struc` returns a `tubes` count where it returned `joints`.
+- `create_v3_model`, `build_replay_sys_struct` and the settling paths place the
+  structure at their tether length before `init!`, which no longer places it. The
+  `settle: false` flight replay builds through `build_replay_sys_struct`, so it starts
+  at the logged tether length rather than the YAML's.
 - BREAKING: the `bodies` table of a beam geometry names a body's own mass
-  `extra_mass`, as SymbolicAWEModels 0.19 reads it; the SurfplanAdapter writes it so,
-  and a file of your own still saying `mass` errors when it loads.
+  `extra_mass`, as SymbolicAWEModels 0.19 and later read it; the SurfplanAdapter
+  writes it so, and a file of your own still saying `mass` errors when it loads.
 - `read_state_log` and settling read a state log that declares no frame convention as
   KiteUtils 0.13's `KA`, which is what SymbolicAWEModels wrote into it. Read as `KS`,
   the default for such a log, the tracked relaxed states come back turned about 90 deg.
