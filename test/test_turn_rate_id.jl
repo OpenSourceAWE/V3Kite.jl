@@ -335,7 +335,7 @@ end
         @test r.lag ≈ T atol = 1e-9
         @test r.dead_time ≈ (d - 0.5) * dt atol = 0.1dt
         @test r.c1 ≈ c1 rtol = 1e-6
-        @test r.c2 ≈ c3 * sum(fit.v_app) / length(fit.v_app)
+        @test r.c2 ≈ c3 * sum(fit.v_app[d + 1:end]) / (length(fit.v_app) - d)
         @test r.rms_lag < 1e-6
 
         # The pieces on their own, on the delayed and lag-filtered steering

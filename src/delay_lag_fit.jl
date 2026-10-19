@@ -35,12 +35,14 @@ first-order lag `T`, the model
 `rate`, `v_app`, `psi` and `beta`), sampled at `dt` [s]. For each `T` in
 `0:lag_step:lag_max` the steering is lag-filtered, and [`estimate_delay_fit`](@ref) finds the
 best dead time for it, fitting `c1` and `c2`; the pair with the smallest
-residual wins. [`identify_turn_rate_law`](@ref)'s `delay` is the `T = 0` column of that
+residual wins, and its coefficients are refitted on the same samples it was
+scored on (the first `d` dropped, none padded by the shift).
+[`identify_turn_rate_law`](@ref)'s `delay` is the `T = 0` column of that
 grid, so `rms_lag <= rms_delay` always.
 
 With `c3` given, the gravity term is Eq. (9) of the paper, `c3·sin(ψ)·cos(β)` with
 `c3` [1/s] held fixed, and only `c1` is fitted ([`estimate_delay_fit_c3`](@ref));
-the returned `c2` is then its table-form equivalent `c3·mean(v_a)`.
+the returned `c2` is then its table-form equivalent `c3·mean(v_a)` over those samples.
 
 Returns `(; dead_time, lag, c1, c2, rms_lag, rms_delay)`: the dead time [s]
 with the same sub-sample and half-sample treatment as `delay_sec`, the lag [s],
@@ -66,9 +68,11 @@ function fit_delay_lag(fit, dt; lag_max::Real = 1.0, lag_step::Real = dt, t_max:
     end
     best.T >= lag_max - lag_step / 2 &&
         @warn @sprintf("fit_delay_lag: the kite's lag hit the search limit %.2f s; raise lag_max.", lag_max)
-    us_del = shift_delay(best.uf, best.d)
-    c = isnothing(c3) ? fit_c1_c2(fit.v_app, fit.psi, fit.beta, fit.rate, us_del) :
-                        fit_c1_c3(fit.v_app, fit.psi, fit.beta, fit.rate, us_del; c3)
+    k = (best.d + 1):length(best.uf)
+    us_del = best.uf[k .- best.d]
+    v_app, psi, beta, rate = fit.v_app[k], fit.psi[k], fit.beta[k], fit.rate[k]
+    c = isnothing(c3) ? fit_c1_c2(v_app, psi, beta, rate, us_del) :
+                        fit_c1_c3(v_app, psi, beta, rate, us_del; c3)
     return (; dead_time = max(best.d_frac - 0.5, 0.0) * dt, lag = best.T, c1 = c.c1, c2 = c.c2,
             rms_lag = best.rms, rms_delay)
 end
