@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## V3Kite v1.5.0 (unreleased)
+
+### Added
+- `src/delay_lag_fit.jl`, moved from `examples/delay_lag_fit.jl` of
+  SimpleKiteControllers.jl: `fit_delay_lag` splits the kite's response to the
+  applied steering into a dead time and a first-order lag (`lag_filter`), on one
+  `identify_turn_rate_law` result, and `joint_delay_lag_fit` on several.
+  `estimate_delay_fit_c3` and `fit_c1_c3` are `estimate_delay_fit` and
+  `fit_c1_c2` with the gravity term `c3·sin(ψ)·cos(β)` held fixed; `fit_delay_lag`
+  uses them when given `c3`.
 
 ### Changed
 - `damping_per_stiffness` of the precompile workload (`src/precompile.jl`), of
