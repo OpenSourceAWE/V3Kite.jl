@@ -2,27 +2,64 @@
 # SPDX-FileCopyrightText: 2025 Uwe Fechner
 # SPDX-License-Identifier: MIT
 
-if [[ $(basename $(pwd)) == "bin" ]]; then
+print_usage() {
+    cat <<EOF
+Usage: bin/run_julia [options] [julia arguments...]
+
+Start Julia for V3Kite, usually through the alias jl. Without Julia arguments
+an interactive REPL starts that loads Revise (if available) and defines the
+helpers menu() and menu2() for the examples.
+
+Julia starts with --project=examples, not the root project, so the REPL gets
+GLMakie and the other example-only dependencies. If bin/kps-image-<version>.so
+exists (see bin/create_sys_image), it is used as system image. Threads default
+to JULIA_NUM_THREADS=auto.
+
+Options:
+  -h, --help      show this help and exit
+  --nosysimage    do not use the custom system image
+  --psm           select the PSM project (sets V3KITE_PROJECT=psm)
+  --beam          select the beam project (sets V3KITE_PROJECT=beam)
+  --kaimon        accepted for compatibility, has no effect
+
+All other arguments are passed to Julia instead of starting the REPL, e.g.
+  bin/run_julia examples/v3kite.jl
+  bin/run_julia -e 'println("ok")'
+EOF
+}
+
+no_sysimage=false
+julia_extra_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        --nosysimage)
+            no_sysimage=true
+            ;;
+        --psm)
+            export V3KITE_PROJECT=psm
+            ;;
+        --beam)
+            export V3KITE_PROJECT=beam
+            ;;
+        --kaimon)
+            ;;
+        *)
+            julia_extra_args+=("$1")
+            ;;
+    esac
+    shift
+done
+
+if [[ $(basename "$(pwd)") == "bin" ]]; then
     cd ..
 fi
 
 export JULIA_PKG_SERVER_REGISTRY_PREFERENCE=eager
 export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-auto}"
-
-julia_extra_args=()
-for arg in "$@"; do
-    if [[ "$arg" == "--kaimon" ]]; then
-        force_kaimon=true
-    elif [[ "$arg" == "--nosysimage" ]]; then
-        no_sysimage=true
-    elif [[ "$arg" == "--psm" ]]; then
-        export V3KITE_PROJECT=psm
-    elif [[ "$arg" == "--beam" ]]; then
-        export V3KITE_PROJECT=beam
-    else
-        julia_extra_args+=("$arg")
-    fi
-done
 
 julia_version=$(julia --version | awk '{print($3)}')
 julia_major=${julia_version:0:3}
@@ -30,17 +67,18 @@ if [[ $julia_major == "1.1" ]]; then
     julia_major=${julia_version:0:4}
 fi
 
-julia_init='using Revise; function menu(); include("examples/menu.jl"); end; function menu2(); include("examples/menu2.jl"); end'
+julia_init='if Base.find_package("Revise") !== nothing; using Revise; end; function menu(); include("examples/menu.jl"); end; function menu2(); include("examples/menu2.jl"); end'
+
+JULIA_ARGS=(--project=examples)
+if [[ $no_sysimage == "false" ]] && test -f "bin/kps-image-${julia_major}.so"; then
+    echo "Found system image!"
+    JULIA_ARGS+=(-J "bin/kps-image-${julia_major}.so")
+fi
 
 if [[ ${#julia_extra_args[@]} -gt 0 ]]; then
-    JULIA_ARGS=("${julia_extra_args[@]}")
+    JULIA_ARGS+=("${julia_extra_args[@]}")
 else
-    JULIA_ARGS=(-i -e "$julia_init")
+    JULIA_ARGS+=(-i -e "$julia_init")
 fi
 
-if [[ -z "${no_sysimage:-}" ]] && test -f "bin/kps-image-${julia_major}.so"; then
-    echo "Found system image!"
-    julia --project=examples -J "bin/kps-image-${julia_major}.so" "${JULIA_ARGS[@]}"
-else
-    julia --project=examples "${JULIA_ARGS[@]}"
-fi
+julia "${JULIA_ARGS[@]}"
