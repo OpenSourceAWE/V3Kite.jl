@@ -10,10 +10,10 @@ Start Julia for V3Kite, usually through the alias jl. Without Julia arguments
 an interactive REPL starts that loads Revise (if available) and defines the
 helpers menu() and menu2() for the examples.
 
-Julia starts with --project=examples, not the root project, so the REPL gets
-GLMakie and the other example-only dependencies. If bin/kps-image-<version>.so
-exists (see bin/create_sys_image), it is used as system image. Threads default
-to JULIA_NUM_THREADS=auto.
+Julia starts with the root project; menu() and menu2() activate the examples
+project themselves. If bin/kps-image-<version>.so exists (see
+bin/create_sys_image), it is used as system image. Threads default to
+JULIA_NUM_THREADS=auto.
 
 Options:
   -h, --help      show this help and exit
@@ -69,7 +69,7 @@ fi
 
 julia_init='if Base.find_package("Revise") !== nothing; using Revise; end; function menu(); include("examples/menu.jl"); end; function menu2(); include("examples/menu2.jl"); end'
 
-JULIA_ARGS=(--project=examples)
+JULIA_ARGS=(--project)
 if [[ $no_sysimage == "false" ]] && test -f "bin/kps-image-${julia_major}.so"; then
     echo "Found system image!"
     JULIA_ARGS+=(-J "bin/kps-image-${julia_major}.so")
