@@ -2,7 +2,7 @@
 
 julia_version = "1.12.7"
 manifest_format = "2.0"
-project_hash = "ed0c2e09070ea350c852f0837679e5ea4284758f"
+project_hash = "587d3f2fec36b14608a2fecc65ae27d417310c07"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -3301,13 +3301,14 @@ version = "1.29.0"
     Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [[deps.V3Kite]]
-deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "HDF5", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "ModelingToolkit", "ModelingToolkitBase", "Parameters", "PrecompileTools", "Printf", "REPL", "Rotations", "Serialization", "StaticArrays", "Statistics", "SymbolicAWEModels", "SymbolicIndexingInterface", "UnPack", "VortexStepMethod", "YAML"]
+deps = ["AtmosphericModels", "CSV", "DataFrames", "Dates", "DiscretePIDs", "KitePodModels", "KiteUtils", "LaTeXStrings", "LinearAlgebra", "ModelingToolkit", "ModelingToolkitBase", "Parameters", "PrecompileTools", "Printf", "REPL", "Rotations", "Serialization", "StaticArrays", "Statistics", "SymbolicAWEModels", "SymbolicIndexingInterface", "UnPack", "VortexStepMethod", "YAML"]
 path = "."
 uuid = "4caac9c8-c726-438f-ab10-3553e918eab1"
-version = "1.4.1"
-weakdeps = ["GLMakie"]
+version = "2.0.0"
+weakdeps = ["GLMakie", "HDF5"]
 
     [deps.V3Kite.extensions]
+    V3KiteHDF5Ext = "HDF5"
     V3KiteMakieExt = "GLMakie"
 
 [[deps.VortexStepMethod]]
