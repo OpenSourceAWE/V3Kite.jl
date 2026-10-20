@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `bin/run_julia` starts Julia with the root project (`--project`) again, no longer
+  with `--project=examples`; `menu()`, `menu2()` and the example scripts activate the
+  examples project themselves. `--project` is now the first Julia argument, before the
+  system image.
+- `bin/run_julia` loads Revise only if it is available, so the REPL starts without an
+  error when Revise is not installed.
+- `bin/run_julia` accepts `-h`/`--help`. `--kaimon` is still accepted but has no
+  effect.
+- `examples/depower_drum_model.jl` and `examples/photogrammetry_aoa.jl` activate the
+  examples project like the other examples.
+
+### Fixed
+
+- `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
+  are not datasets instead of failing on them.
+- `get_row_at_distance` no longer boxes its index inside the field generator.
+
 ## V3Kite v2.0.0 2026-10-19
 
 ### Added
