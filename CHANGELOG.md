@@ -14,6 +14,16 @@
   effect.
 - `examples/depower_drum_model.jl` and `examples/photogrammetry_aoa.jl` activate the
   examples project like the other examples.
+- `bin/install` follows the repository scripts page of KiteUtils. Without parameters, or
+  with `-y`, it asks nothing and no longer changes the juliaup default, installs Revise
+  or adds the alias `jl`; `-i` offers these. Stale manifests are moved to `*.bak`
+  instead of deleted, each missing tracked `*.default` file is copied to its local
+  name, and a failed resolve stops the script instead of retrying without the default
+  manifest. `+<version>` and `--version <version>` select the Julia version, as
+  `bin/create_sys_image` already passed.
+- `examples/LocalPreferences.toml.default` sets `precompile_workload = true`, so the
+  examples environment, whose `LocalPreferences.toml` `bin/install` now creates, keeps
+  the precompile workload of V3Kite.
 
 ### Fixed
 
