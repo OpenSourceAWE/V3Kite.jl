@@ -30,6 +30,13 @@
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.
+- The beam kite's body frame lies along its span. Its `y_ref_points` are now the mirror
+  pair `[wing_le_6, wing_le_5]` either side of the symmetry plane, and its
+  `z_ref_points` aim at the mean of that pair rather than at `wing_le_5`. Before, the
+  body y axis tilted 5.9° out of the span, and SymbolicAWEModels from
+  OpenSourceAWE/SymbolicAWEModels.jl#380 on refuses a wing whose `y_ref_points` lie
+  more than 1° off its aero span. A beam geometry the SurfplanAdapter writes takes the
+  same points.
 
 ## V3Kite v2.0.0 2026-10-19
 
