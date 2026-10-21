@@ -367,6 +367,8 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             tube.diameter / 2, pressure_bar)[3], sys.tubes)
     end
 
+    include("test_beam_rigidities.jl")
+
     include("test_ripple_metrics.jl")
 
     include("test_turn_rate_id.jl")

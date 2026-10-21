@@ -1017,6 +1017,31 @@ function V3Kite.plot_wind_compare(syslog;
 end
 
 # =====================================================================
+# plot_beam_rigidities — EI and GJ of the beam wing's elements
+# =====================================================================
+
+function V3Kite.plot_beam_rigidities(sys; figsize=(640, 300), labelsize=16)
+    elements = sort(V3Kite.beam_rigidities(sys); by = element -> element.span)
+    fig = Figure(size=figsize)
+    ax = Axis(fig[1, 1]; yscale=log10, yticks=[10, 20, 50, 100, 200, 500, 1000],
+        xlabel=L"y \; [m]", ylabel=L"EI, \; GJ \; [\mathrm{N\,m^2}]",
+        xlabelsize=labelsize, ylabelsize=labelsize)
+    for (member, linestyle, marker) in ((:leading_edge, :solid, :circle),
+                                        (:strut, :dash, :rect))
+        members = filter(element -> element.member === member, elements)
+        span = [element.span for element in members]
+        name = member === :strut ? "strut" : "LE"
+        for (key, color) in ((:EI, PLOT_COLORS[1]), (:GJ, PLOT_COLORS[2]))
+            values = [getproperty(element, key) for element in members]
+            scatterlines!(ax, span, values; color, linestyle, marker,
+                label="$key $name")
+        end
+    end
+    Legend(fig[1, 2], ax; framevisible=false)
+    return fig
+end
+
+# =====================================================================
 # plot_replay — custom time-series panels for V3 kite replay data
 # =====================================================================
 
