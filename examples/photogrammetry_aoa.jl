@@ -15,6 +15,7 @@ if !Base.generating_output() &&
 end
 
 using V3Kite, LinearAlgebra, GLMakie, CairoMakie
+using HDF5
 GLMakie.activate!()
 using LazyArtifacts
 

@@ -28,6 +28,7 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
+using HDF5
 using VortexStepMethod
 using SymbolicAWEModels: update_from_sysstate!
 using GLMakie

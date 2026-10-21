@@ -641,7 +641,7 @@ function write_model(path, tables, geom, bridle, topo; full)
             emit_table(io, "winches", ["name", "tether_idxs", "winch_point"],
                 [["winch", ["tether"], "ground_anchor"]])
         end
-        println(io, "wings:\n  data:\n    - idx: 1\n      type: PARTICLE_DYNAMICS")
+        println(io, "wings:\n  data:\n    - idx: 1\n      dynamics_type: PARTICLE_DYNAMICS")
         println(io, "      origin_idx: ", fmt_ref(origin))
         println(io, "      z_ref_points: ", fmt_ref(z_ref))
         println(io, "      y_ref_points: ", fmt_ref(y_ref))
