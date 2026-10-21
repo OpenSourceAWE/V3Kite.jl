@@ -798,8 +798,8 @@ wings:
     - idx: 1
       type: PARTICLE_DYNAMICS
       origin_idx: kcu
-      z_ref_points: [kcu, wing_le_5]
-      y_ref_points: [wing_le_6, wing_le_4]
+      z_ref_points: [kcu, [[wing_le_5, 0.5], [wing_le_6, 0.5]]]
+      y_ref_points: [wing_le_6, wing_le_5]
       stations: [flap_1, flap_2, flap_3, flap_4, flap_5, flap_6, flap_7, flap_8, flap_9, flap_10]
 
 transforms:

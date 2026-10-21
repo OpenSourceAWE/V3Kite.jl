@@ -357,6 +357,18 @@ fmt_cell(x) = x === nothing ? "nothing" :
     x isa AbstractString ? String(x) :
     x isa AbstractVector ? string("[", join(fmt_cell.(x), ", "), "]") : fmt_num(x)
 fmt_row(row) = string("[", join(fmt_cell.(row), ", "), "]")
+"""
+    centre_ref(wing_pt, ids)
+
+The ref point on the symmetry plane of the span-ordered stations `ids`: the middle
+one for an odd count, the mean of the middle two for an even one.
+"""
+function centre_ref(wing_pt, ids)
+    mid = cld(length(ids), 2)
+    isodd(length(ids)) && return wing_pt[ids[mid]]
+    return [[wing_pt[ids[mid]], 0.5], [wing_pt[ids[mid + 1]], 0.5]]
+end
+
 fmt_ref(r) = r isa AbstractVector ?
     string("[", join(fmt_ref.(r), ", "), "]") : string(r)
 
@@ -594,9 +606,9 @@ function write_model(path, tables, geom, bridle, topo; full)
     end
 
     origin = full ? "kcu" : wing_pt[le_ids[mid]]
-    z_ref = full ? ["kcu", wing_pt[le_ids[mid]]] :
-        [wing_pt[te_ids[mid]], wing_pt[le_ids[mid]]]
-    y_ref = [wing_pt[le_ids[min(n, mid + 1)]], wing_pt[le_ids[max(1, mid - 1)]]]
+    z_ref = full ? ["kcu", centre_ref(wing_pt, le_ids)] :
+        [centre_ref(wing_pt, te_ids), centre_ref(wing_pt, le_ids)]
+    y_ref = [wing_pt[le_ids[n + 1 - n ÷ 2]], wing_pt[le_ids[n ÷ 2]]]
 
     open(path, "w") do io
         println(io, "# Auto-generated ", full ? "beam model" : "wing-only beam model",
