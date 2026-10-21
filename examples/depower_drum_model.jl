@@ -1,3 +1,9 @@
+using Pkg
+if !Base.generating_output() &&
+        Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using GLMakie
 
 len_0pct = 0.2
