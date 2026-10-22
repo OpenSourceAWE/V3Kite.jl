@@ -14,12 +14,29 @@
   effect.
 - `examples/depower_drum_model.jl` and `examples/photogrammetry_aoa.jl` activate the
   examples project like the other examples.
+- `bin/install` follows the repository scripts page of KiteUtils. Without parameters, or
+  with `-y`, it asks nothing and no longer changes the juliaup default, installs Revise
+  or adds the alias `jl`; `-i` offers these. Stale manifests are moved to `*.bak`
+  instead of deleted, each missing tracked `*.default` file is copied to its local
+  name, and a failed resolve stops the script instead of retrying without the default
+  manifest. `+<version>` and `--version <version>` select the Julia version, as
+  `bin/create_sys_image` already passed.
+- `examples/LocalPreferences.toml.default` sets `precompile_workload = true`, so the
+  examples environment, whose `LocalPreferences.toml` `bin/install` now creates, keeps
+  the precompile workload of V3Kite.
 
 ### Fixed
 
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.
+- The beam kite's body frame lies along its span. Its `y_ref_points` are now the mirror
+  pair `[wing_le_6, wing_le_5]` either side of the symmetry plane, and its
+  `z_ref_points` aim at the mean of that pair rather than at `wing_le_5`. Before, the
+  body y axis tilted 5.9° out of the span, and SymbolicAWEModels from
+  OpenSourceAWE/SymbolicAWEModels.jl#380 on refuses a wing whose `y_ref_points` lie
+  more than 1° off its aero span. A beam geometry the SurfplanAdapter writes takes the
+  same points.
 
 ## V3Kite v2.0.0 2026-10-19
 
