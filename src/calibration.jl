@@ -191,7 +191,7 @@ Set the steering input, accounting for steering tape reduction
 from the geometry config.
 
 # Arguments
-- `sys`: SystemStructure from the kite model
+- `sys`: the run state `sam.state`, or a `SystemStructure` before its model is built
 - `steering`: Relative steering, must be between -1.0 .. 1.0
               (-1.0 = full left, 0.0 = neutral, 1.0 = full right)
 - `config`: Geometry adjustment config
@@ -217,7 +217,7 @@ end
 Get the current steering value as a normalized input.
 
 # Arguments
-- `sys`: SystemStructure from the kite model
+- `sys`: the run state `sam.state`, or a `SystemStructure` before its model is built
 - `config`: Geometry adjustment config
 
 # Returns
@@ -239,7 +239,7 @@ depower offset, and steering-based depower offset from the
 geometry config.
 
 # Arguments
-- `sys`: SystemStructure from the kite model
+- `sys`: the run state `sam.state`, or a `SystemStructure` before its model is built
 - `depower`: Relative depower, must be between 0.0 .. 1.0
              (0.0 = no depower, 1.0 = full depower)
 - `steering`: Relative steering in -1.0 .. 1.0 (used for
@@ -265,7 +265,7 @@ end
 Get the current depower value as a normalized input.
 
 # Arguments
-- `sys`: SystemStructure from the kite model
+- `sys`: the run state `sam.state`, or a `SystemStructure` before its model is built
 - `config`: Geometry adjustment config
 
 # Returns

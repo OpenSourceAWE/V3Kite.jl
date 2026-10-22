@@ -8,6 +8,9 @@ The plant. Winch controllers live in WinchControllers.jl; `step!` here takes a
 torque. What remains is the plant side they read: `drum_params`, `winch_force`,
 `reel_out_speed`, `unstretched_length` and `force_to_torque`.
 
+`s.sys` is the run's state, `s.sam.state`: its records hold positions, velocities and
+forces, and read any other property through to the structure `s.sam.sys_struct`.
+
 The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
 of `data/sim_settings_default.yaml`, loaded like any other `Settings` field.
 """
@@ -51,7 +54,7 @@ end
 
 function Base.getproperty(s::V3KITE, name::Symbol)
     if name === :sys
-        return getfield(s, :sam).sys_struct
+        return getfield(s, :sam).state
     end
     return getfield(s, name)
 end
@@ -162,7 +165,7 @@ Return the current stretched tether length [m] from the model's
 `stretched_len` field for the primary tether.
 """
 function tether_length(s::V3KITE)
-    s.sam.sys_struct.tethers[1].stretched_len
+    s.sys.tethers[1].stretched_len
 end
 
 """
@@ -312,11 +315,11 @@ end
     calc_course(s::V3KITE; neg_azimuth=false)
 
 Return the course angle of the kite in radian as stored in
-`sam.sys_struct.wings[1].course`. If `neg_azimuth=true`, return
+`sam.state.wings[1].course`. If `neg_azimuth=true`, return
 the course using the negated azimuth sign convention.
 """
 function calc_course(s::V3KITE; neg_azimuth=false)
-    course = s.sam.sys_struct.wings[1].course
+    course = s.sys.wings[1].course
     neg_azimuth ? -course : course
 end
 
@@ -371,13 +374,13 @@ end
     spring_forces(s::V3KITE) -> Vector{Float64}
 
 Return an array of scalar spring forces [N] from
-`sam.sys_struct.segments[seg_idx].force` for all tether segments.
+`sam.state.segments[seg_idx].force` for all tether segments.
 """
 function spring_forces(s::V3KITE)
     tether = s.sys.tethers[1]
     forces = zeros(Float64, length(tether.segment_idxs))
     for (i, seg_idx) in enumerate(tether.segment_idxs)
-        forces[i] = s.sam.sys_struct.segments[seg_idx].force
+        forces[i] = s.sys.segments[seg_idx].force
     end
     return forces
 end
@@ -549,7 +552,7 @@ function init(v_wind_gnd, l_tether;
 
     # The serialized `set_value` is stale: releasing the brake alone steps at t = 0.
     sys.winches[1].brake = false
-    init_winch_torque!(sys)
+    init_winch_torque!(sam.state)
 
     set = sam.set
     set.wind_vec = wind_vec

@@ -345,8 +345,8 @@ sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 data_sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 
 plots = create_replay_plots(;
-    sys_struct=sam.sys_struct,
-    data_sys_struct=data_sam.sys_struct,
+    sys_struct=sam.state,
+    data_sys_struct=data_sam.state,
     syslog, datalog,
     frame_csvs, geom=kite_set.geom,
     section=SECTION,

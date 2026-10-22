@@ -72,7 +72,6 @@ function update_vel_from_csv!(sys, row,
     winch.brake = true
     winch.vel = row.tether_vel
     sys.tethers[1].len = row.tether_len
-    sys.tethers[1].stretched_len = row.tether_len
 
     # Depower from CSV (returns adjusted dp)
     eff_depower = set_depower!(
@@ -297,7 +296,7 @@ function run_physics_replay(h5_path;
     for step in 1:n_data_steps-1
         row = get_row(data, step)
         update_sys_struct_from_data!(
-            data_sam.sys_struct, row)
+            data_sam.state, row)
         reinit_integrator!(data_sam; prn=false)
         update_sys_state!(data_state, data_sam)
         data_state.winch_force[1] = row.tether_force
@@ -315,7 +314,7 @@ function run_physics_replay(h5_path;
         data_state.var_07 = wrap_to_pi(row.roll)
         data_R_b_w = row.R_b_w
         data_state.var_08 = compute_bridle_pitch_angle(
-            data_sam.sys_struct, data_R_b_w)
+            data_sam.state, data_R_b_w)
         data_state.v_wind_gnd .= row.wind_vec_ekf
         data_state.v_wind_200m .= row.wind_vec_lidar
         data_state.AoA = row.kite_aoa
@@ -328,7 +327,7 @@ function run_physics_replay(h5_path;
     end
 
     sim_cum_dist = 0.0
-    prev_sim_pos = copy(sam.sys_struct.wings[1].pos_w)
+    prev_sim_pos = copy(sam.state.wings[1].pos_w)
 
     step = 0
     sim_time = 0.0
@@ -349,7 +348,7 @@ function run_physics_replay(h5_path;
         if step == 1
             sim_time = row.time
             prev_sim_pos = copy(
-                sam.sys_struct.wings[1].pos_w)
+                sam.state.wings[1].pos_w)
         end
 
         if replay.distance_based_steering
@@ -366,7 +365,7 @@ function run_physics_replay(h5_path;
             phys_row.roll, phys_row.pitch,
             phys_row.yaw, data_pos_enu)
         sim_heading =
-            sam.sys_struct.wings[1].heading
+            sam.state.wings[1].heading
         heading_error = wrap_to_pi(
             data_heading - sim_heading)
         heading_correction = heading_pid(
@@ -375,9 +374,9 @@ function run_physics_replay(h5_path;
         # Lateral position feedback
         data_pos = [phys_row.x, phys_row.y,
             phys_row.z]
-        sim_pos = sam.sys_struct.wings[1].pos_w
+        sim_pos = sam.state.wings[1].pos_w
         body_y_world =
-            sam.sys_struct.wings[1].R_b_to_w[:, 2]
+            sam.state.wings[1].R_b_to_w[:, 2]
         lateral_error = dot(
             sim_pos - data_pos, body_y_world)
         lateral_correction = lateral_pid(
@@ -385,7 +384,7 @@ function run_physics_replay(h5_path;
 
         eff_steer, eff_dep =
             update_vel_from_csv!(
-                sam.sys_struct, phys_row,
+                sam.state, phys_row,
                 settle_config.kite_set.geom;
                 heading_correction=
                     heading_correction +
@@ -408,11 +407,27 @@ function run_physics_replay(h5_path;
             error("wind_vec mismatch at step $step")
         end
 
-        cur_sim_pos = sam.sys_struct.wings[1].pos_w
+        cur_sim_pos = sam.state.wings[1].pos_w
         sim_cum_dist += norm(
             cur_sim_pos - prev_sim_pos)
         prev_sim_pos = copy(cur_sim_pos)
         sim_time += dt
+
+        if step % n_substeps == 0
+            points = sam.state.points
+            for i in (4, 5)
+                f = points[i].aero_force_b[2]
+                if f < 0.0
+                    @warn "Aero y-force negative" point=i force=round(f, digits=2)
+                end
+            end
+            for i in (18, 19)
+                f = points[i].aero_force_b[2]
+                if f > 0.0
+                    @warn "Aero y-force positive" point=i force=round(f, digits=2)
+                end
+            end
+        end
 
         if replay.distance_based_steering
             pct = sim_cum_dist / total_data_dist
