@@ -115,6 +115,21 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
+    @testset "Short Cache Path" begin
+        # Windows can't open paths of 260 characters or more
+        short = joinpath("cache", "settled_dp1.45.arrow")
+        @test V3Kite.short_cache_path(short) == short
+        dir = joinpath("C:", "Users", "someone", ".julia", "scratchspaces", "v3kite_cache")
+        long1 = joinpath(dir, "settled_" * "x"^250 * "_a.arrow")
+        long2 = joinpath(dir, "settled_" * "x"^250 * "_b.arrow")
+        p1 = V3Kite.short_cache_path(long1)
+        @test length(p1) <= V3Kite.MAX_CACHE_PATH
+        @test dirname(p1) == dir
+        @test endswith(p1, ".arrow")
+        @test p1 == V3Kite.short_cache_path(long1)
+        @test p1 != V3Kite.short_cache_path(long2)
+    end
+
     @testset "Settled Cache Aero Mode" begin
         # An aero mode reaches the settled geometry through the wing's aero
         # object, so it has to reach the cache name too.
