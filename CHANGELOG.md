@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v2.1.0 2026-10-25
 
 ### Changed
 
