@@ -203,7 +203,7 @@ function settled_state_path(config::V3SettleConfig, init_row;
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
     config.course_correction_mode === :course ||
         (suffix *= "_hold$(config.course_correction_mode)")
-    return joinpath(cache_path, "settled_$(suffix).arrow")
+    return short_cache_path(joinpath(cache_path, "settled_$(suffix).arrow"))
 end
 
 """
@@ -621,6 +621,30 @@ the settling elevation into the settled-geometry cache key.
 """
 num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
 num_tag(d::AbstractVector) = join(num_tag.(d), "-")
+
+# Windows can't open paths of MAX_PATH (260) characters or more; keep a margin
+const MAX_CACHE_PATH = 240
+
+"""
+    short_cache_path(path) -> String
+
+`path`, unless it has more than `MAX_CACHE_PATH` characters: then the end of its file
+name is replaced by `_h` and a hash of the whole name, which is stable across Julia
+versions and platforms (64-bit FNV-1a). Paths that fit are left alone, so that existing
+cache files keep being found.
+"""
+function short_cache_path(path)
+    length(path) <= MAX_CACHE_PATH && return path
+    dir, file = splitdir(path)
+    stem, ext = splitext(file)
+    h = 0xcbf29ce484222325
+    for b in codeunits(stem)
+        h = (h ⊻ b) * 0x00000100000001b3
+    end
+    tag = "_h" * string(h; base=16, pad=16)
+    keep = max(0, MAX_CACHE_PATH - length(dir) - 1 - length(tag) - length(ext))
+    return joinpath(dir, first(stem, keep) * tag * ext)
+end
 
 """
     default_cache_path(data_path = nothing) -> String
