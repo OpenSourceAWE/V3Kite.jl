@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## V3Kite v2.1.0 2026-10-28
 
 ### Changed
 
@@ -24,6 +24,14 @@
 - `examples/LocalPreferences.toml.default` sets `precompile_workload = true`, so the
   examples environment, whose `LocalPreferences.toml` `bin/install` now creates, keeps
   the precompile workload of V3Kite.
+- `bin/update_default_manifest` is renamed to `bin/update_default_manifests` and follows
+  the repository scripts page of KiteUtils: it updates the packages of the whole
+  workspace under every Julia version with a `Manifest-v<version>.toml.default` (or
+  only the one given with `--version`), runs the tests under each, and copies and
+  commits the default manifests only if all tests pass. It asks before it starts; `-y`
+  skips the question.
+- The default manifests for Julia 1.12 and 1.13 are updated, among others to KiteUtils
+  0.13.3, WinchControllers 0.6.5 and ModelingToolkit 11.46.1.
 
 ### Fixed
 
@@ -37,6 +45,11 @@
   OpenSourceAWE/SymbolicAWEModels.jl#380 on refuses a wing whose `y_ref_points` lie
   more than 1° off its aero span. A beam geometry the SurfplanAdapter writes takes the
   same points.
+- Settled-state cache paths longer than 240 characters are shortened (new
+  `short_cache_path`): the file name keeps its start and ends in `_h` and a 64-bit
+  FNV-1a hash of the whole name. On Windows, which can't open paths of 260 characters
+  or more, the precompile workload failed on such a path. Shorter paths are unchanged,
+  so existing cache files are still found.
 
 ## V3Kite v2.0.0 2026-10-19
 
