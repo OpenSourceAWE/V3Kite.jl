@@ -24,6 +24,14 @@
 - `examples/LocalPreferences.toml.default` sets `precompile_workload = true`, so the
   examples environment, whose `LocalPreferences.toml` `bin/install` now creates, keeps
   the precompile workload of V3Kite.
+- `bin/update_default_manifest` is renamed to `bin/update_default_manifests` and follows
+  the repository scripts page of KiteUtils: it updates the packages of the whole
+  workspace under every Julia version with a `Manifest-v<version>.toml.default` (or
+  only the one given with `--version`), runs the tests under each, and copies and
+  commits the default manifests only if all tests pass. It asks before it starts; `-y`
+  skips the question.
+- The default manifests for Julia 1.12 and 1.13 are updated, among others to KiteUtils
+  0.13.3, WinchControllers 0.6.5 and ModelingToolkit 11.46.1.
 
 ### Fixed
 
