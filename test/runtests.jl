@@ -115,17 +115,33 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
+    @testset "Short Cache Path" begin
+        # Windows can't open paths of 260 characters or more
+        short = joinpath("cache", "settled_dp1.45.arrow")
+        @test V3Kite.short_cache_path(short) == short
+        dir = joinpath("C:", "Users", "someone", ".julia", "scratchspaces", "v3kite_cache")
+        long1 = joinpath(dir, "settled_" * "x"^250 * "_a.arrow")
+        long2 = joinpath(dir, "settled_" * "x"^250 * "_b.arrow")
+        p1 = V3Kite.short_cache_path(long1)
+        @test length(p1) <= V3Kite.MAX_CACHE_PATH
+        @test dirname(p1) == dir
+        @test endswith(p1, ".arrow")
+        @test p1 == V3Kite.short_cache_path(long1)
+        @test p1 != V3Kite.short_cache_path(long2)
+    end
+
     @testset "Settled Cache Aero Mode" begin
         # An aero mode reaches the settled geometry through the wing's aero
-        # object, so it has to reach the cache name too.
+        # object, so it has to reach the cache name too. A short `cache_path`
+        # keeps `short_cache_path` from hashing the tags away.
         init_row = (x=100.0, y=0.0, z=180.0, vx=0.0, vy=0.0, vz=0.0,
                     heading=0.0, steering=0.0, depower=0.25,
                     wind_vec=[10.0, 0.0, 0.0])
         cfg_dir = V3Kite.V3SettleConfig()
         cfg_cont = V3Kite.V3SettleConfig(kite_set=V3KiteConfig(
             aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero()))
-        path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
-        path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
+        path_dir = V3Kite.settled_state_path(cfg_dir, init_row; cache_path="c")
+        path_cont = V3Kite.settled_state_path(cfg_cont, init_row; cache_path="c")
         @test path_dir != path_cont
         @test occursin("_aerocont", path_cont)
         @test !occursin("_aero", path_dir)
@@ -133,7 +149,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
 
         # A state logged for one geometry has the wrong point count for another.
         cfg_beam = V3Kite.V3SettleConfig(project="system_beam.yaml")
-        path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
+        path_beam = V3Kite.settled_state_path(cfg_beam, init_row; cache_path="c")
         @test path_beam != path_dir
         @test occursin("_struc_geometry_beam", path_beam)
     end
