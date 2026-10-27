@@ -37,6 +37,11 @@
   OpenSourceAWE/SymbolicAWEModels.jl#380 on refuses a wing whose `y_ref_points` lie
   more than 1° off its aero span. A beam geometry the SurfplanAdapter writes takes the
   same points.
+- Settled-state cache paths longer than 240 characters are shortened (new
+  `short_cache_path`): the file name keeps its start and ends in `_h` and a 64-bit
+  FNV-1a hash of the whole name. On Windows, which can't open paths of 260 characters
+  or more, the precompile workload failed on such a path. Shorter paths are unchanged,
+  so existing cache files are still found.
 
 ## V3Kite v2.0.0 2026-10-19
 
