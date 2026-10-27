@@ -1,0 +1,6 @@
+### Changed
+- BREAKING: Works on the SymbolicAWEModels release that keeps a run's positions, velocities and forces in the model's state, `sam.state`, rather than on the structure. `s.sys` of a `V3KITE` is that state; its records read every other property through to the structure, so `s.sys.winches[1].brake` works as before.
+- BREAKING: The helpers that read a run take its state: `calc_R_b_w`, `init_winch_torque!`, `force_to_torque`, `compute_kite_aoa`, `compute_wing_incidence`, `compute_bridle_euler`, `compute_bridle_pitch_angle`, `chord_ref_mid`, `wing_station_chords`, `wing_twist_dist`, `update_sys_struct_from_data!`, `load_extra_points`, `plot_body_frame_local`, `plot_twist_dist` and `plot_replay`. `set_steering!` and `set_depower!` change a run's tapes when given its state and the structure's before a model is built.
+- BREAKING: `start_from_state!(sam, path)` drops its structure argument. `load_settled_struct` returns the structure placed in the settled pose, so a model of it starts there at rest.
+- `create_v3_model`, `build_replay_sys_struct` and the settling paths build the model once the structure is placed and adjusted, since a model starts its run from the structure as it is then.
+- `plot_body_frame_local` no longer moves the wing it plots onto the KCU; it draws in a frame with the KCU as origin.
