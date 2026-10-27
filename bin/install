@@ -37,7 +37,7 @@ V3Kite specific:
 
 Without parameters nothing is asked and nothing outside the repository is changed,
 except the Julia depot as described above.
-To update all packages to their latest versions use bin/update_default_manifest.
+To update all packages to their latest versions use bin/update_default_manifests.
 
   -y, --yes   same as without parameters: never prompt (for automation)
   -i          interactive installation for end users: install or select a Julia
