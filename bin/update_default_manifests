@@ -17,7 +17,7 @@ defaults and committed; if any test fails, the script terminates and leaves the
 defaults alone. Every one of those Julia versions has to be on the machine.
 
 examples/ and test/ belong to the workspace of the main project, so one update
-of the main project updates their packages too.
+of the whole workspace updates their packages too.
 
   -y          do not ask before updating, testing and committing
   --version <version>, --version +<version>
@@ -92,8 +92,10 @@ for version in "${versions[@]}"; do
     [ -f "$manifest" ] || cp "$manifest.default" "$manifest"
     rm -f Manifest.toml
     echo "update_default_manifests: updating and testing under Julia $version"
+    # Without workspace=true, Pkg.update keeps the packages that only examples or
+    # test depend on at their versions in the manifest
     julia "+$version" --startup-file=no -e \
-        'using Pkg; Pkg.activate("."); Pkg.Registry.update(); Pkg.update()'
+        'using Pkg; Pkg.activate("."); Pkg.update(; workspace=true)'
     if ! julia "+$version" --startup-file=no -e 'using Pkg; Pkg.activate("."); Pkg.test()'; then
         echo "update_default_manifests: tests failed under Julia $version;" \
              "the defaults are unchanged." >&2
