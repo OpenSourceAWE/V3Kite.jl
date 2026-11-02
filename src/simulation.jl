@@ -199,7 +199,7 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     vsm_set.wings[1].geometry_file = aero_geometry_path(project;
         data_path, aero_mode = resolve_aero_mode(kite_set))
 
-    sys = load_sys_struct_from_yaml(struc_path;
+    sys, transforms = load_sys_struct_from_yaml(struc_path;
         system_name=v3_model_name(kite_set), set, dynamics_type=kite_set.wing_type,
         vsm_set, aero_mode=resolve_aero_mode(kite_set))
 
@@ -213,24 +213,24 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     SymbolicAWEModels.set_angular_damping(sys.bodies,
         kite_set.beam_angular_damping, beam_idxs)
 
-    isempty(sys.transforms) ||
-        (sys.transforms[1].elevation = deg2rad(set.elevation))
-    place_at_tether_length!(sys, set.l_tether)
+    isempty(transforms) || (transforms[1].elevation = deg2rad(set.elevation))
+    place_at_tether_length!(sys, transforms, set.l_tether)
 
-    return SymbolicAWEModel(set, sys; backend = kite_set.backend), sys
+    return SymbolicAWEModel(set, sys; transforms, backend = kite_set.backend), sys
 end
 
 """
-    place_at_tether_length!(sys, tether_length) -> sys
+    place_at_tether_length!(sys, transforms, tether_length) -> sys
 
-Stretch the first tether of `sys` to `tether_length` [m] and place the structure there.
+Stretch the first tether of `sys` to `tether_length` [m] and place the structure there
+by `transforms`.
 A `tether_length` of `0`, KiteUtils' "not set", keeps the length the geometry gives.
 """
-function place_at_tether_length!(sys, tether_length)
+function place_at_tether_length!(sys, transforms, tether_length)
     if !isempty(sys.tethers) && tether_length > 0
         sys.tethers[1].init_stretched_len = tether_length
     end
-    SymbolicAWEModels.place!(sys)
+    SymbolicAWEModels.place!(sys, transforms)
     return sys
 end
 

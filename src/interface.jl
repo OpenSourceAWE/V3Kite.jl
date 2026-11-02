@@ -23,7 +23,7 @@ of `data/sim_settings_default.yaml`, loaded like any other `Settings` field.
     """
     Reference to the atmospheric model as implemented in the package AtmosphericModels.
 
-    Shared with the DAE: this is `sam.sys_struct.am`, the same instance the generated
+    Shared with the DAE: this is `sam.am`, the same instance the generated
     equations evaluate via `calc_wind_factor`/`calc_rho`. Constructing a second one here
     would load a second copy of the turbulent wind field (~1.2 GB) when
     `set.use_turbulence > 0`.

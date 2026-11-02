@@ -812,13 +812,13 @@ the model is built from comes from `kite_set`, so a plot cannot
 be drawn against a different one than the replay flew.
 """
 function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
-    sys = load_sys_struct_from_yaml(source_struc;
+    sys, transforms = load_sys_struct_from_yaml(source_struc;
         system_name=v3_model_name(kite_set), set,
         dynamics_type=kite_set.wing_type, vsm_set,
         aero_mode=resolve_aero_mode(kite_set))
     apply_geom_adjustments!(sys, kite_set.geom)
-    place_at_tether_length!(sys, set.l_tether)
-    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
+    place_at_tether_length!(sys, transforms, set.l_tether)
+    sam = SymbolicAWEModel(set, sys; transforms, backend=kite_set.backend)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;

@@ -371,7 +371,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
     @testset "Wing Stations" begin
         config = V3Kite.V3SettleConfig()
         data_path = V3Kite.project_data_path(config.project, nothing)
-        sys, _ = V3Kite.build_settling_struct(config; data_path,
+        sys, _, _ = V3Kite.build_settling_struct(config; data_path,
             source_struc = V3Kite.struc_geometry_path(config.project; data_path),
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
@@ -381,6 +381,30 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         span_y, twist = wing_twist_dist(SystemState(sys))
         @test length(span_y) == 10
         @test length(twist) == 10
+    end
+
+    @testset "A Flight Data Row Places The Run At Its Elevation, Azimuth And Velocity" begin
+        config = V3Kite.V3SettleConfig()
+        data_path = V3Kite.project_data_path(config.project, nothing)
+        sys, transforms, set = V3Kite.build_settling_struct(config; data_path,
+            source_struc = V3Kite.struc_geometry_path(config.project; data_path),
+            source_aero = V3Kite.aero_geometry_path(config.project; data_path,
+                aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
+        state = SystemState(sys; set, transforms)
+        anchor = copy(state.points[transforms[1].base_point].pos_w)
+        elevation, azimuth = deg2rad(55.0), deg2rad(25.0)
+        tether_length = norm(state.wings[1].pos_w - anchor)
+        wing_pos = tether_length * [cos(elevation) * cos(azimuth),
+                                    -cos(elevation) * sin(azimuth), sin(elevation)]
+        row = (x=wing_pos[1], y=wing_pos[2], z=wing_pos[3], vx=1.0, vy=2.0, vz=3.0,
+               heading=0.4, steering=0.0, depower=0.2, wind_vec=[7.0, 0.0, 0.0])
+        update_sys_struct_from_data!(state, row)
+        relative = state.wings[1].pos_w - anchor
+        @test state.points[transforms[1].base_point].pos_w ≈ anchor
+        @test atan(relative[3], hypot(relative[1], relative[2])) ≈ elevation atol=1e-6
+        @test atan(-relative[2], relative[1]) ≈ azimuth atol=1e-6
+        @test state.bodies[1].vel_w ≈ [1.0, 2.0, 3.0]
+        @test set.wind_vec == [7.0, 0.0, 0.0]
     end
 
     @testset "Beam Wing Loads Its Tubes" begin

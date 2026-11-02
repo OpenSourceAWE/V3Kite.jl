@@ -340,7 +340,7 @@ function update_sys_struct_from_data!(sys, row;
     transform.elevation = KiteUtils.calc_elevation(data_pos)
     transform.azimuth = KiteUtils.azimuth_east(data_pos)
     transform.heading = row.heading
-    SymbolicAWEModels.reinit!([transform], sys)
+    SymbolicAWEModels.reposition!(sys, [transform])
 
     # apply vel with optional extra velocity in body x
     data_vel = [row.vx, row.vy, row.vz]
@@ -355,8 +355,7 @@ function update_sys_struct_from_data!(sys, row;
             (data_vel + extra_vel_w +
              cross(omega_w, point.pos_w - wing.pos_w))
     end
-    # The transform reset zeroed every body, and a beam wing's nodes ride those,
-    # so the imposed state is only consistent once they carry it too.
+    # A beam wing's nodes ride the bodies, so the imposed state needs them to carry it too.
     for body in bodies
         body.vel_w .= data_vel + extra_vel_w +
             cross(omega_w, body.pos_w - wing.pos_w)

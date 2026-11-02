@@ -262,9 +262,9 @@ function run_physics_replay(h5_path;
     logger = Logger(sam, max_sim_steps)
 
     # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
-    data_struct = load_settled_struct(
-        settle_config, row1; set)
-    data_sam = SymbolicAWEModel(set, data_struct; backend = kite_set.backend)
+    data_struct, data_transforms = load_settled_struct(settle_config, row1)
+    data_sam = SymbolicAWEModel(set, data_struct;
+        transforms = data_transforms, backend = kite_set.backend)
     V3Kite.with_model_cache(V3Kite.default_cache_path()) do
         init!(data_sam; remake=false, remake_vsm=true)
     end
