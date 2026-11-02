@@ -723,6 +723,51 @@ function should_report(step, n_steps; interval=10)
 end
 
 """
+    fly_heading_sine(sam, sys, project; max_heading=40.0, period=30.0)
+        -> (logger, wall_time, completed)
+
+Fly `project`'s `sim_time` with its heading PID tracking a sine setpoint of
+amplitude `max_heading` [deg] and `period` [s], the winch as the project sets it.
+Returns the log, the wall time of the loop [s], and whether every step succeeded.
+"""
+function fly_heading_sine(sam, sys, project; max_heading=40.0, period=30.0)
+    kite_set = load_kite(project)
+    heading = load_heading(project)
+    set = Settings(project)
+    n_steps = Int(round(set.sample_freq * set.sim_time))
+    dt = set.sim_time / n_steps
+    logger, sys_state = create_logger(sam, n_steps)
+    nominal_steering = get_steering(sys, kite_set.geom)
+    pid = heading_pid(heading, dt)
+
+    @info "Starting simulation" project n_steps dt
+    sim_start = time()
+    completed = true
+    for step in 1:n_steps
+        t = step * dt
+        target_rad = deg2rad(max_heading) * sin(2pi / period * t)
+        measured = sys.wings[1].heading
+        schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
+        steering = nominal_steering + pid(target_rad, measured, 0.0)
+        sys_state.bearing = target_rad
+        set_steering!(sys, steering, kite_set.geom)
+        if !sim_step!(sam; dt, vsm_interval = kite_set.vsm_interval)
+            @error "Simulation failed" step
+            completed = false
+            break
+        end
+        log_state!(logger, sys_state, sam, t; steering)
+        if should_report(step, n_steps)
+            @info "Step $step/$n_steps" times_realtime=round(t / (time() - sim_start),
+                digits=2)
+        end
+    end
+    wall_time = time() - sim_start
+    report_performance(set.sim_time, wall_time; label=project)
+    return logger, wall_time, completed
+end
+
+"""
     save_and_load_log(logger, name; path=nothing) -> syslog
 
 Save a Logger and immediately load the resulting SysLog.
