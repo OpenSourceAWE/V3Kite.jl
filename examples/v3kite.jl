@@ -49,7 +49,8 @@ kite_set = load_kite(PROJECT)
 heading = load_heading(PROJECT)
 set = Settings(PROJECT)
 
-sam, sys = build_v3_model(PROJECT)
+sam, _ = build_v3_model(PROJECT)
+sys = sam.state
 
 n_steps = Int(round(set.sample_freq * set.sim_time))
 dt = set.sim_time / n_steps

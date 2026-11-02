@@ -106,7 +106,7 @@ every `step!`, so the value belongs to the row `step!` has just logged and is
 written into its free `var_01` slot.
 """
 function log_max_compression!(s, seg_idxs, peaks)
-    segments = s.sam.sys_struct.segments
+    segments = s.sys.segments
     force, seg_idx = 0.0, 0
     for (i, idx) in enumerate(seg_idxs)
         f = -segments[idx].force
@@ -128,7 +128,7 @@ exceeded `limit` [N], strongest first, with their endpoint points and the
 `compression_frac` that scales their stiffness below the rest length.
 """
 function print_compression_report(s, seg_idxs, peaks, limit)
-    segments = s.sam.sys_struct.segments
+    segments = s.sys.segments
     sel = [i for i in sortperm(peaks; rev = true) if peaks[i] > limit]
     if isempty(sel)
         println("\nNo tether or bridle segment exceeded ",

@@ -43,7 +43,7 @@ points 10, 12.
 
 # Arguments
 - `csv_path`: Path to CSV file with photogrammetry points
-- `sys_struct`: System structure for coordinate
+- `sys_struct`: Run state (`sam.state`) for coordinate
   transformation (default: `nothing`)
 - `body_offset`: Offset in body frame [x, y, z]
 

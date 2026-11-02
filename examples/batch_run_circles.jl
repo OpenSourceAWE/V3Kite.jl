@@ -128,7 +128,7 @@ function run_circles(;
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
         "v_wind=$v_wind, lt=$tether_length")
-    sys = something(sam).sys_struct
+    sys = something(sam).state
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings

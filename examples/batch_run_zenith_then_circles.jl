@@ -99,7 +99,7 @@ function run_zenith_circles(;
         "settle_wing failed for elevation=$elev_deg, " *
             "v_wind=$v_wind, lt=$tether_length"
     )
-    sys = sam.sys_struct
+    sys = sam.state
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings

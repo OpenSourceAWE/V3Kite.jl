@@ -101,7 +101,7 @@ sam, _settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
     steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
-sys = sam.sys_struct
+sys = sam.state
 sys.winches[1].brake = true
 
 dt = 1.0 / FPS

@@ -59,8 +59,8 @@ struc_yaml = basename(struc_geometry_path(PROJECT))
 sam, sys = create_v3_model(PROJECT; kite_set)
 apply_kite_material!(sys, kite_set)
 
-set_depower!(sys, DEPOWER, STEERING, kite_set.geom)
-set_steering!(sys, STEERING, kite_set.geom)
+set_depower!(sam.state, DEPOWER, STEERING, kite_set.geom)
+set_steering!(sam.state, STEERING, kite_set.geom)
 
 V3Kite.with_model_cache(V3Kite.default_cache_path()) do
     init!(sam; remake=kite_set.remake_model, remake_vsm=true)
