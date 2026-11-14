@@ -140,7 +140,6 @@ isdefined(@__MODULE__, :hold_torque!) ||
         ss = SysState(sam; precision=Float64)
         update_sys_state!(ss, v3kite)
         @test calc_heading(v3kite) == ss.heading
-        @test calc_heading(v3kite; neg_azimuth=true) == -ss.heading
     end
 
     @testset "calc_heading turns right-handed about the outward radial from zenith" begin

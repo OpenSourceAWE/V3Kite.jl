@@ -289,16 +289,12 @@ function orient_euler(s::V3KITE)
 end
 
 """
-    calc_heading(s::V3KITE; neg_azimuth=false)
+    calc_heading(s::V3KITE)
 
-Return the heading angle of the kite in radian as stored in
-`sam.sys_struct.wings[1].heading`: zero with the nose towards zenith, positive
-right-handed about the outward radial. If `neg_azimuth=true`, return it negated.
+Return the heading of the kite [rad], the one the model logs in `SysState.heading`:
+zero with the nose towards zenith, positive right-handed about the outward radial.
 """
-function calc_heading(s::V3KITE; neg_azimuth=false)
-    heading = s.sam.sys_struct.wings[1].heading
-    neg_azimuth ? -heading : heading
-end
+calc_heading(s::V3KITE) = s.sam.sys_struct.wings[1].heading
 
 """
     calc_course(s::V3KITE; neg_azimuth=false)
