@@ -133,10 +133,23 @@ isdefined(@__MODULE__, :hold_torque!) ||
         @test all(isfinite, rpy)
     end
 
-    @testset "calc_heading" begin
-        heading = calc_heading(v3kite)
-        @test isfinite(heading)
-        @test abs(heading) <= π + 1e-3
+    @testset "calc_heading is the heading the model logs" begin
+        for _ in 1:30
+            sim_step!(sam; set_values=[3.0], dt=1/60, vsm_interval=1)
+        end
+        ss = SysState(sam; precision=Float64)
+        update_sys_state!(ss, v3kite)
+        @test calc_heading(v3kite) == ss.heading
+        @test calc_heading(v3kite; neg_azimuth=true) == -ss.heading
+    end
+
+    @testset "calc_heading turns right-handed about the outward radial from zenith" begin
+        pos = pos_kite(v3kite)
+        radial = normalize(pos)
+        up = normalize([0.0, 0.0, 1.0] - radial[3] * radial)
+        right = cross(radial, up)
+        nose = -calc_R_b_w(sys)[:, 1]
+        @test calc_heading(v3kite) ≈ atan(dot(nose, right), dot(nose, up)) atol=deg2rad(0.1)
     end
 
     @testset "calc_course" begin

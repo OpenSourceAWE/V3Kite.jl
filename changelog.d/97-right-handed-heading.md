@@ -1,0 +1,2 @@
+### Changed
+- BREAKING: `calc_heading(s::V3KITE)` returns the heading the model computes and logs (`SysState.heading`): zero with the nose towards zenith, positive right-handed about the outward radial, so a nose to the right as seen from the ground station reads +90°. It used to return the opposite sign, and differed from the logged heading by up to 0.15° in a turn. The `upwind_dir_` keyword is gone; `neg_azimuth=true` negates the result.
