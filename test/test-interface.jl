@@ -8,6 +8,7 @@ end
 
 using Test
 using LinearAlgebra
+using Statistics: mean
 using V3Kite
 using KitePodModels: KCU
 # V3Kite is torque-only; the winch length loop is the caller's.
@@ -155,12 +156,12 @@ isdefined(@__MODULE__, :hold_torque!) ||
         # NaN would mean the VSM engine was not FOUND, not an unloaded wing: it
         # hangs off `wing.aero` and is only reached through `getproperty`
         # forwarding, so any feature test on the wing itself silently disables this.
-        alpha = span_mean_aoa(sys)
+        alpha = span_mean_aoa(sam.state)
         @test isfinite(alpha)
         @test abs(alpha) < deg2rad(45)
         # The VSM's own span mean, over effective instead of geometric AoA:
         # the two differ by the induced angle, a degree or so here.
-        @test abs(alpha - sys.wings[1].vsm_aoa) < deg2rad(10)
+        @test abs(alpha - mean(sam.state.wings[1].vsm_solver.sol.alpha_dist)) < deg2rad(10)
     end
 
     @testset "winch_force" begin
@@ -320,6 +321,13 @@ end
         @test !isempty(wing_segs)
         @test all(i -> s_dps.sys.segments[i].unit_damping ==
                        s.sys.segments[i].unit_damping, wing_segs)
+    end
+
+    @testset "A Kite Due North Has Azimuth East Of Plus 90 Degrees" begin
+        for i in 10:13
+            s.sys.points[i].pos_w .= [0.0, 100.0, 100.0]
+        end
+        @test calc_azimuth_east(s) ≈ π / 2
     end
 end
 nothing

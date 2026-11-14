@@ -169,13 +169,14 @@ function resolve_aero_mode(kite_set::V3KiteConfig)
 end
 
 """
-    create_v3_model(project::String; data_path=nothing, kite_set=nothing)
-        -> (sam, sys)
+    create_v3_model(project::String; data_path=nothing, kite_set=nothing,
+                    settings=nothing) -> (sam, sys)
 
 Build the `SymbolicAWEModel` a project file describes: its geometry from the
 `structural_geometry:`, `aero_geometry:` and `vsm_settings:` keys, its flight
 condition from `sim_settings:`, and how the model is assembled from
-`kite_settings:` (pass `kite` to override that file).
+`kite_settings:` (pass `kite_set` to override that file), whose material the
+structure carries before the model is built.
 
 `data_path` holds the data directory the project file and everything it points
 at are read from, and becomes the active data path. Pass `settings` to override
@@ -194,14 +195,13 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     struc_path = struc_geometry_path(project; data_path)
     @info "Creating V3 kite model" project struc=basename(struc_path) wing_type=kite_set.wing_type
 
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_settings_path(project; data_path); data_prefix=false)
-    vsm_set.wings[1].geometry_file = aero_geometry_path(project;
-        data_path, aero_mode = resolve_aero_mode(kite_set))
+    aero_mode = resolve_aero_mode(kite_set)
+    vsm_set = v3_vsm_settings(project,
+        aero_geometry_path(project; data_path, aero_mode); data_path)
 
     sys, transforms = load_sys_struct_from_yaml(struc_path;
         system_name=v3_model_name(kite_set), set, dynamics_type=kite_set.wing_type,
-        vsm_set, aero_mode=resolve_aero_mode(kite_set))
+        aero_mode)
 
     set_body_frame_damping!(sys, kite_set.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite_set.world_sim_damping)
@@ -215,8 +215,9 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
 
     isempty(transforms) || (transforms[1].elevation = deg2rad(set.elevation))
     place_at_tether_length!(sys, transforms, set.l_tether)
+    apply_kite_material!(sys, kite_set)
 
-    return SymbolicAWEModel(set, sys; transforms, backend = kite_set.backend), sys
+    return SymbolicAWEModel(set, sys; transforms, vsm_set, backend = kite_set.backend), sys
 end
 
 """
@@ -294,7 +295,6 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
             error("init_mode is :relaxed_state but no init_state is set in " *
                   "the kite_settings of $project")
         sam, sys = create_v3_model(project; data_path, kite_set)
-        apply_kite_material!(sys, kite_set)
         set_depower!(sam.state, set.depower / 100.0, 0.0, kite_set.geom)
         set_steering!(sam.state, 0.0, kite_set.geom)
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files

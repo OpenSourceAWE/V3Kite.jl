@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
-    tube_linear_rigidities, SystemState
+    tube_linear_rigidities, SystemState, AeroSpec
 
 @testset "V3Kite.jl" begin
 
@@ -219,7 +219,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test !beam.geom.reduce_tip && !beam.geom.reduce_te
         @test beam.bridle.compression_frac == 0.0
         @test beam.init_mode == :settle
-        @test beam.aero_mode isa AeroPressure
+        @test beam.aero_mode isa AeroSpec{AeroPressure}
 
         # The settling schedule sets the transient, the kite file what flies.
         beam_settle = load_settle("system_beam.yaml"; kite_set=beam)
@@ -376,7 +376,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
         @test length(sys.stations) == 10
-        @test length(sys.wings[1].station_idxs) == 10
+        @test length(sys.bodies[1].station_idxs) == 10
         @test length(wing_station_chords(SystemState(sys))) == 10
         span_y, twist = wing_twist_dist(SystemState(sys))
         @test length(span_y) == 10
@@ -408,14 +408,14 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
     end
 
     @testset "Beam Wing Loads Its Tubes" begin
-        _, sys = create_v3_model("system_beam.yaml")
+        sam, sys = create_v3_model("system_beam.yaml")
         @test length(sys.tubes) == 21
         @test count(point -> point.tube_idx != 0, sys.points) == 150
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
         pressure_bar = V3BeamTopology().pressure_bar
         @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
-            tube.diameter / 2, pressure_bar)[3], sys.tubes)
+            tube.diameter / 2, pressure_bar)[3], sam.state.tubes)
     end
 
     include("test_ripple_metrics.jl")

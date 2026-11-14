@@ -100,7 +100,7 @@ returned as a vector aligned to `syslog.time[2:end]`.
 `:heading` (uses `syslog.heading`) or `:course` (uses
 `syslog.course`). Both angles live in the rotating
 tangent-sphere frame, so the same correction
-`χ̇ − φ̇·sin(β)` applies (φ = azimuth, β = elevation).
+`χ̇ + φ̇·sin(β)` applies (φ = azimuth, β = elevation).
 
 Accepts either a `SysLog` or its inner syslog table.
 """
@@ -120,7 +120,7 @@ function calc_turn_rate(syslog; source=:heading, dt=0.01)
     az = copy(sl.azimuth)
     unwrap_inplace!(az)
     az_dot = diff(az) ./ dt
-    return rate .- az_dot .* sin.(sl.elevation[2:end])
+    return rate .+ az_dot .* sin.(sl.elevation[2:end])
 end
 
 function unwrap_inplace!(a)

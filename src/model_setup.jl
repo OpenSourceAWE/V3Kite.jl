@@ -207,13 +207,14 @@ frame when both of its endpoints are wing nodes.
 """
 function tether_bridle_segments(sys)
     points = sys.points
-    return [seg.idx for seg in sys.segments
+    return [idx for (idx, seg) in enumerate(sys.segments)
             if !(points[seg.point_idxs[1]].is_wing_node &&
                  points[seg.point_idxs[2]].is_wing_node)]
 end
 
 """
-    set_damping_per_stiffness!(sys, seg_idxs, ratio)
+    set_damping_per_stiffness!(sys::SystemStructure, seg_idxs, ratio)
+    set_damping_per_stiffness!(state::SystemState, seg_idxs, ratio)
 
 Damp the segments `seg_idxs` proportionally to their stiffness:
 `unit_damping = ratio * unit_stiffness` [N·s], the relation the `materials`
@@ -221,9 +222,10 @@ section of `struc_geometry.yaml` uses to derive `unit_damping` from
 `damping_per_stiffness`. Segments carrying a callable force law instead of a
 stiffness are skipped, as there is no `unit_stiffness` to scale.
 
-`unit_damping` is a flattened MTK parameter re-synced from the live
-`SystemStructure` before every `step!`, so this takes effect on the next step
-without rebuilding the model.
+On a structure this sets the segments' `damping_per_stiffness`, which a model
+built from it turns into `unit_damping`. On a run's state it sets `unit_damping`,
+a flattened MTK parameter re-synced before every `step!`, so it takes effect on the
+next step without rebuilding the model.
 
 [`init`](@ref) calls this for its `damping_per_stiffness` keyword before
 settling, which is the usual way in: the run is then damped from the very first
@@ -233,11 +235,19 @@ tolerate badly (see `examples/simple_parking.jl`).
 
 See [`tether_bridle_segments`](@ref) for the usual choice of `seg_idxs`.
 """
-function set_damping_per_stiffness!(sys, seg_idxs, ratio)
-    segments = sys.segments
-    for idx in seg_idxs
-        segments[idx].unit_stiffness isa Real || continue
-        segments[idx].unit_damping = ratio * segments[idx].unit_stiffness
+function set_damping_per_stiffness!(sys::SystemStructure, seg_idxs, ratio)
+    for segment in (sys.segments[idx] for idx in seg_idxs)
+        KiteGeometry.unit_stiffness(segment, sys.materials) isa Real || continue
+        segment.unit_damping = nothing
+        segment.damping_per_stiffness = ratio
+    end
+    return nothing
+end
+
+function set_damping_per_stiffness!(state::SystemState, seg_idxs, ratio)
+    for segment in (state.segments[idx] for idx in seg_idxs)
+        segment.unit_stiffness isa Real || continue
+        segment.unit_damping = ratio * segment.unit_stiffness
     end
     return nothing
 end

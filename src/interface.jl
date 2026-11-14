@@ -222,7 +222,7 @@ end
     calc_azimuth_east(s::V3KITE) -> Float64
 
 Determine the azimuth_east angle of the kite in radian.
-Positive clockwise when seen from above.
+Positive anti-clockwise when seen from above.
 """
 function calc_azimuth_east(s::V3KITE)
     KiteUtils.azimuth_east(pos_kite(s))
@@ -546,7 +546,7 @@ function init(v_wind_gnd, l_tether;
     # below it; set the flown one here, on a structure already at rest. Also
     # covers a cache hit, whose `.bin` is keyed by the floored value alone.
     if !isnothing(damping_per_stiffness)
-        set_damping_per_stiffness!(sys, tether_bridle_segments(sys),
+        set_damping_per_stiffness!(sam.state, tether_bridle_segments(sys),
                                    damping_per_stiffness)
     end
 

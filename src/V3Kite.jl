@@ -143,7 +143,7 @@ export resolve_aero_mode, aero_geometry_path
 export kite_settings, heading_settings, settle_settings, select_project
 export load_kite, load_settle, settings_block
 export V3ReplayConfig, load_replay, replay_maneuver
-export struc_geometry_path, aero_geometry_path, vsm_settings_path
+export struc_geometry_path, aero_geometry_path, vsm_settings_path, v3_vsm_settings
 export parse_backend, parse_aero_mode, parse_wing_type
 export fill_struct, convert_setting, project_entry
 export project_path, project_file, project_data_path

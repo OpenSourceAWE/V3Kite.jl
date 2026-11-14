@@ -1276,7 +1276,7 @@ function V3Kite.plot_sphere_trajectory(
         Point3f(0, axis_len, 0)];
         color=:green, linewidth=3)
     text!(ax, Point3f(0, axis_len * 1.1, 0);
-        text="Y (az=-90)", fontsize=14, color=:green)
+        text="Y (az=90)", fontsize=14, color=:green)
     lines!(ax, [Point3f(0, 0, 0),
         Point3f(0, 0, axis_len)];
         color=:blue, linewidth=3)
@@ -1297,7 +1297,7 @@ function V3Kite.plot_sphere_trajectory(
 
         # ENU frame, azimuth_east convention
         x = radius .* cos.(elevation) .* cos.(azimuth)
-        y = -radius .* cos.(elevation) .* sin.(azimuth)
+        y = radius .* cos.(elevation) .* sin.(azimuth)
         z = radius .* sin.(elevation)
 
         color = actual_colors[

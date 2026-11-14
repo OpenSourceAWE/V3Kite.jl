@@ -25,7 +25,6 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
-using VortexStepMethod
 using V3Kite: reinit_integrator!
 using LinearAlgebra
 using LazyArtifacts
@@ -228,9 +227,7 @@ function run_physics_replay(h5_path;
     source_struc = struc_geometry_path(PROJECT; data_path)
     source_aero = aero_geometry_path(PROJECT; data_path,
         aero_mode = resolve_aero_mode(kite_set))
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_settings_path(PROJECT; data_path); data_prefix=false)
-    vsm_set.wings[1].geometry_file = source_aero
+    vsm_set = v3_vsm_settings(PROJECT, source_aero; data_path)
 
     if replay.settle
         sam, settle_log, settle_failed =
@@ -264,7 +261,7 @@ function run_physics_replay(h5_path;
     # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
     data_struct, data_transforms = load_settled_struct(settle_config, row1)
     data_sam = SymbolicAWEModel(set, data_struct;
-        transforms = data_transforms, backend = kite_set.backend)
+        transforms = data_transforms, vsm_set, backend = kite_set.backend)
     V3Kite.with_model_cache(V3Kite.default_cache_path()) do
         init!(data_sam; remake=false, remake_vsm=true)
     end
@@ -282,7 +279,7 @@ function run_physics_replay(h5_path;
     end
     if kite_set.wing_drag_coeff > 0
         distribute_wing_drag!(sys,
-            sys.wings[1].vsm_aero.projected_area,
+            sam.state.wings[1].vsm_aero.projected_area,
             kite_set.wing_drag_coeff)
     end
 

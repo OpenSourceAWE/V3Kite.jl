@@ -368,7 +368,7 @@ function load_settled_struct(config::V3SettleConfig, init_row;
     data_path = project_data_path(config.project, data_path)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     path = settled_state_path(config, init_row; data_path, cache_path)
-    sys, transforms, _ = build_settling_struct(config; data_path,
+    sys, transforms, _, _ = build_settling_struct(config; data_path,
         source_struc = struc_geometry_path(config.project; data_path),
         source_aero = aero_geometry_path(config.project; data_path,
             aero_mode = resolve_aero_mode(config.kite_set)))
@@ -755,27 +755,26 @@ function settle_wing(config::V3SettleConfig, init_row;
     sam = nothing
     if !settle_failed && isfile(dest_struc)
         @info "Loading settled state" dest_struc
-        sys, transforms, _ = build_settling_struct(config;
+        sys, transforms, _, vsm_set = build_settling_struct(config;
             data_path, source_struc, source_aero)
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
-        sam = SymbolicAWEModel(set, sys; transforms, backend = config.kite_set.backend)
+        sam = SymbolicAWEModel(set, sys; transforms, vsm_set,
+                               backend = config.kite_set.backend)
         apply_settled_state!(sam.state, config, dest_struc) || (sam = nothing)
     end
 
     if isnothing(sam)
         @info "Loading source geometry" source_struc
-        vsm_path = vsm_settings_path(config.project; data_path)
-        vsm_set = VortexStepMethod.VSMSettings(
-            vsm_path; data_prefix=false)
-        vsm_set.wings[1].geometry_file = source_aero
         sys, transforms = load_sys_struct_from_yaml(source_struc;
             system_name=v3_model_name(config.kite_set), set,
-            dynamics_type=config.kite_set.wing_type, vsm_set,
+            dynamics_type=config.kite_set.wing_type,
             aero_mode=resolve_aero_mode(config.kite_set))
         place_at_tether_length!(sys, transforms, set.l_tether)
-        sam = SymbolicAWEModel(set, sys; transforms, backend = config.kite_set.backend)
+        sam = SymbolicAWEModel(set, sys; transforms,
+            vsm_set=v3_vsm_settings(config.project, source_aero; data_path),
+            backend = config.kite_set.backend)
     end
 
     with_model_cache(cache_path) do
@@ -794,9 +793,9 @@ end
 
 Build the settling `SystemStructure` from the source YAML: settings, VSM, the
 structure itself, the resolved KCU mass, the kite's material and the starting
-damping. Returns `(sys, transforms, set)`. Shared by [`setup_settling_model`](@ref) and the
-settled-state cache, which rebuilds the same structure before restoring a state
-onto it.
+damping. Returns `(sys, transforms, set, vsm_set)`. Shared by
+[`setup_settling_model`](@ref) and the settled-state cache, which rebuilds the same
+structure before restoring a state onto it.
 
 The material goes on here and not only in [`create_v3_model`](@ref) because a
 structure settled on the YAML's bridle stiffness is not an equilibrium of the one
@@ -809,14 +808,9 @@ function build_settling_struct(config::V3SettleConfig;
     set.l_tether = config.tether_length
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
 
-    vsm_path = vsm_settings_path(config.project; data_path)
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_path; data_prefix=false)
-    vsm_set.wings[1].geometry_file = source_aero
-
     sys, transforms = load_sys_struct_from_yaml(source_struc;
         system_name=v3_model_name(config.kite_set), set,
-        dynamics_type=config.kite_set.wing_type, vsm_set,
+        dynamics_type=config.kite_set.wing_type,
         aero_mode=resolve_aero_mode(config.kite_set))
 
     # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
@@ -841,7 +835,8 @@ function build_settling_struct(config::V3SettleConfig;
         set_damping_per_stiffness!(sys, tether_bridle_segments(sys),
                                    settle_dps)
     end
-    return sys, transforms, set
+    return sys, transforms, set,
+        v3_vsm_settings(config.project, source_aero; data_path)
 end
 
 """
@@ -853,12 +848,13 @@ function setup_settling_model(config::V3SettleConfig;
         data_path, source_struc, source_aero, cache_path=nothing)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     gc = config.kite_set.geom
-    sys, transforms, set = build_settling_struct(config;
+    sys, transforms, set, vsm_set = build_settling_struct(config;
         data_path, source_struc, source_aero)
 
     apply_geom_adjustments!(sys, gc)
     place_at_tether_length!(sys, transforms, gc.tether_length)
-    sam = SymbolicAWEModel(set, sys; transforms, backend = config.kite_set.backend)
+    sam = SymbolicAWEModel(set, sys; transforms, vsm_set,
+                           backend = config.kite_set.backend)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
             remake_vsm=true,
@@ -1001,11 +997,11 @@ function run_power_zone_settling!(config::V3SettleConfig;
             # reposition! does not rotate vel_w
             base_pos = state.points[transform.base_point].pos_w
             k = normalize(wing.pos_w - base_pos)
-            wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(
+            wing.vel_w .= SymbolicAWEModels.KiteGeometry.rotate_v_around_k(
                 wing.vel_w, k, delta_heading)
             for point in view(state.points, transform.points)
                 point.vel_w .=
-                    SymbolicAWEModels.rotate_v_around_k(
+                    SymbolicAWEModels.KiteGeometry.rotate_v_around_k(
                         point.vel_w, k, delta_heading)
             end
 
