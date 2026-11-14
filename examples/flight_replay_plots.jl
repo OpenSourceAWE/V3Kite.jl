@@ -28,7 +28,6 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
-using VortexStepMethod
 using SymbolicAWEModels: update_from_sysstate!
 using GLMakie
 using GLMakie: save
@@ -338,15 +337,13 @@ set.profile_law = 0
 source_struc = struc_geometry_path(PROJECT; data_path)
 source_aero = aero_geometry_path(PROJECT; data_path,
     aero_mode = resolve_aero_mode(kite_set))
-vsm_set = VortexStepMethod.VSMSettings(
-    vsm_settings_path(PROJECT; data_path); data_prefix=false)
-vsm_set.wings[1].geometry_file = source_aero
+vsm_set = v3_vsm_settings(PROJECT, source_aero; data_path)
 sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 data_sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 
 plots = create_replay_plots(;
-    sys_struct=sam.sys_struct,
-    data_sys_struct=data_sam.sys_struct,
+    sys_struct=sam.state,
+    data_sys_struct=data_sam.state,
     syslog, datalog,
     frame_csvs, geom=kite_set.geom,
     section=SECTION,

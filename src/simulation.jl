@@ -169,13 +169,14 @@ function resolve_aero_mode(kite_set::V3KiteConfig)
 end
 
 """
-    create_v3_model(project::String; data_path=nothing, kite_set=nothing)
-        -> (sam, sys)
+    create_v3_model(project::String; data_path=nothing, kite_set=nothing,
+                    settings=nothing) -> (sam, sys)
 
 Build the `SymbolicAWEModel` a project file describes: its geometry from the
 `structural_geometry:`, `aero_geometry:` and `vsm_settings:` keys, its flight
 condition from `sim_settings:`, and how the model is assembled from
-`kite_settings:` (pass `kite` to override that file).
+`kite_settings:` (pass `kite_set` to override that file), whose material the
+structure carries before the model is built.
 
 `data_path` holds the data directory the project file and everything it points
 at are read from, and becomes the active data path. Pass `settings` to override
@@ -194,14 +195,13 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     struc_path = struc_geometry_path(project; data_path)
     @info "Creating V3 kite model" project struc=basename(struc_path) wing_type=kite_set.wing_type
 
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_settings_path(project; data_path); data_prefix=false)
-    vsm_set.wings[1].geometry_file = aero_geometry_path(project;
-        data_path, aero_mode = resolve_aero_mode(kite_set))
+    aero_mode = resolve_aero_mode(kite_set)
+    vsm_set = v3_vsm_settings(project,
+        aero_geometry_path(project; data_path, aero_mode); data_path)
 
-    sys = load_sys_struct_from_yaml(struc_path;
+    sys, transforms = load_sys_struct_from_yaml(struc_path;
         system_name=v3_model_name(kite_set), set, dynamics_type=kite_set.wing_type,
-        vsm_set, aero_mode=resolve_aero_mode(kite_set))
+        aero_mode)
 
     set_body_frame_damping!(sys, kite_set.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite_set.world_sim_damping)
@@ -213,26 +213,25 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     SymbolicAWEModels.set_angular_damping(sys.bodies,
         kite_set.beam_angular_damping, beam_idxs)
 
-    sam = SymbolicAWEModel(set, sys; backend = kite_set.backend)
+    isempty(transforms) || (transforms[1].elevation = deg2rad(set.elevation))
+    place_at_tether_length!(sys, transforms, set.l_tether)
+    apply_kite_material!(sys, kite_set)
 
-    isempty(sys.transforms) ||
-        (sys.transforms[1].elevation = deg2rad(set.elevation))
-    place_at_tether_length!(sys, set.l_tether)
-
-    return sam, sys
+    return SymbolicAWEModel(set, sys; transforms, vsm_set, backend = kite_set.backend), sys
 end
 
 """
-    place_at_tether_length!(sys, tether_length) -> sys
+    place_at_tether_length!(sys, transforms, tether_length) -> sys
 
-Stretch the first tether of `sys` to `tether_length` [m] and place the structure there.
+Stretch the first tether of `sys` to `tether_length` [m] and place the structure there
+by `transforms`.
 A `tether_length` of `0`, KiteUtils' "not set", keeps the length the geometry gives.
 """
-function place_at_tether_length!(sys, tether_length)
+function place_at_tether_length!(sys, transforms, tether_length)
     if !isempty(sys.tethers) && tether_length > 0
         sys.tethers[1].init_stretched_len = tether_length
     end
-    SymbolicAWEModels.place!(sys)
+    SymbolicAWEModels.place!(sys, transforms)
     return sys
 end
 
@@ -265,9 +264,10 @@ end
                    remake_settled_state=nothing, kite_set=nothing,
                    settle=nothing) -> (sam, sys)
 
-Bring up the model a project file describes, ready to step. Both `remake` flags
-default to the project's `remake_model` / `remake_settled_state`; they are
-independent caches, the serialized equations and the settled geometry.
+Bring up the model a project file describes, ready to step, and return it with its
+structure `sys`. Both `remake` flags default to the project's `remake_model` /
+`remake_settled_state`; they are independent caches, the serialized equations and the
+settled geometry.
 
 `init_mode: settle` runs power-zone settling at the flight condition of the
 project's `sim_settings:`, starting from the kite's `init_state` when it has one.
@@ -295,9 +295,8 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
             error("init_mode is :relaxed_state but no init_state is set in " *
                   "the kite_settings of $project")
         sam, sys = create_v3_model(project; data_path, kite_set)
-        apply_kite_material!(sys, kite_set)
-        set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
-        set_steering!(sys, 0.0, kite_set.geom)
+        set_depower!(sam.state, set.depower / 100.0, 0.0, kite_set.geom)
+        set_steering!(sam.state, 0.0, kite_set.geom)
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
         with_model_cache(default_cache_path(data_path)) do
             SymbolicAWEModels.init!(sam; remake=remake_model,
@@ -307,7 +306,7 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         sys.winches[1].brake = kite_set.brake
 
         state_path = project_file(project, kite_set.init_state; data_path)
-        start_from_state!(sam, sys, state_path) ||
+        start_from_state!(sam, state_path) ||
             error("No relaxed state at $state_path; run " *
                   "examples/relax_bridle.jl for this geometry first")
         @info "Started from the relaxed state" state_path

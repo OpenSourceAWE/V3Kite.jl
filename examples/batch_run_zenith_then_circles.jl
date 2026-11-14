@@ -99,7 +99,7 @@ function run_zenith_circles(;
         "settle_wing failed for elevation=$elev_deg, " *
             "v_wind=$v_wind, lt=$tether_length"
     )
-    sys = sam.sys_struct
+    sys = sam.state
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings
@@ -167,9 +167,9 @@ function run_zenith_circles(;
 
             # Steering
             sys.segments[V3_STEERING_LEFT_IDX].l0 =
-                nom_left + steer_ctrl
+                nom_left - steer_ctrl
             sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-                nom_right - steer_ctrl
+                nom_right + steer_ctrl
 
             # Winch PID
             tl = sys.tethers[1].len

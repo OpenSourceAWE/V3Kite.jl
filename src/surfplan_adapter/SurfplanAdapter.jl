@@ -38,6 +38,7 @@ import YAML
 using SymbolicAWEModels: Tube, TimoshenkoTube, TUBE_SHEAR_COEFF, tube_linear_rigidities,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
+using SymbolicAWEModels.KiteGeometry: unit_stiffness
 using ..V3Kite: v3_data_path, V3BridleConfig
 
 include("topology.jl")
@@ -142,13 +143,15 @@ function apply_bridle_material!(sys, bridle::V3BridleConfig)
         on_tether[segment_idx] = tether.idx in winched
     end
     tape_names = Set(Symbol.(TAPE_SEGMENT_NAMES))
-    for segment in sys.segments
-        get(on_tether, segment.idx, false) && continue
+    for (idx, segment) in enumerate(sys.segments)
+        get(on_tether, idx, false) && continue
         segment.compression_frac = bridle.compression_frac
         segment.compression_damping_frac = bridle.compression_damping_frac
-        haskey(on_tether, segment.idx) || segment.name in tape_names || continue
-        segment.unit_stiffness isa Real || continue
-        segment.unit_damping = bridle.bridle_rel_damping * segment.unit_stiffness
+        haskey(on_tether, idx) || segment.name in tape_names || continue
+        stiffness = unit_stiffness(segment, sys.materials)
+        stiffness isa Real || continue
+        segment.damping_per_stiffness = nothing
+        segment.unit_damping = bridle.bridle_rel_damping * stiffness
     end
     return sys
 end

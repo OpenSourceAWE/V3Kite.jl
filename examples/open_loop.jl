@@ -84,7 +84,7 @@ sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
     steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
-sys = sam.sys_struct
+sys = sam.state
 sys.winches[1].brake = true
 
 # Logger
@@ -129,7 +129,7 @@ for step in 1:n_steps
 
     if t > 1.0
         ms, ms_mean, ms_idx = SymbolicAWEModels.segment_stretch_stats(
-            sam.sys_struct)
+            sam.state)
         push!(max_stretch_samples, ms)
         push!(mean_stretch_samples, ms_mean)
         push!(max_idx_samples, ms_idx)

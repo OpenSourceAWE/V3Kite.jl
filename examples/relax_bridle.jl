@@ -57,17 +57,16 @@ kite_set = load_kite(PROJECT)
 struc_yaml = basename(struc_geometry_path(PROJECT))
 
 sam, sys = create_v3_model(PROJECT; kite_set)
-apply_kite_material!(sys, kite_set)
 
-set_depower!(sys, DEPOWER, STEERING, kite_set.geom)
-set_steering!(sys, STEERING, kite_set.geom)
+set_depower!(sam.state, DEPOWER, STEERING, kite_set.geom)
+set_steering!(sam.state, STEERING, kite_set.geom)
 
 V3Kite.with_model_cache(V3Kite.default_cache_path()) do
     init!(sam; remake=kite_set.remake_model, remake_vsm=true)
 end
 sys.winches[1].brake = true
 
-scale, steps, residual = relax_bridle!(sam, sys)
+scale, steps, residual = relax_bridle!(sam, sam.state)
 scale < 1.0 && error("Bridle relaxation did not reach full stiffness " *
                      "(scale=$scale, residual=$residual)")
 

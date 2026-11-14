@@ -50,7 +50,7 @@ function course_rate_converged(course_uw, azimuth_uw, elevation,
     maxv = -Inf
     cnt = 0
     @inbounds for k in (i_lo+1):n
-        r = (course_uw[k] - course_uw[k-1]) / dt -
+        r = (course_uw[k] - course_uw[k-1]) / dt +
             ((azimuth_uw[k] - azimuth_uw[k-1]) / dt) *
             sin(elevation[k])
         a = abs(r)
@@ -128,7 +128,7 @@ function run_circles(;
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
         "v_wind=$v_wind, lt=$tether_length")
-    sys = something(sam).sys_struct
+    sys = something(sam).state
 
     @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
     for ws in sys.vsm_set.wings

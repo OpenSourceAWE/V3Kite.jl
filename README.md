@@ -181,7 +181,7 @@ gravity term `c3 · sin(ψ) · cos(β)` fixed and fits only `c1`
 When GLMakie is loaded, extra plotters become available, e.g.:
 
 ```julia
-plot_body_frame_local(sys_struct; dir=:front)
+plot_body_frame_local(sam.state; dir=:front)
 ```
 
 ## Testing
