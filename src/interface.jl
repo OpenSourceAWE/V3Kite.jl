@@ -289,24 +289,12 @@ function orient_euler(s::V3KITE)
 end
 
 """
-    calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
+    calc_heading(s::V3KITE)
 
-Determine the heading angle of the kite in radian. Adds a `π` correction
-because `SymbolicAWEModels`' body x-axis points opposite to the Xsens-sensor
-convention `KiteUtils.calc_heading` assumes — the same correction
-`calc_csv_heading` applies to EKF-derived orientation.
+Return the heading of the kite [rad], the one the model logs in `SysState.heading`:
+zero with the nose towards zenith, positive right-handed about the outward radial.
 """
-function calc_heading(s::V3KITE; upwind_dir_=upwind_dir(s), neg_azimuth=false)
-    orientation = orient_euler(s)
-    elevation = calc_elevation(s)
-    if neg_azimuth
-        azimuth = -calc_azimuth(s)
-    else
-        azimuth = calc_azimuth(s)
-    end
-    heading = KiteUtils.calc_heading(orientation, elevation, azimuth; upwind_dir=upwind_dir_)
-    wrap_to_pi(heading + π)
-end
+calc_heading(s::V3KITE) = s.sam.sys_struct.wings[1].heading
 
 """
     calc_course(s::V3KITE; neg_azimuth=false)
