@@ -34,6 +34,10 @@
   released wherever the swing ended; the particle replay of 15:36:29–15:36:38 lost
   4 m/s of apparent wind in its first second. Settled states of the course hold carry
   `_holdcourse` in their cache name, so the old ones are no longer loaded.
+- BREAKING: `examples/flight_replay.jl` logs the steering it applies as `steering`, the
+  applied value, not as `set_steering`, so the replay plots draw the simulated steering
+  and fit its turn-rate gain again. The README's replay figures are redrawn from this
+  run.
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.

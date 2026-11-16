@@ -122,7 +122,7 @@ line is the open-loop simulation** and the **dotted line is the flight data**.
 
 ```julia
 plots.trajectory      # flight path, colored by kite speed
-plots.panels          # u_s, F_t, v_app, χ time series
+plots.panels          # u_s, F_t, v_app, l_t, χ time series
 plots.yaw_fig_course  # turn rate vs |u_s · v_a|, with least-squares G_k fit
 plots.twist[7182]     # spanwise twist vs photogrammetry, keyed by video frame
 ```
