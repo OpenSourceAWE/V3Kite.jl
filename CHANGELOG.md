@@ -27,6 +27,13 @@
 
 ### Fixed
 
+- BREAKING: Settling onto a recorded flight state (`course_correction_mode: course`,
+  the flight replays) holds the recorded velocity at every step and releases the kite
+  with it, so it converges onto the recorded course and speed. Before, the speed was
+  free while the position was held, the course hold never converged, and the kite was
+  released wherever the swing ended; the particle replay of 15:36:29–15:36:38 lost
+  4 m/s of apparent wind in its first second. Settled states of the course hold carry
+  `_holdcourse` in their cache name, so the old ones are no longer loaded.
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.

@@ -89,8 +89,9 @@ Base.@kwdef mutable struct V3SettleConfig
 
     course_correction_gain::Float64 = 0.3
     """
-    `:course` tracks the flight-data course and needs a nonzero velocity;
-    `:heading` tracks the row's heading, for settling from rest.
+    `:course` holds the row's velocity and turns the heading until the kite keeps
+    the row's course, so it needs a nonzero velocity; `:heading` holds the row's
+    heading, for settling from rest.
     """
     course_correction_mode::Symbol = :course
 
@@ -135,7 +136,7 @@ mode is not equilibrium under another, the source geometry enters it
 because a state logged for one has the wrong number of points for
 another, and the course hold enters it because a state settled onto a
 held heading points somewhere else than one settled onto a held course.
-All three are left out at their default so that files written before the
+The first two are left out at their default so that files written before the
 key knew about them keep being found.
 """
 function settled_state_path(config::V3SettleConfig, init_row;
@@ -201,8 +202,7 @@ function settled_state_path(config::V3SettleConfig, init_row;
     struc_tag = splitext(basename(
         project_entry(config.project, "structural_geometry"; data_path)))[1]
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
-    config.course_correction_mode === :course ||
-        (suffix *= "_hold$(config.course_correction_mode)")
+    suffix *= "_hold$(config.course_correction_mode)"
     return short_cache_path(joinpath(cache_path, "settled_$(suffix).arrow"))
 end
 
@@ -882,6 +882,43 @@ function setup_settling_model(config::V3SettleConfig;
     return sam, sys, gc
 end
 
+"""
+    hold_velocity!(transform, rel_pos, vel) -> transform
+
+Set `transform`'s elevation and azimuth rates so that
+`reposition!(…; update_vel=true)` gives a point at `rel_pos` [m] from the
+transform's base the part of `vel` [m/s] normal to `rel_pos`.
+"""
+function hold_velocity!(transform, rel_pos, vel)
+    transform.turn_rate = 0.0
+    transform.elevation_vel, transform.azimuth_vel = 1.0, 0.0
+    vel_per_elevation_rate = SymbolicAWEModels.spherical_spin(transform) × rel_pos
+    transform.elevation_vel, transform.azimuth_vel = 0.0, 1.0
+    vel_per_azimuth_rate = SymbolicAWEModels.spherical_spin(transform) × rel_pos
+    transform.elevation_vel, transform.azimuth_vel =
+        [vel_per_elevation_rate vel_per_azimuth_rate] \ vel
+    return transform
+end
+
+"""
+    rotate_velocities!(sys, transform, delta_heading)
+
+Turn the velocity of the wing and of every point `transform` carries by
+`delta_heading` [rad] about the radial axis through the transform's base, which
+`reposition!` leaves alone when it turns the heading.
+"""
+function rotate_velocities!(sys, transform, delta_heading)
+    wing = sys.wings[1]
+    base_pos = sys.points[transform.base_point_idx].pos_w
+    k = normalize(wing.pos_w - base_pos)
+    wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(wing.vel_w, k, delta_heading)
+    for point in sys.points
+        point.transform_idx == transform.idx || continue
+        point.vel_w .= SymbolicAWEModels.rotate_v_around_k(point.vel_w, k, delta_heading)
+    end
+    return sys
+end
+
 """Run power-zone settling initialized from flight data."""
 function run_power_zone_settling!(config::V3SettleConfig;
         data_path, show_progress,
@@ -914,6 +951,12 @@ function run_power_zone_settling!(config::V3SettleConfig;
     config.course_correction_mode in (:course, :heading) ||
         error("course_correction_mode must be :course or " *
               ":heading, got $(config.course_correction_mode)")
+    hold_course = config.course_correction_mode === :course
+    if hold_course
+        transform = sys.transforms[1]
+        base_pos = sys.points[transform.base_point_idx].pos_w
+        hold_velocity!(transform, sys.wings[1].pos_w - base_pos, data_vel)
+    end
 
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
@@ -959,7 +1002,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
             end
 
             SymbolicAWEModels.reposition!(
-                sys.transforms, sys)
+                sys.transforms, sys; update_vel=hold_course)
             try
                 reinit_integrator!(sam; prn=false)
             catch failure
@@ -1005,21 +1048,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
             old_heading = sys.transforms[1].heading
             sys.transforms[1].heading = wrap_to_pi(
                 old_heading + delta_heading)
-
-            # reposition! does not rotate vel_w
-            transform = sys.transforms[1]
-            base_pos = sys.points[
-                transform.base_point_idx].pos_w
-            k = normalize(wing.pos_w - base_pos)
-            wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(
-                wing.vel_w, k, delta_heading)
-            for point in sys.points
-                point.transform_idx == transform.idx ||
-                    continue
-                point.vel_w .=
-                    SymbolicAWEModels.rotate_v_around_k(
-                        point.vel_w, k, delta_heading)
-            end
+            hold_course || rotate_velocities!(sys, sys.transforms[1], delta_heading)
 
             if show_progress &&
                should_report(step, config.num_steps) &&
@@ -1042,8 +1071,9 @@ function run_power_zone_settling!(config::V3SettleConfig;
     failed && error("Settling diverged before completing " *
                     "$(config.num_steps) steps; state not saved")
 
-    # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
-    SymbolicAWEModels.reposition!(sys.transforms, sys)
+    # Final placement on target elev/azim/heading, and the held velocity; the loop
+    # ends on a drifted sim_step!.
+    SymbolicAWEModels.reposition!(sys.transforms, sys; update_vel=hold_course)
 
     @info "Saving settled state..."
     save_state_log(sam, dest_struc)
