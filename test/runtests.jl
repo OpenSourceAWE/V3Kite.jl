@@ -402,6 +402,8 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
 
     include("test-interface.jl")
 
+    include("test_replay_settle.jl")
+
     include("test-turbulence-injection.jl")
 
     # Slowest of the lot: a 600-step parking run (see the file header).

@@ -394,7 +394,7 @@ function run_physics_replay(h5_path;
 
         # Log pre-step state so sim point i aligns with data point i.
         log_state!(logger, sys_state, sam, sim_time;
-            set_steering=eff_steer, depower=eff_dep,
+            steering=eff_steer, depower=eff_dep,
             video_frame=row.video_frame,
             wind_vec_ekf=row.wind_vec_ekf,
             wind_vec_lidar=row.wind_vec_lidar)

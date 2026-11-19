@@ -27,6 +27,13 @@
 
 ### Fixed
 
+- BREAKING: Settling onto a recorded flight state (`course_correction_mode: course`,
+  the flight replays) holds the recorded velocity and releases the kite with it, on
+  the recorded course and speed. The replays start from a different state, and the
+  settled states of this mode are cached under a new name ending in `_holdcourse`.
+- BREAKING: `examples/flight_replay.jl` logs the steering it applies as `steering`, not
+  `set_steering`, so the replay plots draw the simulated steering and fit its turn-rate
+  gain. The README's trajectory, time-series and turn-rate figures are redrawn.
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.
