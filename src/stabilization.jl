@@ -910,11 +910,13 @@ Turn the velocity of the wing and of every point `transform` carries by
 function rotate_velocities!(sys, transform, delta_heading)
     wing = sys.wings[1]
     base_pos = sys.points[transform.base_point_idx].pos_w
-    k = normalize(wing.pos_w - base_pos)
-    wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(wing.vel_w, k, delta_heading)
+    radial_axis = normalize(wing.pos_w - base_pos)
+    wing.vel_w .= SymbolicAWEModels.rotate_v_around_k(wing.vel_w, radial_axis,
+                                                      delta_heading)
     for point in sys.points
         point.transform_idx == transform.idx || continue
-        point.vel_w .= SymbolicAWEModels.rotate_v_around_k(point.vel_w, k, delta_heading)
+        point.vel_w .= SymbolicAWEModels.rotate_v_around_k(point.vel_w, radial_axis,
+                                                           delta_heading)
     end
     return sys
 end
@@ -1071,8 +1073,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     failed && error("Settling diverged before completing " *
                     "$(config.num_steps) steps; state not saved")
 
-    # Final placement on target elev/azim/heading, and the held velocity; the loop
-    # ends on a drifted sim_step!.
+    # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
     SymbolicAWEModels.reposition!(sys.transforms, sys; update_vel=hold_course)
 
     @info "Saving settled state..."

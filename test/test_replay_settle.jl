@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using V3Kite: SymbolicAWEModels
 
-@testset "Replay settling releases the kite on the recorded course and speed" begin
+@testset "Replay settling releases the kite at the recorded course, speed and force" begin
     # First 10 Hz row of the 2025-10-09 15:36:29.0 replay window, as flight_replay.jl
     # builds it from the EKF log.
     row = (x = 209.43393640596855, y = -49.30041881791425, z = 142.51935435441496,
@@ -14,6 +14,7 @@ using V3Kite: SymbolicAWEModels
            heading = -0.8339269657590052, steering = 0.0204, depower = 0.3937,
            wind_vec = [6.264257299389055, -0.5509124442815528, -0.28590902790135375],
            omega_b = [-0.009251420479632733, 0.007880394831869867, -0.03000543804028756])
+    recorded_tether_force = 890.0 # [N] winch force logged in the same row
     project = "system_psm_replay.yaml"
     kite_set = load_kite(project)
     config = load_settle(project; kite_set)
@@ -33,4 +34,5 @@ using V3Kite: SymbolicAWEModels
     wing_vel = collect(sam.sys_struct.wings[1].vel_w)
     @test abs(rad2deg(wrap_to_pi(course(wing_vel) - course(data_vel)))) < 2.0
     @test norm(tangential(wing_vel)) ≈ norm(tangential(data_vel)) atol = 0.2
+    @test norm(sam.sys_struct.winches[1].force) ≈ recorded_tether_force rtol = 0.15
 end
