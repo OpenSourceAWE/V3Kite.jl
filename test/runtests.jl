@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
-    tube_linear_rigidities, SystemState, AeroSpec
+    tube_linear_rigidities, membrane_linear_rigidities, SystemState, AeroSpec
 
 @testset "V3Kite.jl" begin
 
@@ -416,6 +416,26 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         pressure_bar = V3BeamTopology().pressure_bar
         @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
             tube.diameter / 2, pressure_bar)[3], sam.state.tubes)
+    end
+
+    @testset "Comer-Levy Bending Softens Each Beam Tube Past Wrinkling" begin
+        sys, _ = load_sys_struct_from_yaml(
+            joinpath(v3_data_path(), "struc_geometry_beam.yaml");
+            system_name = "beam", set = Settings("system_beam.yaml"))
+        torsion = [tube.GJ for tube in sys.tubes]
+        radii = Dict(tube.name => tube.diameter / 2 for tube in sys.tubes)
+        topo = V3BeamTopology()
+        apply_comer_bending!(sys, radii, topo)
+        for (tube, GJ) in zip(sys.tubes, torsion)
+            radius = radii[tube.name]
+            membrane_stiffness =
+                V3Kite.SurfplanAdapter.resolve_membrane_stiffness(topo, radius)
+            EA, GA, EI0 = membrane_linear_rigidities(radius, membrane_stiffness)
+            @test (tube.EA, tube.GA, tube.GJ) == (EA, GA, GJ)
+            @test tube.EIy === tube.EIz
+            @test tube.EIy.EI0 ≈ EI0
+            @test tube.EIy(10 * tube.EIy.curvature_knee) < EI0
+        end
     end
 
     include("test_ripple_metrics.jl")

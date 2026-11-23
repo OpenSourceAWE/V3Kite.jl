@@ -35,7 +35,7 @@ module SurfplanAdapter
 
 using LinearAlgebra
 import YAML
-using SymbolicAWEModels: Tube, TimoshenkoTube, TUBE_SHEAR_COEFF, tube_linear_rigidities,
+using SymbolicAWEModels: TUBE_SHEAR_COEFF, tube_linear_rigidities,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
 using SymbolicAWEModels.KiteGeometry: unit_stiffness
@@ -91,28 +91,17 @@ Replace each beam `Tube`'s constant bending rigidity with the curvature-softenin
 Comer-Levy law (`comer_levy_bending_law`) in place, so the loaded (linear-YAML) beam
 gains the post-collapse bending branch. `tube_radius` maps each tube name to its
 radius (from [`beam_joint_radii`](@ref)). Axial/shear are refreshed from the same
-`E·t`; torsion, damping and the resolved indices are carried over from the loaded
-tube. Done by element replacement (not a `SystemDefinition` rebuild) so no reference
-re-resolution or tether re-expansion is triggered.
+`E·t`; every other column of the tube is left as loaded.
 """
 function apply_comer_bending!(sys, tube_radius::AbstractDict, topo::V3BeamTopology)
     pressure_pa = topo.pressure_bar * 1.0e5
-    for (k, tube) in enumerate(sys.tubes)
+    for tube in sys.tubes
         haskey(tube_radius, tube.name) || continue
         radius = tube_radius[tube.name]
-        et = resolve_membrane_stiffness(topo, radius)
-        EA, GA, _ = membrane_linear_rigidities(radius, et)
-        law = comer_levy_bending_law(radius, pressure_pa, et)
-        beam = tube.model
-        new_tube = Tube(tube.name, tube.body_a_ref, tube.body_b_ref;
-            diameter = tube.diameter, pressure = tube.pressure, law = tube.law,
-            anchor_a = tube.anchor_a_b, anchor_b = tube.anchor_b_b,
-            model = TimoshenkoTube(; EA, GA, GJ = beam.GJ, EIy = law, EIz = law,
-                shear_coeff = beam.shear_coeff, damping = beam.damping))
-        new_tube.model.rest_length = beam.rest_length
-        new_tube.idx = tube.idx
-        new_tube.bodies = tube.bodies
-        sys.tubes[k] = new_tube
+        membrane_stiffness = resolve_membrane_stiffness(topo, radius)
+        tube.EA, tube.GA, _ = membrane_linear_rigidities(radius, membrane_stiffness)
+        tube.EIy = tube.EIz =
+            comer_levy_bending_law(radius, pressure_pa, membrane_stiffness)
     end
     return sys
 end
