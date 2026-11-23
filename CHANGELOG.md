@@ -27,6 +27,8 @@
 
 ### Fixed
 
+- Settling from a relaxed state settles the tether length it was asked for, not
+  the length the relaxation ran at: the beam replay settles the recorded 247.557 m.
 - `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
   are not datasets instead of failing on them.
 - `get_row_at_distance` no longer boxes its index inside the field generator.
