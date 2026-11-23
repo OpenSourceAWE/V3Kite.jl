@@ -6,7 +6,8 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
-    set_unstretched_length!, update_from_sysstate!
+    set_unstretched_length!, update_from_sysstate!, TUBE_SHEAR_COEFF,
+    tube_linear_rigidities
 
 @testset "V3Kite.jl" begin
 
@@ -115,17 +116,33 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
         @test V3Kite.num_tag(70.0) != V3Kite.num_tag(69.5)
     end
 
+    @testset "Short Cache Path" begin
+        # Windows can't open paths of 260 characters or more
+        short = joinpath("cache", "settled_dp1.45.arrow")
+        @test V3Kite.short_cache_path(short) == short
+        dir = joinpath("C:", "Users", "someone", ".julia", "scratchspaces", "v3kite_cache")
+        long1 = joinpath(dir, "settled_" * "x"^250 * "_a.arrow")
+        long2 = joinpath(dir, "settled_" * "x"^250 * "_b.arrow")
+        p1 = V3Kite.short_cache_path(long1)
+        @test length(p1) <= V3Kite.MAX_CACHE_PATH
+        @test dirname(p1) == dir
+        @test endswith(p1, ".arrow")
+        @test p1 == V3Kite.short_cache_path(long1)
+        @test p1 != V3Kite.short_cache_path(long2)
+    end
+
     @testset "Settled Cache Aero Mode" begin
         # An aero mode reaches the settled geometry through the wing's aero
-        # object, so it has to reach the cache name too.
+        # object, so it has to reach the cache name too. A short `cache_path`
+        # keeps `short_cache_path` from hashing the tags away.
         init_row = (x=100.0, y=0.0, z=180.0, vx=0.0, vy=0.0, vz=0.0,
                     heading=0.0, steering=0.0, depower=0.25,
                     wind_vec=[10.0, 0.0, 0.0])
         cfg_dir = V3Kite.V3SettleConfig()
         cfg_cont = V3Kite.V3SettleConfig(kite_set=V3KiteConfig(
             aero_mode=V3Kite.SymbolicAWEModels.ContinuousAero()))
-        path_dir = V3Kite.settled_state_path(cfg_dir, init_row)
-        path_cont = V3Kite.settled_state_path(cfg_cont, init_row)
+        path_dir = V3Kite.settled_state_path(cfg_dir, init_row; cache_path="c")
+        path_cont = V3Kite.settled_state_path(cfg_cont, init_row; cache_path="c")
         @test path_dir != path_cont
         @test occursin("_aerocont", path_cont)
         @test !occursin("_aero", path_dir)
@@ -133,7 +150,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
 
         # A state logged for one geometry has the wrong point count for another.
         cfg_beam = V3Kite.V3SettleConfig(project="system_beam.yaml")
-        path_beam = V3Kite.settled_state_path(cfg_beam, init_row)
+        path_beam = V3Kite.settled_state_path(cfg_beam, init_row; cache_path="c")
         @test path_beam != path_dir
         @test occursin("_struc_geometry_beam", path_beam)
     end
@@ -237,6 +254,17 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
             @test spanwise == length(table["data"])
         end
 
+        # The y_ref points are a mirror pair, so the body y axis lies along the span.
+        for name in ("struc_geometry_beam.yaml", "struc_geometry_beam_wing.yaml")
+            yaml = V3Kite.YAML.load_file(joinpath(v3_data_path(), name))
+            points = yaml["points"]
+            pos_col = findfirst(==("pos_cad"), points["headers"])
+            pos = Dict(row[1] => Float64.(row[pos_col]) for row in points["data"])
+            first_ref, second_ref = (pos[ref]
+                for ref in only(yaml["wings"]["data"])["y_ref_points"])
+            @test first_ref ≈ second_ref .* [1, -1, 1]
+        end
+
         # The hinge is the chord receiver nearest the crease the aero tables
         # were deflected about; the other two are the chord's own ends.
         topo = V3BeamTopology()
@@ -251,6 +279,55 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
                 @test row[flap_col] == ["wing_ctrl_$(i)_$j" for j in nodes]
                 @test row[flap_col] ⊆ row[point_col]
             end
+        end
+
+        for (name, n_faces) in ("struc_geometry.yaml" => 9,
+                "struc_geometry_beam.yaml" => 90, "struc_geometry_beam_wing.yaml" => 90)
+            yaml = V3Kite.YAML.load_file(joinpath(v3_data_path(), name))
+            stations = yaml["stations"]
+            point_col = something(findfirst(==("points"), stations["headers"]),
+                findfirst(==("point_idxs"), stations["headers"]))
+            chords = [row[point_col] for row in stations["data"]]
+            faces = [face[3] for face in yaml["canopy_faces"]["data"]]
+            @test length(faces) == n_faces
+            per_bay = n_faces ÷ (length(chords) - 1)
+            for (i, bay) in enumerate(Iterators.partition(faces, per_bay))
+                near = [first.(bay); bay[end][2]]
+                far = [getindex.(bay, 4); bay[end][3]]
+                @test near[[1, end]] == chords[i][1:2]
+                @test far[[1, end]] == chords[i + 1][1:2]
+                @test allunique(near) && near ⊆ chords[i]
+                @test allunique(far) && far ⊆ chords[i + 1]
+                @test getindex.(bay, 2) == near[2:end]
+                @test getindex.(bay, 3) == far[2:end]
+            end
+        end
+
+        # A two-station wing with one interior receiver: two cells, LE half first.
+        mktempdir() do dir
+            spec(i, j, frac) = (name = "wing_ctrl_$(i)_$j", pos = [frac, i - 1.0, 0.0],
+                station = i, frac, tube = "strut_$i")
+            tables = (n = 2, mid = 1, le_ids = [1, 3], te_ids = [2, 4],
+                wing_pt = Dict(1 => "wing_le_1", 2 => "wing_te_1",
+                    3 => "wing_le_2", 4 => "wing_te_2"),
+                wing_body = Dict(k => "b" for k in 1:4),
+                control_specs = [spec(i, j, frac)
+                                 for i in 1:2 for (j, frac) in enumerate((0.0, 0.5, 1.0))],
+                body_rows = [["b", 0.0, [1.0, 1.0, 1.0], [0.0, 0.0, 0.0], "DYNAMIC",
+                    [1.0, 0.0, 0.0, 0.0]]],
+                tube_rows = [["t", ["b"], 0.1, 0.0, "x", "y", 0.5, 0.0]],
+                flap_points = [["wing_ctrl_1_1"], ["wing_ctrl_2_1"]])
+            geom = (pos = Dict(1 => [0.0, 0.0, 0.0], 2 => [1.0, 0.0, 0.0],
+                    3 => [0.0, 1.0, 0.0], 4 => [1.0, 1.0, 0.0]),
+                wing_connections = [("te_1", 2, 4)])
+            path = joinpath(dir, "wing.yaml")
+            V3Kite.SurfplanAdapter.write_model(path, tables, geom, nothing,
+                V3BeamTopology(); full = false)
+            @test V3Kite.YAML.load_file(path)["canopy_faces"]["data"] == [
+                ["canopy_1_1", 1,
+                    ["wing_le_1", "wing_ctrl_1_2", "wing_ctrl_2_2", "wing_le_2"]],
+                ["canopy_1_2", 1,
+                    ["wing_ctrl_1_2", "wing_te_1", "wing_te_2", "wing_ctrl_2_2"]]]
         end
 
         # A geometry carrying polars alone cannot fly `pressure`, and says so
@@ -279,6 +356,16 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
             @test project_data_path(project, nothing) == dir
             @test project_data_path("system_beam.yaml", nothing) == v3_data_path()
             @test load_kite("system_beam.yaml").wing_mass == 0.0
+        end
+    end
+
+    @testset "Relaxed State Keeps The Orientation It Was Saved With" begin
+        # The tracked relaxed states predate the frame metadata of KiteUtils 0.13.
+        for name in ("relaxed_struc_geometry_dp20", "relaxed_struc_geometry_beam_dp20")
+            path = joinpath(v3_data_path(), "$name.arrow")
+            table = V3Kite.KiteUtils.Arrow.Table(path)
+            saved = first.([table.Qw[1], table.Qx[1], table.Qy[1], table.Qz[1]])
+            @test read_state_log(path).orient ≈ saved
         end
     end
 
@@ -322,11 +409,22 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, segment_world_length,
         # At the length it was relaxed at, the state is restored as logged.
         sys = settling_struct(config; source_aero)
         logged = settling_struct(config; source_aero)
-        update_from_sysstate!(logged, V3Kite.read_state_log(state_path))
+        update_from_sysstate!(logged, read_state_log(state_path))
         @test V3Kite.apply_relaxed_state!(sys, state_path)
         @test sys.tethers[1].len == logged.tethers[1].len
         @test all(point.pos_w == logged_point.pos_w
                   for (point, logged_point) in zip(sys.points, logged.points))
+    end
+
+    @testset "Beam Wing Loads Its Tubes" begin
+        _, sys = create_v3_model("system_beam.yaml")
+        @test length(sys.tubes) == 21
+        @test count(point -> point.tube_idx != 0, sys.points) == 150
+        @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
+            atol = 1e-4), sys.tubes)
+        pressure_bar = V3BeamTopology().pressure_bar
+        @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
+            tube.diameter / 2, pressure_bar)[3], sys.tubes)
     end
 
     include("test_ripple_metrics.jl")

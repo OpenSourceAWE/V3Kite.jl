@@ -1,0 +1,2 @@
+### Changed
+- `bin/update_default_manifest` is renamed to `bin/update_default_manifests` and follows the repository scripts page of KiteUtils: it updates the packages under every Julia version with a `Manifest-v<version>.toml.default` (or only the one given with `--version`), runs the tests under each, and copies and commits the default manifests only if all tests pass. It asks before it starts; `-y` skips the question.

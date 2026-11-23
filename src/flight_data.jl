@@ -1,13 +1,10 @@
 # Copyright (c) 2025 Jelle Poland, Bart van de Lint
 # SPDX-License-Identifier: MPL-2.0
 
-"""
-Flight data loading and processing utilities for V3 kite validation.
-Loads HDF5 flight data files with ekf_output and flight_data groups.
-"""
+# Flight data loading and processing utilities for V3 kite validation.
+# Loads HDF5 flight data files with ekf_output and flight_data groups.
 
-# Video frame mapping constants
-# (video_frame 7182 = UTC 15:36:31.0)
+# Video frame mapping reference: video_frame 7182 = UTC 15:36:31.0
 const VIDEO_FRAME_REF = 7182
 const UTC_REF_SECONDS = 15*3600 + 36*60 + 31.0
 const VIDEO_FPS = 29.97
@@ -67,8 +64,11 @@ function load_flight_data(h5_path::String)
     h5open(h5_path, "r") do fid
         # ekf_output datasets with "ekf_" prefix
         if haskey(fid, "ekf_output")
-            for name in keys(fid["ekf_output"]::HDF5.Group)
-                ds = read(fid["ekf_output"][name])
+            grp = fid["ekf_output"]::HDF5.Group
+            for name in keys(grp)
+                obj = grp[name]
+                obj isa HDF5.Dataset || continue
+                ds = read(obj)
                 if eltype(ds) <: Real
                     data[Symbol("ekf_", name)] =
                         convert(Vector{Float64}, ds)
@@ -78,8 +78,11 @@ function load_flight_data(h5_path::String)
 
         # flight_data datasets without prefix
         if haskey(fid, "flight_data")
-            for name in keys(fid["flight_data"]::HDF5.Group)
-                ds = read(fid["flight_data"][name])
+            grp = fid["flight_data"]::HDF5.Group
+            for name in keys(grp)
+                obj = grp[name]
+                obj isa HDF5.Dataset || continue
+                ds = read(obj)
                 if eltype(ds) <: Real
                     data[Symbol(name)] =
                         convert(Vector{Float64}, ds)
@@ -247,8 +250,7 @@ Returns a NamedTuple with the same fields as `data`.
 """
 function get_row_at_distance(data, target_dist)
     cd = data.cumulative_distance
-    idx = searchsortedlast(cd, target_dist)
-    idx = clamp(idx, 1, length(cd) - 1)
+    idx = clamp(searchsortedlast(cd, target_dist), 1, length(cd) - 1)
     d0, d1 = cd[idx], cd[idx + 1]
     alpha = (d1 > d0) ?
         clamp((target_dist - d0) / (d1 - d0), 0.0, 1.0) :

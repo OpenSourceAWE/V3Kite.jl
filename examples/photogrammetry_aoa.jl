@@ -8,6 +8,12 @@ Computes the geometric angle between the chord reference direction
 and the tether vector from photogrammetry data for each frame CSV.
 """
 
+using Pkg
+if !Base.generating_output() &&
+        Base.active_project() != joinpath(@__DIR__, "Project.toml")
+    Pkg.activate(joinpath(@__DIR__))
+end
+
 using V3Kite, LinearAlgebra, GLMakie, CairoMakie
 GLMakie.activate!()
 using LazyArtifacts

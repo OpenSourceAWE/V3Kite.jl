@@ -17,6 +17,7 @@ end
 using V3Kite
 using V3Kite: V3_STEERING_LEFT_IDX, V3_STEERING_RIGHT_IDX,
     V3_DEPOWER_IDX, V3_STEERING_GAIN
+using KiteUtils: KA
 using GLMakie
 using MakieControlPlots
 using MakieControlPlots: plot
@@ -83,7 +84,6 @@ function load_log_and_system(; log_name)
     @info "Parsed tags" up = up / 100 us = us_vals ./ 100 v_wind lt
 
     settings = Settings("system_psm.yaml")
-    settings.v_wind = Float64(v_wind)
     settings.l_tether = Float64(lt)
     sam, sys = create_v3_model("system_psm.yaml"; settings)
     apply_geom_adjustments!(sys, V3GeomAdjustConfig(
@@ -92,7 +92,7 @@ function load_log_and_system(; log_name)
     log_file, log_dir, log_path = resolve_log_file(
         log_name, DATA_DIR)
     @info "Resolved log file" log_path
-    lg = load_log(log_file; path=log_dir)
+    lg = load_log(log_file; path=log_dir, frame=KA)
     return lg, sam, up, us_vals, v_wind, lt
 end
 

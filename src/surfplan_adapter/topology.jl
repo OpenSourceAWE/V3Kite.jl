@@ -52,13 +52,11 @@ the segments [`set_depower!`](@ref) and [`set_steering!`](@ref) drive.
 checked against the export's own wing nodes, so a mismatched pair of files fails at
 read time instead of silently building a skewed kite.
 
-`pressure_bar` is the inflation pressure of the leading edge and struts, and sets
-every emitted rigidity through the Breukels correlations. The measured V3 bridle
-file vendored from awegroup/TUDELFT_V3_KITE records `pressure: 0.3 [bar]`, which is
-where the default comes from.
-
-The emitted `EA`, `GA`, `EI0` and `GJ` are the Breukels linear rigidities
-(`tube_linear_rigidities`) at that pressure, so all four share one provenance.
+`pressure_bar` is the inflation pressure of the leading edge and struts, written on
+every emitted tube, whose rigidities SymbolicAWEModels derives from it through the
+`breukels2011` law. The measured V3 bridle file vendored from
+awegroup/TUDELFT_V3_KITE records `pressure: 0.3 [bar]`, which is where the default
+comes from.
 
 `membrane_stiffness` is the tube fabric `E·t` [N/m] feeding the *optional*
 Comer-Levy curvature-softening bending law, which only

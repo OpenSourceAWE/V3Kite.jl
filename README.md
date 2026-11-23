@@ -162,6 +162,20 @@ so the spanwise-mean angle of attack matches them.
 Tape reductions are applied via `V3GeomAdjustConfig` and `set_steering!` /
 `set_depower!` — see their docstrings.
 
+## Turn-Rate-Law Identification
+
+`identify_turn_rate_law(sl; dt)` fits the turn-rate law
+
+    ψ̇ = c1 · v_a · u_s(t − τ) + c2 / v_a · sin(ψ) · cos(β)
+
+to a logged run: the dead time `τ` (`estimate_delay_fit`) and the coefficients
+`c1`, `c2` (`fit_c1_c2`); `format_turn_rate_report` prints the result.
+`fit_delay_lag` splits the response further into a dead time and a first-order
+lag `T`, with `u_s(t − τ)/(1 + sT)` in the law, and `joint_delay_lag_fit` does
+the same over several flights. With the keyword `c3`, `fit_delay_lag` holds the
+gravity term `c3 · sin(ψ) · cos(β)` fixed and fits only `c1`
+(`estimate_delay_fit_c3`, `fit_c1_c3`). See the docstrings for details.
+
 ## Visualization Extension
 
 When GLMakie is loaded, extra plotters become available, e.g.:

@@ -42,7 +42,7 @@ using PrecompileTools: @compile_workload
             aero_mode = ContinuousAero(),
             body_start_damping,
             body_sim_damping = 0.8 .* body_start_damping,
-            damping_per_stiffness = 0.001,
+            damping_per_stiffness = 0.002,
             remake_model = false, remake_settled_state = false)
 
         s.sys.winches[1].brake = true

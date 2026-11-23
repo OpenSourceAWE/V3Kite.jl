@@ -72,13 +72,13 @@ Both were fitted against the particle lattice and address segments by position, 
 they are skipped with a warning on a structure whose segments are laid out
 differently — the beam geometry from [`V3Kite.SurfplanAdapter`](@ref) must not
 inherit a correction fitted for another structure. A beam wing is recognised by its
-`TimoshenkoJoint`s; being the larger structure, it has a segment at every one of
+`tubes`; being the larger structure, it has a segment at every one of
 these indices, so an in-range check alone would let the corrections land on canopy
 membranes instead.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
-    if !isempty(sys.timoshenko_joints) &&
+    if !isempty(sys.tubes) &&
             (config.reduce_tip || config.reduce_te)
         @warn "Skipping the tip/TE reductions on a beam wing: they are indices " *
               "into the particle lattice, whose wing segments this has none of"

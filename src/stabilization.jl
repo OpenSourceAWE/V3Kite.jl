@@ -203,7 +203,7 @@ function settled_state_path(config::V3SettleConfig, init_row;
     struc_tag == DEFAULT_STRUC_TAG || (suffix *= "_$(struc_tag)")
     config.course_correction_mode === :course ||
         (suffix *= "_hold$(config.course_correction_mode)")
-    return joinpath(cache_path, "settled_$(suffix).arrow")
+    return short_cache_path(joinpath(cache_path, "settled_$(suffix).arrow"))
 end
 
 """
@@ -231,7 +231,7 @@ rather than crash.
 function read_state_log(path)
     isfile(path) || return nothing
     log = try
-        load_log(path)
+        load_log(path; frame=KA)
     catch err
         err isa InterruptException && rethrow()
         @warn "State log unreadable, using the placed geometry" path err
@@ -641,6 +641,30 @@ the settling elevation into the settled-geometry cache key.
 num_tag(d::Real) = replace(string(round(Float64(d), digits=3)), r"\.0$" => "")
 num_tag(d::AbstractVector) = join(num_tag.(d), "-")
 
+# Windows can't open paths of MAX_PATH (260) characters or more; keep a margin
+const MAX_CACHE_PATH = 240
+
+"""
+    short_cache_path(path) -> String
+
+`path`, unless it has more than `MAX_CACHE_PATH` characters: then the end of its file
+name is replaced by `_h` and a hash of the whole name, which is stable across Julia
+versions and platforms (64-bit FNV-1a). Paths that fit are left alone, so that existing
+cache files keep being found.
+"""
+function short_cache_path(path)
+    length(path) <= MAX_CACHE_PATH && return path
+    dir, file = splitdir(path)
+    stem, ext = splitext(file)
+    h = 0xcbf29ce484222325
+    for b in codeunits(stem)
+        h = (h ⊻ b) * 0x00000100000001b3
+    end
+    tag = "_h" * string(h; base=16, pad=16)
+    keep = max(0, MAX_CACHE_PATH - length(dir) - 1 - length(tag) - length(ext))
+    return joinpath(dir, first(stem, keep) * tag * ext)
+end
+
 """
     default_cache_path(data_path = nothing) -> String
 
@@ -731,7 +755,8 @@ function settle_wing(config::V3SettleConfig, init_row;
                 rethrow(err)
             end
             try
-                syslog = load_log("settle_particle_dynamics_wing"; path=cache_path)
+                syslog = load_log("settle_particle_dynamics_wing";
+                    path=cache_path, frame=KA)
             catch
             end
         end
@@ -740,7 +765,6 @@ function settle_wing(config::V3SettleConfig, init_row;
     # Load model from the settled state, or source
     # YAML if settling failed
     set = Settings(project_path(config.project; data_path))
-    set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     set.g_earth = config.g_earth
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
@@ -763,13 +787,11 @@ function settle_wing(config::V3SettleConfig, init_row;
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
-        sys.tethers[1].init_stretched_len = gc.tether_length
         with_model_cache(cache_path) do
             # Settling already rebuilt into this cache, and the bin carries a
             # structure hash that rejects it if the settled structure differs.
             SymbolicAWEModels.init!(sam;
                 remake=remake_model && !settling_rebuilt, remake_vsm=true,
-                reinit_sys=false,
                 analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     else
@@ -783,10 +805,10 @@ function settle_wing(config::V3SettleConfig, init_row;
             dynamics_type=config.kite_set.wing_type, vsm_set,
             aero_mode=resolve_aero_mode(config.kite_set))
         sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
+        place_at_tether_length!(sys, set.l_tether)
         with_model_cache(cache_path) do
             SymbolicAWEModels.init!(sam;
-                remake=remake_model && !settling_rebuilt, ignore_l0=false,
-                remake_vsm=true,
+                remake=remake_model && !settling_rebuilt, remake_vsm=true,
                 analytic_jacobian=config.kite_set.analytic_jacobian)
         end
     end
@@ -811,7 +833,6 @@ function build_settling_struct(config::V3SettleConfig;
         data_path, source_struc, source_aero)
     set = Settings(project_path(config.project; data_path))
     set.g_earth = config.g_earth
-    set.v_wind = config.v_wind
     set.l_tether = config.tether_length
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
 
@@ -864,10 +885,10 @@ function setup_settling_model(config::V3SettleConfig;
 
     sam = SymbolicAWEModel(set, sys; backend = config.kite_set.backend)
     apply_geom_adjustments!(sys, gc)
-    sys.tethers[1].init_stretched_len = gc.tether_length
+    place_at_tether_length!(sys, gc.tether_length)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
-            ignore_l0=false, remake_vsm=true,
+            remake_vsm=true,
             analytic_jacobian=config.kite_set.analytic_jacobian)
     end
 

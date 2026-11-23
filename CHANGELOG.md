@@ -2,11 +2,103 @@
 
 ## Unreleased
 
+### Changed
+
+- `bin/run_julia` starts Julia with the root project (`--project`) again, no longer
+  with `--project=examples`; `menu()`, `menu2()` and the example scripts activate the
+  examples project themselves. `--project` is now the first Julia argument, before the
+  system image.
+- `bin/run_julia` loads Revise only if it is available, so the REPL starts without an
+  error when Revise is not installed.
+- `bin/run_julia` accepts `-h`/`--help`. `--kaimon` is still accepted but has no
+  effect.
+- `examples/depower_drum_model.jl` and `examples/photogrammetry_aoa.jl` activate the
+  examples project like the other examples.
+- `bin/install` follows the repository scripts page of KiteUtils. Without parameters, or
+  with `-y`, it asks nothing and no longer changes the juliaup default, installs Revise
+  or adds the alias `jl`; `-i` offers these. Stale manifests are moved to `*.bak`
+  instead of deleted, each missing tracked `*.default` file is copied to its local
+  name, and a failed resolve stops the script instead of retrying without the default
+  manifest. `+<version>` and `--version <version>` select the Julia version, as
+  `bin/create_sys_image` already passed.
+- `examples/LocalPreferences.toml.default` sets `precompile_workload = true`, so the
+  examples environment, whose `LocalPreferences.toml` `bin/install` now creates, keeps
+  the precompile workload of V3Kite.
+
 ### Fixed
+
 - Settling from a relaxed state settles the tether length it was asked for, not
   the length the relaxation ran at: the beam replay settles the recorded 247.557 m.
+- `load_flight_data` skips entries of the `ekf_output` and `flight_data` groups that
+  are not datasets instead of failing on them.
+- `get_row_at_distance` no longer boxes its index inside the field generator.
+- The beam kite's body frame lies along its span. Its `y_ref_points` are now the mirror
+  pair `[wing_le_6, wing_le_5]` either side of the symmetry plane, and its
+  `z_ref_points` aim at the mean of that pair rather than at `wing_le_5`. Before, the
+  body y axis tilted 5.9° out of the span, and SymbolicAWEModels from
+  OpenSourceAWE/SymbolicAWEModels.jl#380 on refuses a wing whose `y_ref_points` lie
+  more than 1° off its aero span. A beam geometry the SurfplanAdapter writes takes the
+  same points.
 
-## V3Kite v1.4.1 26-09-2026
+## V3Kite v2.0.0 2026-10-19
+
+### Added
+
+- `src/delay_lag_fit.jl`, moved from `examples/delay_lag_fit.jl` of
+  SimpleKiteControllers.jl: `fit_delay_lag` splits the kite's response to the
+  applied steering into a dead time and a first-order lag (`lag_filter`), on one
+  `identify_turn_rate_law` result, and `joint_delay_lag_fit` on several.
+  `estimate_delay_fit_c3` and `fit_c1_c3` are `estimate_delay_fit` and
+  `fit_c1_c2` with the gravity term `c3·sin(ψ)·cos(β)` held fixed; `fit_delay_lag`
+  uses them when given `c3`.
+- The PSM and beam structure geometries carry a `canopy_faces` table (`name, wing,
+  points`) of the canopy's quads between adjacent stations, and the SurfplanAdapter
+  writes it for the beam. The model build ignores it.
+
+### Changed
+
+- `damping_per_stiffness` of the precompile workload (`src/precompile.jl`), of
+  `examples/reel_out_v3.jl`, `examples/simple_parking.jl` and
+  `examples/simple_auto_parking.jl` raised from 0.001 s to 0.002 s. The lower value only
+  worked around a bug of old SymbolicAWEModels versions.
+- `test/test_parking_ripple.jl` follows `examples/simple_parking.jl` to 0.002 s; its
+  ripple RMS baseline was retaken: 0.0030° (0.00303° in two runs), was 0.0064° at 0.001 s.
+- V3Kite runs on VortexStepMethod v6, SymbolicAWEModels 0.20 and KiteUtils 0.13, and
+  no longer on the versions before them.
+- SymbolicAWEModels 0.20's `tubes` replace `timoshenko_joints`. The beam geometry
+  `surfplan_to_struc` emits, and the shipped `struc_geometry_beam.yaml` and
+  `struc_geometry_beam_wing.yaml`, carry a `tubes` table (bodies, diameter, pressure,
+  law, model, shear coefficient, damping) whose rigidities come from the
+  `breukels2011` law, and their points name the tube a rider hangs on in a `tube`
+  column. `surfplan_to_struc` returns a `tubes` count where it returned `joints`.
+- `create_v3_model`, `build_replay_sys_struct` and the settling paths place the
+  structure at their tether length before `init!`, which no longer places it. The
+  `settle: false` flight replay builds through `build_replay_sys_struct`, so it starts
+  at the logged tether length rather than the YAML's.
+- BREAKING: the `bodies` table of a beam geometry names a body's own mass
+  `extra_mass`, as SymbolicAWEModels 0.19 and later read it; the SurfplanAdapter
+  writes it so, and a file of your own still saying `mass` errors when it loads.
+- `read_state_log` and settling read a state log that declares no frame convention as
+  KiteUtils 0.13's `KA`, which is what SymbolicAWEModels wrote into it. Read as `KS`,
+  the default for such a log, the tracked relaxed states come back turned about 90 deg.
+- `data/vsm_settings.yaml` names the apparent wind speed `condition.va` and drops the
+  artificial damping keys, as VortexStepMethod v6 reads them.
+- `examples/v3beam_aero_geometry.jl` slices the V3 mesh at `WINGTIP_DISTANCE = 0.05`
+  m of span instead of 0.15 m of leading-edge arc: VortexStepMethod v6 spreads the
+  sections evenly over the span of the quarter-chord line and measures the distance
+  along it. The tip sections stay where 0.15 m of arc put them, on 0.87 m of chord,
+  covering 8.311 m of the 8.333 m span; the interior sections move to even spanwise
+  spacing, and every beam aero result moves with them. `data/nf_aero_geometry.yaml`
+  is not in git, so regenerate it and rebuild the model once.
+
+### Fixed
+
+- `batch_run_circles.jl` and `batch_run_zenith_then_circles.jl` ramp the wind speed
+  through `wind_vec`. The `v_wind` they assigned was discarded, because every
+  `sim_settings_*.yaml` sets `use_wind_vec: true`, and KiteUtils 0.13 makes that
+  assignment throw.
+
+## V3Kite v1.4.1 2026-09-26
 
 ### Fixed
 - `identify_turn_rate_law` finds the dead time from the full turn-rate law
@@ -22,7 +114,7 @@
   `delay_corr` is now the correlation at the fitted shift. `estimate_delay` is
   unchanged.
 
-## V3Kite v1.4.0 26-09-2026
+## V3Kite v1.4.0 2026-09-26
 
 ### Fixed
 - `identify_turn_rate_law` no longer reads a longer dead time from a log with a
@@ -154,7 +246,7 @@
   `./bin/install` offers those two and installs from the
   `Manifest-v<version>.toml.default` of the active Julia.
 
-## V3Kite v1.3.0 02-09-2026
+## V3Kite v1.3.0 2026-09-02
 
 ### Added
 - `beam_joint_damping_scale` in the kite settings scales every Timoshenko joint's
@@ -482,7 +574,7 @@
   home: the geometry paths are project-file keys, the flight condition is
   `Settings`, and the model options are `V3KiteConfig`.
 
-## V3Kite v1.2.0 17-08-2026
+## V3Kite v1.2.0 2026-08-17
 
 ### Changed
 - BREAKING: `step!` is torque-only. It takes `set_torque` [N·m], or applies the
@@ -524,7 +616,7 @@
   0.5`) plus a standing error of `v_ro/winch_pos_kp`. The default `0.0`
   reproduces the previous behaviour exactly.
 
-## V3Kite v1.1.1 13-08-2026
+## V3Kite v1.1.1 2026-08-13
 
 ### Changed
 - The `min_damping` default of `init` is now computed from `body_damping` as
@@ -573,7 +665,7 @@
   `SymbolicAWEModels.vsm_engine(wing.aero)` and returns `NaN` only when the wing genuinely
   carries none. Covered by a new `span_mean_aoa` testset in `test/test-interface.jl`.
 
-## V3Kite v1.1.0 10-08-2026
+## V3Kite v1.1.0 2026-08-10
 
 ### Changed
 - `AtmosphericModels` compat raised to `0.3.8`, which applies `use_turbulence` when the
@@ -616,7 +708,7 @@
 ### Removed
 - The `WING` export, whose wing type was dropped upstream in `SymbolicAWEModels`.
 
-## V3Kite v1.0.3 09-08-2026
+## V3Kite v1.0.3 2026-08-09
 
 ### Added
 - `init(...; use_turbulence)`, which overrides the `default_turbulence` of
@@ -683,7 +775,7 @@
   a field with up to ~15 % sigma error; `set_default_turbulence` now warns
   when a value doesn't round-trip through one decimal.
 
-## V3Kite v1.0.2 04-08-2026
+## V3Kite v1.0.2 2026-08-04
 
 ### Changed
 - Require `KiteUtils` 0.11.11 (previously unbounded, resolving to 0.11.9):
@@ -692,7 +784,7 @@
   `BoundsError` — the form an external controller package uses when it keeps
   its logs in its own directory.
 
-## V3Kite v1.0.1 03-08-2026
+## V3Kite v1.0.1 2026-08-03
 
 ### Added
 - High-level `init(v_wind_gnd, l_tether; ...)` / `step!` simulation interface

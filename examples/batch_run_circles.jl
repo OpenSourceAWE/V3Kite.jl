@@ -184,7 +184,8 @@ function run_circles(;
             steer_start_right +
             (steer_target_right - steer_start_right) * rf
 
-        sys.set.v_wind = v_wind_base + vw_change * rf
+        sys.set.wind_vec = wind_vec_from_angles(
+            v_wind_base + vw_change * rf, deg2rad(-90.0), 0.0)
 
         if !sim_step!(something(sam);
             set_values=[0.0], dt=dt_c, vsm_interval=VSM_INTERVAL)

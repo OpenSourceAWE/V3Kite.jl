@@ -63,7 +63,7 @@ set_depower!(sys, DEPOWER, STEERING, kite_set.geom)
 set_steering!(sys, STEERING, kite_set.geom)
 
 V3Kite.with_model_cache(V3Kite.default_cache_path()) do
-    init!(sam; remake=kite_set.remake_model, ignore_l0=false, remake_vsm=true)
+    init!(sam; remake=kite_set.remake_model, remake_vsm=true)
 end
 sys.winches[1].brake = true
 

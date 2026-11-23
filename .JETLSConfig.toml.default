@@ -1,7 +1,7 @@
 formatter = "JuliaFormatter"
 
 [full_analysis]
-auto_instantiate = false            # boolean, default: true
+auto_instantiate = "never"          # "always" | "prompt" | "never", default: "prompt"
 
 [diagnostic]
 all_files = false                   # boolean, default: true
