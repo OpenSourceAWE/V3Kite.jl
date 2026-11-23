@@ -31,6 +31,9 @@
   the flight replays) holds the recorded velocity and releases the kite with it, on
   the recorded course and speed. The replays start from a different state, and the
   settled states of this mode are cached under a new name ending in `_holdcourse`.
+- BREAKING: The tip-line shortening of the particle replays (`reduce_tip`) also holds
+  when a settled state is loaded from the cache, as every replay does. The tip lines
+  were slack from the first step, and the replays give different results.
 - BREAKING: `examples/flight_replay.jl` logs the steering it applies as `steering`, not
   `set_steering`, so the replay plots draw the simulated steering and fit its turn-rate
   gain. The README's trajectory, time-series and turn-rate figures are redrawn.

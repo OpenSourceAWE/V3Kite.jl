@@ -35,4 +35,11 @@ using V3Kite: SymbolicAWEModels
     @test abs(rad2deg(wrap_to_pi(course(wing_vel) - course(data_vel)))) < 2.0
     @test norm(tangential(wing_vel)) ≈ norm(tangential(data_vel)) atol = 0.2
     @test norm(sam.sys_struct.winches[1].force) ≈ recorded_tether_force rtol = 0.15
+    @testset "No bridle line through a pulley is slack at release" begin
+        segments = sam.sys_struct.segments
+        for pulley in sam.sys_struct.pulleys
+            first, second = segments[collect(pulley.segment_idxs)]
+            @test first.len + second.len > pulley.sum_len - 0.01
+        end
+    end
 end

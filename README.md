@@ -133,7 +133,7 @@ plots.twist[7182]     # spanwise twist vs photogrammetry, keyed by video frame
 
 <p align="center"><img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course"></p>
 
-On this window the particle-wing replay stays within about 20 m of the recorded kite for the first 6 s. In the turn it speeds up and dives earlier than the kite did, and ends 34 m off. The two twist figures below are from an earlier version of the model and have not been redrawn yet ([#102](https://github.com/OpenSourceAWE/V3Kite.jl/issues/102)).
+On this window the particle-wing replay stays within about 16 m of the recorded kite for the first 6 s. It turns more slowly than the kite did and ends 36 m off. The two twist figures below are from an earlier version of the model and have not been redrawn yet ([#102](https://github.com/OpenSourceAWE/V3Kite.jl/issues/102)).
 
 <p align="center">
 <table><tr>
