@@ -122,7 +122,7 @@ line is the open-loop simulation** and the **dotted line is the flight data**.
 
 ```julia
 plots.trajectory      # flight path, colored by kite speed
-plots.panels          # u_s, F_t, v_app, χ time series
+plots.panels          # u_s, F_t, v_app, l_t, χ time series
 plots.yaw_fig_course  # turn rate vs |u_s · v_a|, with least-squares G_k fit
 plots.twist[7182]     # spanwise twist vs photogrammetry, keyed by video frame
 ```
@@ -132,6 +132,8 @@ plots.twist[7182]     # spanwise twist vs photogrammetry, keyed by video frame
 <p align="center"><img src="docs/figures/flight_replay_panels.png" width="90%" alt="Replay panels"></p>
 
 <p align="center"><img src="docs/figures/flight_replay_yaw_rate_course.png" width="90%" alt="Yaw rate vs course"></p>
+
+On this window the particle-wing replay stays within about 16 m of the recorded kite for the first 6 s. It turns more slowly than the kite did and ends 36 m off. The two twist figures below are from an earlier version of the model and have not been redrawn yet ([#102](https://github.com/OpenSourceAWE/V3Kite.jl/issues/102)).
 
 <p align="center">
 <table><tr>

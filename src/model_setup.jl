@@ -66,7 +66,8 @@ end
     apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 
 Apply wing geometry adjustments to a `SystemStructure`:
-tip leading-edge reduction and trailing-edge wire shortening.
+tip leading-edge reduction and trailing-edge wire shortening. The pulleys then take
+their rope lengths from the shortened segments, split at the current geometry.
 
 Both were fitted against the particle lattice and address segments by position, so
 they are skipped with a warning on a structure whose segments are laid out
@@ -77,9 +78,9 @@ these indices, so an in-range check alone would let the corrections land on cano
 membranes instead.
 """
 function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
+    config.reduce_tip || config.reduce_te || return nothing
     in_range(idxs) = all(idx -> idx in eachindex(sys.segments), idxs)
-    if !isempty(sys.tubes) &&
-            (config.reduce_tip || config.reduce_te)
+    if !isempty(sys.tubes)
         @warn "Skipping the tip/TE reductions on a beam wing: they are indices " *
               "into the particle lattice, whose wing segments this has none of"
         return nothing
@@ -102,6 +103,8 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
             @warn "Skipping TE reduction: no segments at those indices" config.te_segments
         end
     end
+    SymbolicAWEModels.update_segment_lengths!(sys)
+    SymbolicAWEModels.init_pulley_lengths!(sys)
     return nothing
 end
 
