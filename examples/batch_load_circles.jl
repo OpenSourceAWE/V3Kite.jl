@@ -289,7 +289,7 @@ end
 
 function steering_command(sl, sys; steering_l0=nothing)
     seg = sys.segments[V3_STEERING_LEFT_IDX]
-    pi_, pj = seg.point_idxs
+    pi_, pj = seg.points
     n = length(sl.time)
     slen = zeros(Float64, n)
     @inbounds for k in 1:n

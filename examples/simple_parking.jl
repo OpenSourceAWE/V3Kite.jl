@@ -141,7 +141,7 @@ function print_compression_report(s, seg_idxs, peaks, limit)
             "peak [N]")
     for i in sel
         seg = segments[seg_idxs[i]]
-        p1, p2 = seg.point_idxs
+        p1, p2 = seg.points
         @printf("  %-9d %-11s %-16.3f %8.2f\n", seg.idx, "$p1 - $p2",
                 seg.compression_frac, peaks[i])
     end

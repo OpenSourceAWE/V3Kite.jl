@@ -124,8 +124,8 @@ function run_zenith_circles(;
     logger, sys_state = create_logger(sam, n_z + n_c)
 
     # Nominal segment lengths
-    nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    nom_left = sys.segments[V3_STEERING_LEFT_IDX].rest_length
+    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].rest_length
 
     azimuth_setpoint = Float64[target_azimuth]
 
@@ -166,9 +166,9 @@ function run_zenith_circles(;
             push!(azimuth_setpoint, target_azimuth)
 
             # Steering
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
+            sys.segments[V3_STEERING_LEFT_IDX].rest_length =
                 nom_left - steer_ctrl
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+            sys.segments[V3_STEERING_RIGHT_IDX].rest_length =
                 nom_right + steer_ctrl
 
             # Winch PID
@@ -202,9 +202,9 @@ function run_zenith_circles(;
         steer_target_left = nom_left + steer_change
         steer_target_right = nom_right - steer_change
         steer_start_left =
-            sys.segments[V3_STEERING_LEFT_IDX].l0
+            sys.segments[V3_STEERING_LEFT_IDX].rest_length
         steer_start_right =
-            sys.segments[V3_STEERING_RIGHT_IDX].l0
+            sys.segments[V3_STEERING_RIGHT_IDX].rest_length
 
         for step in 1:n_c
             t = sim_time_zenith + step * dt_c
@@ -212,10 +212,10 @@ function run_zenith_circles(;
 
             rf = ramp_factor(pt, 0.0, ramp_time_us)
 
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
+            sys.segments[V3_STEERING_LEFT_IDX].rest_length =
                 steer_start_left +
                 (steer_target_left - steer_start_left) * rf
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+            sys.segments[V3_STEERING_RIGHT_IDX].rest_length =
                 steer_start_right +
                 (steer_target_right - steer_start_right) * rf
 

@@ -153,8 +153,8 @@ function run_circles(;
     check_every = something(stop_check_every,
         max(1, fps_circles))
 
-    nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    nom_left = sys.segments[V3_STEERING_LEFT_IDX].rest_length
+    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].rest_length
 
     sim_start = time()
 
@@ -168,19 +168,19 @@ function run_circles(;
     steer_target_left = nom_left + steer_change
     steer_target_right = nom_right - steer_change
     steer_start_left =
-        sys.segments[V3_STEERING_LEFT_IDX].l0
+        sys.segments[V3_STEERING_LEFT_IDX].rest_length
     steer_start_right =
-        sys.segments[V3_STEERING_RIGHT_IDX].l0
+        sys.segments[V3_STEERING_RIGHT_IDX].rest_length
 
     for step in 1:n_c
         t = step * dt_c
 
         rf = ramp_factor(t, 0.0, ramp_time_us)
 
-        sys.segments[V3_STEERING_LEFT_IDX].l0 =
+        sys.segments[V3_STEERING_LEFT_IDX].rest_length =
             steer_start_left +
             (steer_target_left - steer_start_left) * rf
-        sys.segments[V3_STEERING_RIGHT_IDX].l0 =
+        sys.segments[V3_STEERING_RIGHT_IDX].rest_length =
             steer_start_right +
             (steer_target_right - steer_start_right) * rf
 

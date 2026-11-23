@@ -204,9 +204,9 @@ function set_steering!(sys, steering,
     L_left, L_right = steering_percentage_to_lengths(
         steering * 100.0;
         l0_base=V3_STEERING_L0_BASE - reduction)
-    tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).l0 =
+    tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).rest_length =
         max(min_l0, L_left)
-    tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).l0 =
+    tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).rest_length =
         max(min_l0, L_right)
     return nothing
 end
@@ -224,8 +224,8 @@ Get the current steering value as a normalized input.
 - Relative steering in range -1.0 .. 1.0
 """
 function get_steering(sys, ::V3GeomAdjustConfig)
-    L_left = tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).l0
-    L_right = tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).l0
+    L_left = tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).rest_length
+    L_right = tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).rest_length
     return steering_length_to_percentage(
         L_left, L_right) / 100.0
 end
@@ -255,7 +255,7 @@ function set_depower!(sys, depower, steering,
     L_depower = depower_percentage_to_length(
         dp * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - reduction)
-    tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).l0 = L_depower
+    tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).rest_length = L_depower
     return dp
 end
 
@@ -274,7 +274,7 @@ Get the current depower value as a normalized input.
 function get_depower(sys, config::V3GeomAdjustConfig)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
-    L_depower = tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).l0
+    L_depower = tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).rest_length
     return depower_length_to_percentage(
         L_depower;
         l0_base=V3_DEPOWER_L0_BASE - reduction) / 100.0

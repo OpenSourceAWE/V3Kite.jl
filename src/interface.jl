@@ -378,8 +378,8 @@ Return an array of scalar spring forces [N] from
 """
 function spring_forces(s::V3KITE)
     tether = s.sys.tethers[1]
-    forces = zeros(Float64, length(tether.segment_idxs))
-    for (i, seg_idx) in enumerate(tether.segment_idxs)
+    forces = zeros(Float64, length(tether.segments))
+    for (i, seg_idx) in enumerate(tether.segments)
         forces[i] = s.sys.segments[seg_idx].force
     end
     return forces

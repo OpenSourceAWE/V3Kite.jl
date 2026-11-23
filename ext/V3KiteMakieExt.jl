@@ -339,7 +339,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
             if 20 <= seg.idx <= 46
                 continue
             end
-            from_idx, to_idx = seg.point_idxs
+            from_idx, to_idx = seg.points
             if from_idx in plot_point_idxs && to_idx in plot_point_idxs
                 c1 = get_2d(pos_b[from_idx])
                 c2 = get_2d(pos_b[to_idx])

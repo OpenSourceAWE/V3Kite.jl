@@ -375,7 +375,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             source_struc = V3Kite.struc_geometry_path(config.project; data_path),
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
-        @test length(sys.stations) == 10
+        @test length(sys.spanwise_stations) == 10
         @test length(sys.bodies[1].station_idxs) == 10
         @test length(wing_station_chords(SystemState(sys))) == 10
         span_y, twist = wing_twist_dist(SystemState(sys))
@@ -410,7 +410,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
     @testset "Beam Wing Loads Its Tubes" begin
         sam, sys = create_v3_model("system_beam.yaml")
         @test length(sys.tubes) == 21
-        @test count(point -> point.tube_idx != 0, sys.points) == 150
+        @test count(point -> !isnothing(point.tube), sys.points) == 150
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
         pressure_bar = V3BeamTopology().pressure_bar

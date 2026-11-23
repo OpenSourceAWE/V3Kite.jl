@@ -111,8 +111,7 @@ function apply_comer_bending!(sys, tube_radius::AbstractDict, topo::V3BeamTopolo
                 shear_coeff = beam.shear_coeff, damping = beam.damping))
         new_tube.model.rest_length = beam.rest_length
         new_tube.idx = tube.idx
-        new_tube.body_a_idx = tube.body_a_idx
-        new_tube.body_b_idx = tube.body_b_idx
+        new_tube.bodies = tube.bodies
         sys.tubes[k] = new_tube
     end
     return sys
@@ -137,9 +136,9 @@ keeping the ratio it is emitted with. The winched tether is left untouched, its
 material being the dyneema it is flown on rather than a bridle knob.
 """
 function apply_bridle_material!(sys, bridle::V3BridleConfig)
-    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
+    winched = Set(idx for winch in sys.winches for idx in winch.tethers)
     on_tether = Dict{Int, Bool}()
-    for tether in sys.tethers, segment_idx in tether.segment_idxs
+    for tether in sys.tethers, segment_idx in tether.segments
         on_tether[segment_idx] = tether.idx in winched
     end
     tape_names = Set(Symbol.(TAPE_SEGMENT_NAMES))

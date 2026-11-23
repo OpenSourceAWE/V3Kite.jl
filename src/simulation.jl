@@ -229,7 +229,7 @@ A `tether_length` of `0`, KiteUtils' "not set", keeps the length the geometry gi
 """
 function place_at_tether_length!(sys, transforms, tether_length)
     if !isempty(sys.tethers) && tether_length > 0
-        sys.tethers[1].init_stretched_len = tether_length
+        sys.tethers[1].init_stretched_length = tether_length
     end
     SymbolicAWEModels.place!(sys, transforms)
     return sys

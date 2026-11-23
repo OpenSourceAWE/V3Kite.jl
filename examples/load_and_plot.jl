@@ -169,7 +169,7 @@ function print_and_plot_wing(lg, sam; is_print=false)
         Point2f[], Point2f[], Point2f[]
     for seg_idx in wing_seg_idxs
         seg = sam.sys_struct.segments[seg_idx]
-        p1, p2 = seg.point_idxs
+        p1, p2 = seg.points
         pos1_w = [lg_last.X[p1], lg_last.Y[p1],
             lg_last.Z[p1]]
         pos2_w = [lg_last.X[p2], lg_last.Y[p2],
@@ -268,11 +268,11 @@ function compute_line_stretch(lg, sam;
     end
 
     segments = sam.sys_struct.segments
-    base_l0 = [Float64(seg.l0) for seg in segments]
+    base_l0 = [Float64(seg.rest_length) for seg in segments]
 
     tether_seg_idxs = if !isempty(sam.sys_struct.tethers) &&
-                         !isempty(sam.sys_struct.tethers[1].segment_idxs)
-        Int.(sam.sys_struct.tethers[1].segment_idxs)
+                         !isempty(sam.sys_struct.tethers[1].segments)
+        Int.(sam.sys_struct.tethers[1].segments)
     else
         collect(90:95)
     end
@@ -338,8 +338,8 @@ function compute_line_stretch(lg, sam;
     pulleys = sam.sys_struct.pulleys
     pulley_seg_set = Set{Int}()
     for p in pulleys
-        push!(pulley_seg_set, Int(p.segment_idxs[1]))
-        push!(pulley_seg_set, Int(p.segment_idxs[2]))
+        push!(pulley_seg_set, Int(p.segments[1]))
+        push!(pulley_seg_set, Int(p.segments[2]))
     end
 
     seg_len_for_pulleys = Dict(
@@ -376,7 +376,7 @@ function compute_line_stretch(lg, sam;
                     end
                 end
                 (!isfinite(l0) || l0 <= 0) && continue
-                p1, p2 = seg.point_idxs
+                p1, p2 = seg.points
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
@@ -428,7 +428,7 @@ function compute_line_stretch(lg, sam;
                     end
                 end
                 (!isfinite(l0) || l0 <= 0) && continue
-                p1, p2 = seg.point_idxs
+                p1, p2 = seg.points
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
@@ -525,7 +525,7 @@ function compute_line_stretch(lg, sam;
         pmat = fill(NaN, n_samples, np)
         pl0 = fill(NaN, n_samples, np)
         for (ci, pulley) in enumerate(pulleys)
-            s1, s2 = Int.(pulley.segment_idxs)
+            s1, s2 = Int.(pulley.segments)
             len1 = get(seg_len_for_pulleys, s1,
                 fill(NaN, n_samples))
             len2 = get(seg_len_for_pulleys, s2,
@@ -571,7 +571,7 @@ function compute_line_stretch(lg, sam;
                 max_e_info = (; sample=r,
                     pulley=Int(pulleys[c].idx),
                     segments=Tuple(
-                        Int.(pulleys[c].segment_idxs)),
+                        Int.(pulleys[c].segments)),
                     time=sample_times[r])
             end
 
@@ -587,7 +587,7 @@ function compute_line_stretch(lg, sam;
                 max_c_info = (; sample=r,
                     pulley=Int(pulleys[c].idx),
                     segments=Tuple(
-                        Int.(pulleys[c].segment_idxs)),
+                        Int.(pulleys[c].segments)),
                     time=sample_times[r])
             end
 
@@ -686,11 +686,11 @@ lg, sam, up, us, v_wind, lt =
 up_fraction = up / 100
 us_fraction = us / 100
 seg87_nom = Float64(
-    sam.sys_struct.segments[V3_STEERING_LEFT_IDX].l0)
+    sam.sys_struct.segments[V3_STEERING_LEFT_IDX].rest_length)
 seg88_nom = Float64(
-    sam.sys_struct.segments[V3_DEPOWER_IDX].l0)
+    sam.sys_struct.segments[V3_DEPOWER_IDX].rest_length)
 seg89_nom = Float64(
-    sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].l0)
+    sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].rest_length)
 steering_tape_change = V3_STEERING_GAIN * us_fraction
 power_target_l0 = 0.2 + 5.0 * up_fraction
 segment_l0_adjustments = Dict(

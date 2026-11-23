@@ -87,7 +87,7 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     if config.reduce_tip
         if in_range(config.tip_segments)
             for idx in config.tip_segments
-                sys.segments[idx].l0 -= config.tip_reduction
+                sys.segments[idx].rest_length -= config.tip_reduction
             end
         else
             @warn "Skipping tip reduction: no segments at those indices" config.tip_segments
@@ -96,7 +96,7 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     if config.reduce_te
         if in_range(config.te_segments)
             for idx in config.te_segments
-                sys.segments[idx].l0 *= config.te_frac
+                sys.segments[idx].rest_length *= config.te_frac
             end
         else
             @warn "Skipping TE reduction: no segments at those indices" config.te_segments
@@ -159,10 +159,10 @@ bridle line that was split into segments, not part of the tether.
 """
 function tether_point_idxs(sys)
     idxs = Set{Int}()
-    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
-    for tether in sys.tethers, segment_idx in tether.segment_idxs
+    winched = Set(idx for winch in sys.winches for idx in winch.tethers)
+    for tether in sys.tethers, segment_idx in tether.segments
         tether.idx in winched || continue
-        i, j = sys.segments[segment_idx].point_idxs
+        i, j = sys.segments[segment_idx].points
         push!(idxs, i, j)
     end
     return sort!(collect(idxs))
@@ -208,8 +208,8 @@ frame when both of its endpoints are wing nodes.
 function tether_bridle_segments(sys)
     points = sys.points
     return [idx for (idx, seg) in enumerate(sys.segments)
-            if !(points[seg.point_idxs[1]].is_wing_node &&
-                 points[seg.point_idxs[2]].is_wing_node)]
+            if !(points[seg.points[1]].is_wing_node &&
+                 points[seg.points[2]].is_wing_node)]
 end
 
 """

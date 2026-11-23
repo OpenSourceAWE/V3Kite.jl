@@ -494,7 +494,7 @@ function wing_station_chords(sys, wing=sys.wings[1])
     body_pos(point) = R_w_b * (point.pos_w - origin)
     stations = NamedTuple[]
     for station_idx in wing.station_idxs
-        idxs = sys.stations[station_idx].point_idxs
+        idxs = sys.spanwise_stations[station_idx].points
         length(idxs) < 2 && continue
         station = [sys.points[i] for i in idxs]
         le = body_pos(argmin(p -> body_pos(p)[1], station))

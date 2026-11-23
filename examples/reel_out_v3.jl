@@ -64,11 +64,11 @@ function simulate(s, steps, plot=false)
             reltime = i*dt-dt
             if mod(i, 5) == 1
                 tether = s.sys.tethers[1]
-                n_segs = length(tether.segment_idxs)
-                pos = [s.sys.points[tether.start_point_idx].pos_w]
-                for si in tether.segment_idxs
+                n_segs = length(tether.segments)
+                pos = [s.sys.points[tether.start_point].pos_w]
+                for si in tether.segments
                     seg = s.sys.segments[si]
-                    push!(pos, s.sys.points[seg.point_idxs[2]].pos_w)
+                    push!(pos, s.sys.points[seg.points[2]].pos_w)
                 end
                 if FRONT_VIEW
                     plot2d(pos, reltime; zoom=ZOOM, front=true,

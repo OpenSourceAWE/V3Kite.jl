@@ -111,7 +111,7 @@ fixed; `init_stretch_frac` carries the measured rest length, which the generator
 would otherwise take from the placed geometry. A pulley's two legs are tethers as
 well, with the sheave placed on the generated segment touching it on either side,
 where the rope actually pays in and out. Only the three KCU tapes stay plain
-segments, because [`set_depower!`](@ref) and [`set_steering!`](@ref) drive their `l0`
+segments, because [`set_depower!`](@ref) and [`set_steering!`](@ref) drive their `rest_length`
 directly.
 
 `frame_offset` moves the export into the CAD frame of the other V3 data files, see
