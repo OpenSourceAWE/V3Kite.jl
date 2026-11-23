@@ -9,3 +9,5 @@
 - BREAKING: A model takes its VSM settings: `build_settling_struct` returns `(sys, transforms, set, vsm_set)`, and `v3_vsm_settings(project, geometry_file)` gives a project's settings with its wing read from that aero geometry.
 - `create_v3_model` puts the kite's material (its `kite_settings:` or the `kite_set` passed) on the structure before it builds the model, so the run is flown with it. Before, only the `relaxed_state` path of `build_v3_model` applied it, after the model was built; `relax_bridle.jl` no longer applies it a second time.
 - `set_damping_per_stiffness!` on a structure sets the segments' `damping_per_stiffness`, which the model turns into their damping; on a run's state it sets the damping directly, as before.
+- BREAKING: V3Kite exports KiteGeometry's `SystemDefinition`, the structure type, in place of SymbolicAWEModels' old name `SystemStructure`.
+- The wing rows of the structure geometry files, and the beam geometry the Surfplan adapter writes, name a wing's dynamics `dynamics_type`, the column KiteGeometry reads, instead of `type`.

@@ -11,6 +11,7 @@ using LinearAlgebra
 using Statistics: mean
 using V3Kite
 using KitePodModels: KCU
+using SymbolicAWEModels: SystemState
 # V3Kite is torque-only; the winch length loop is the caller's.
 isdefined(@__MODULE__, :hold_torque!) ||
     include(joinpath(@__DIR__, "winch_hold_stub.jl"))
@@ -321,6 +322,24 @@ end
         @test !isempty(wing_segs)
         @test all(i -> s_dps.sys.segments[i].unit_damping ==
                        s.sys.segments[i].unit_damping, wing_segs)
+    end
+
+    @testset "A Structure Loaded From A Settled State Stands In That Pose" begin
+        kite_set = load_kite(PROJECT)
+        kite_set.aero_mode = AeroDirect()
+        config = V3Kite.V3SettleConfig(project = PROJECT, kite_set = kite_set)
+        wing_pos = s.sam.state.wings[1].pos_w
+        row = (x = wing_pos[1], y = wing_pos[2], z = wing_pos[3], vx = 0.0, vy = 0.0,
+               vz = 0.0, heading = 0.0, steering = 0.0, depower = DEPOWER_SETPOINT,
+               wind_vec = [V_WIND, 0.0, 0.0])
+        cache_path = mktempdir()
+        V3Kite.save_state_log(s.sam,
+            settled_state_path(config, row; cache_path))
+        sys, _ = load_settled_struct(config, row; cache_path)
+        loaded = SystemState(sys)
+        @test all(i -> loaded.points[i].pos_w ≈ s.sam.state.points[i].pos_w,
+                  eachindex(loaded.points))
+        @test loaded.bodies[1].R_b_to_w ≈ s.sam.state.bodies[1].R_b_to_w
     end
 
     @testset "A Kite Due North Has Azimuth East Of Plus 90 Degrees" begin

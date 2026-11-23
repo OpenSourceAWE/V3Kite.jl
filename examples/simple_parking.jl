@@ -90,7 +90,7 @@ wpc = winch_pos_controller(s)
 
 # The segments the compression report below is taken over — the same ones `init`
 # applied `DAMPING_PER_STIFFNESS` to. `tether_bridle_segments` comes from V3Kite
-# (`src/model_setup.jl`) and takes the `SystemStructure`, not the `V3KITE` model.
+# (`src/model_setup.jl`) and takes the `SystemDefinition`, not the `V3KITE` model.
 line_segs = tether_bridle_segments(s.sam.sys_struct)
 
 # ================= COMPRESSION LOGGING =================== #

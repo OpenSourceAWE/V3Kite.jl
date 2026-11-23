@@ -296,13 +296,10 @@ beam_damping(beam, point) = isnothing(beam) ? copy(point) : beam
 """
     beam_body_idxs(sys) -> Vector{Int}
 
-Indices of the structural bodies of `sys`, skipping the wings. A wing is a `Body`
-too, and its angular damping is the wing's own, so the beam settings must not
-reach it.
+Indices of the structural bodies of `sys`, skipping the wings, which are its first
+bodies. A wing's angular damping is its own, so the beam settings must not reach it.
 """
-beam_body_idxs(sys) =
-    [idx for (idx, body) in enumerate(sys.bodies)
-     if !SymbolicAWEModels.is_wing(body)]
+beam_body_idxs(sys) = setdiff(eachindex(sys.bodies), eachindex(sys.wings))
 
 """
     apply_decayed_damping!(sys, config, decay)
@@ -358,7 +355,7 @@ end
     load_settled_struct(config, init_row;
                         data_path=nothing, cache_path=nothing) -> (sys, transforms)
 
-Rebuild the settling `SystemStructure` from the source YAML, placed in the
+Rebuild the settling `SystemDefinition` from the source YAML, placed in the
 settled pose logged for `config`/`init_row` (see [`settled_state_path`](@ref)), with the
 transforms a model of it takes. A model of it starts at rest in that pose. Errors when
 the state is missing; run [`settle_wing`](@ref) first to create it.
@@ -368,15 +365,33 @@ function load_settled_struct(config::V3SettleConfig, init_row;
     data_path = project_data_path(config.project, data_path)
     isnothing(cache_path) && (cache_path = default_cache_path(data_path))
     path = settled_state_path(config, init_row; data_path, cache_path)
-    sys, transforms, _, _ = build_settling_struct(config; data_path,
+    sys, transforms, set, vsm_set = build_settling_struct(config; data_path,
         source_struc = struc_geometry_path(config.project; data_path),
         source_aero = aero_geometry_path(config.project; data_path,
             aero_mode = resolve_aero_mode(config.kite_set)))
-    state = SystemState(sys)
+    state = SystemState(sys; set, transforms, vsm_set)
     apply_settled_state!(state, config, path) ||
         error("No settled state at $path; run settle_wing first")
-    SymbolicAWEModels.store_initial_pose!(state)
+    set_design_pose!(sys, state)
     return sys, transforms
+end
+
+"""
+    set_design_pose!(sys::SystemDefinition, state::SystemState)
+
+Write the pose of `state` into the rows of `sys`: each point's position, and each body's
+centre of mass and frame, so a model built from `sys` starts in that pose.
+"""
+function set_design_pose!(sys::SystemDefinition, state::SystemState)
+    design = Pose(sys)
+    for (idx, point) in enumerate(state.points)
+        design.pos[idx] = point.pos_w
+    end
+    for (idx, body) in enumerate(state.bodies)
+        design.body_pos[idx] = body.com_w
+        design.body_R[idx] = body.R_b_to_w
+    end
+    return sys
 end
 
 """
@@ -402,7 +417,7 @@ Always returns a fresh model loaded from the settled binary, so
 the caller gets clean settings — clean meaning the *world*-frame
 damping, which is only a settling aid and decays away. The
 body-frame damping is a per-point field of the serialized
-`SystemStructure` and therefore carries over into the returned
+`SystemDefinition` and therefore carries over into the returned
 model on purpose; it is part of the cache key for that reason.
 
 When `remake_settled_state=false` and the destination file already
@@ -791,7 +806,7 @@ end
 """
     build_settling_struct(config; data_path, source_struc, source_aero)
 
-Build the settling `SystemStructure` from the source YAML: settings, VSM, the
+Build the settling `SystemDefinition` from the source YAML: settings, VSM, the
 structure itself, the resolved KCU mass, the kite's material and the starting
 damping. Returns `(sys, transforms, set, vsm_set)`. Shared by
 [`setup_settling_model`](@ref) and the settled-state cache, which rebuilds the same

@@ -803,7 +803,7 @@ end
     build_replay_sys_struct(set, kite_set, source_struc,
         vsm_set) -> (sam, sys_struct)
 
-Build a fresh `SymbolicAWEModel` and `SystemStructure`
+Build a fresh `SymbolicAWEModel` and `SystemDefinition`
 without running settling — load the YAML, apply geometry
 adjustments, place it at `set.l_tether`, and call `init!`.
 The `settle: false` path of `flight_replay.jl`, and what

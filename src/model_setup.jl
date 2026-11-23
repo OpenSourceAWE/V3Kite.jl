@@ -65,7 +65,7 @@ end
 """
     apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 
-Apply wing geometry adjustments to a `SystemStructure`:
+Apply wing geometry adjustments to a `SystemDefinition`:
 tip leading-edge reduction and trailing-edge wire shortening.
 
 Both were fitted against the particle lattice and address segments by position, so
@@ -213,7 +213,7 @@ function tether_bridle_segments(sys)
 end
 
 """
-    set_damping_per_stiffness!(sys::SystemStructure, seg_idxs, ratio)
+    set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
     set_damping_per_stiffness!(state::SystemState, seg_idxs, ratio)
 
 Damp the segments `seg_idxs` proportionally to their stiffness:
@@ -235,7 +235,7 @@ tolerate badly (see `examples/simple_parking.jl`).
 
 See [`tether_bridle_segments`](@ref) for the usual choice of `seg_idxs`.
 """
-function set_damping_per_stiffness!(sys::SystemStructure, seg_idxs, ratio)
+function set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
     for segment in (sys.segments[idx] for idx in seg_idxs)
         KiteGeometry.unit_stiffness(segment, sys.materials) isa Real || continue
         segment.unit_damping = nothing

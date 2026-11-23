@@ -92,7 +92,7 @@ Comer-Levy law (`comer_levy_bending_law`) in place, so the loaded (linear-YAML) 
 gains the post-collapse bending branch. `tube_radius` maps each tube name to its
 radius (from [`beam_joint_radii`](@ref)). Axial/shear are refreshed from the same
 `E·t`; torsion, damping and the resolved indices are carried over from the loaded
-tube. Done by element replacement (not a `SystemStructure` rebuild) so no reference
+tube. Done by element replacement (not a `SystemDefinition` rebuild) so no reference
 re-resolution or tether re-expansion is triggered.
 """
 function apply_comer_bending!(sys, tube_radius::AbstractDict, topo::V3BeamTopology)
