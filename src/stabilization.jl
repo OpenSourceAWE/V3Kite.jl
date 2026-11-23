@@ -407,7 +407,7 @@ body-frame damping is a per-point field of the serialized
 model on purpose; it is part of the cache key for that reason.
 
 When `remake_settled_state=false` and the destination file already
-exists, the simulation is skipped and the settled geometry is
+exists and reads back, the simulation is skipped and the settled geometry is
 loaded from file; `remake_model` is the independent flag for the
 serialized equations. The cache file name encodes the settling inputs, including
 the elevation implied by the initial position and a non-default
@@ -715,7 +715,7 @@ function settle_wing(config::V3SettleConfig, init_row;
     syslog = nothing
     settle_failed = false
     settling_rebuilt = false
-    if remake_settled_state || !isfile(dest_struc)
+    if remake_settled_state || isnothing(read_state_log(dest_struc))
         try
             syslog = run_power_zone_settling!(
                 config; data_path, show_progress,

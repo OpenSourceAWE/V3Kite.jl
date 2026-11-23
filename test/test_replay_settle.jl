@@ -22,9 +22,13 @@ using V3Kite: SymbolicAWEModels
     config.tether_length = 247.55713106086483
     config.start_depower = row.depower * 100.0 + 10.0
 
-    sam, _, failed = settle_wing(config, row; show_progress = false,
-                                 remake_settled_state = true)
+    # A state another version left unreadable in the shared cache is settled again.
+    state_path = V3Kite.settled_state_path(config, row)
+    mkpath(dirname(state_path))
+    write(state_path, "not an arrow file")
+    sam, _, failed = settle_wing(config, row; show_progress = false)
     @test !failed
+    @test !isnothing(read_state_log(state_path))
 
     data_pos = [row.x, row.y, row.z]
     data_vel = [row.vx, row.vy, row.vz]
