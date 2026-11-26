@@ -25,7 +25,6 @@ if Base.active_project() != joinpath(@__DIR__, "Project.toml")
 end
 
 using V3Kite
-using VortexStepMethod
 using V3Kite: reinit_integrator!
 using LinearAlgebra
 using LazyArtifacts
@@ -55,10 +54,11 @@ replay.year == 2019 && (kite_set.geom.depower_offset = replay.depower_offset_201
 # Replay helper functions
 # =============================================================================
 
-function update_vel_from_csv!(sys, row,
+function update_vel_from_csv!(sam, row,
         gc::V3GeomAdjustConfig;
         heading_correction=0.0)
-    sys.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
+    sys = sam.definition
+    sam.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
 
     # CSV steering (positive = right turn)
     steering = clamp(row.steering, -1.0, 1.0)
@@ -68,11 +68,9 @@ function update_vel_from_csv!(sys, row,
         min_l0=0.01)
 
     # Speed-controlled winch
-    winch = sys.winches[1]
-    winch.brake = true
-    winch.vel = row.tether_vel
-    sys.tethers[1].len = row.tether_len
-    sys.tethers[1].stretched_len = row.tether_len
+    sys.winches[1].brake = true
+    set_run_value!(sam, :winches, 1, :vel, row.tether_vel)
+    set_unstretched_length!(sam, 1, row.tether_len)
 
     # Depower from CSV (returns adjusted dp)
     eff_depower = set_depower!(
@@ -229,9 +227,7 @@ function run_physics_replay(h5_path;
     source_struc = struc_geometry_path(PROJECT; data_path)
     source_aero = aero_geometry_path(PROJECT; data_path,
         aero_mode = resolve_aero_mode(kite_set))
-    vsm_set = VortexStepMethod.VSMSettings(
-        vsm_settings_path(PROJECT; data_path); data_prefix=false)
-    vsm_set.wings[1].geometry_file = source_aero
+    vsm_set = v3_vsm_settings(PROJECT, source_aero; data_path)
 
     if replay.settle
         sam, settle_log, settle_failed =
@@ -263,9 +259,9 @@ function run_physics_replay(h5_path;
     logger = Logger(sam, max_sim_steps)
 
     # CSV reference: same settled geometry as the sim so equal elev/azim give equal y/z.
-    data_struct = load_settled_struct(
-        settle_config, row1; set)
-    data_sam = SymbolicAWEModel(set, data_struct; backend = kite_set.backend)
+    data_struct, data_transforms = load_settled_struct(settle_config, row1)
+    data_sam = v3_model(set, data_struct, kite_set;
+        transforms = data_transforms, vsm_set)
     V3Kite.with_model_cache(V3Kite.default_cache_path()) do
         init!(data_sam; remake=false, remake_vsm=true)
     end
@@ -276,14 +272,14 @@ function run_physics_replay(h5_path;
     replay_start = time()
     last_report_time = replay_start
     last_report_sim = 0.0
-    sys = sam.sys_struct
+    sys = sam.definition
     if kite_set.wing_mass > 0
         distribute_wing_mass!(sys, kite_set.wing_mass;
             dist=kite_set.wing_mass_le_frac)
     end
     if kite_set.wing_drag_coeff > 0
         distribute_wing_drag!(sys,
-            sys.wings[1].vsm_aero.projected_area,
+            sam.aero[1].vsm_aero.projected_area,
             kite_set.wing_drag_coeff)
     end
 
@@ -296,8 +292,7 @@ function run_physics_replay(h5_path;
     # reinit! is what syncs the imposed state through the symbolic getters.
     for step in 1:n_data_steps-1
         row = get_row(data, step)
-        update_sys_struct_from_data!(
-            data_sam.sys_struct, row)
+        update_sys_struct_from_data!(data_sam, row)
         reinit_integrator!(data_sam; prn=false)
         update_sys_state!(data_state, data_sam)
         data_state.winch_force[1] = row.tether_force
@@ -315,7 +310,7 @@ function run_physics_replay(h5_path;
         data_state.var_07 = wrap_to_pi(row.roll)
         data_R_b_w = row.R_b_w
         data_state.var_08 = compute_bridle_pitch_angle(
-            data_sam.sys_struct, data_R_b_w)
+            data_sam, data_R_b_w)
         data_state.v_wind_gnd .= row.wind_vec_ekf
         data_state.v_wind_200m .= row.wind_vec_lidar
         data_state.AoA = row.kite_aoa
@@ -328,7 +323,8 @@ function run_physics_replay(h5_path;
     end
 
     sim_cum_dist = 0.0
-    prev_sim_pos = copy(sam.sys_struct.wings[1].pos_w)
+    wing(quantity) = run_value(sam, :wings, 1, quantity)
+    prev_sim_pos = wing(:pos_w)
 
     step = 0
     sim_time = 0.0
@@ -348,8 +344,7 @@ function run_physics_replay(h5_path;
 
         if step == 1
             sim_time = row.time
-            prev_sim_pos = copy(
-                sam.sys_struct.wings[1].pos_w)
+            prev_sim_pos = wing(:pos_w)
         end
 
         if replay.distance_based_steering
@@ -365,8 +360,7 @@ function run_physics_replay(h5_path;
         data_heading = calc_csv_heading(
             phys_row.roll, phys_row.pitch,
             phys_row.yaw, data_pos_enu)
-        sim_heading =
-            sam.sys_struct.wings[1].heading
+        sim_heading = wing(:heading)
         heading_error = wrap_to_pi(
             data_heading - sim_heading)
         heading_correction = heading_pid(
@@ -375,9 +369,8 @@ function run_physics_replay(h5_path;
         # Lateral position feedback
         data_pos = [phys_row.x, phys_row.y,
             phys_row.z]
-        sim_pos = sam.sys_struct.wings[1].pos_w
-        body_y_world =
-            sam.sys_struct.wings[1].R_b_to_w[:, 2]
+        sim_pos = wing(:pos_w)
+        body_y_world = wing(:R_b_to_w)[:, 2]
         lateral_error = dot(
             sim_pos - data_pos, body_y_world)
         lateral_correction = lateral_pid(
@@ -385,7 +378,7 @@ function run_physics_replay(h5_path;
 
         eff_steer, eff_dep =
             update_vel_from_csv!(
-                sam.sys_struct, phys_row,
+                sam, phys_row,
                 settle_config.kite_set.geom;
                 heading_correction=
                     heading_correction +
@@ -408,11 +401,26 @@ function run_physics_replay(h5_path;
             error("wind_vec mismatch at step $step")
         end
 
-        cur_sim_pos = sam.sys_struct.wings[1].pos_w
+        cur_sim_pos = wing(:pos_w)
         sim_cum_dist += norm(
             cur_sim_pos - prev_sim_pos)
-        prev_sim_pos = copy(cur_sim_pos)
+        prev_sim_pos = cur_sim_pos
         sim_time += dt
+
+        if step % n_substeps == 0
+            for i in (4, 5)
+                f = run_value(sam, :points, i, :aero_force_b)[2]
+                if f < 0.0
+                    @warn "Aero y-force negative" point=i force=round(f, digits=2)
+                end
+            end
+            for i in (18, 19)
+                f = points[i].aero_force_b[2]
+                if f > 0.0
+                    @warn "Aero y-force positive" point=i force=round(f, digits=2)
+                end
+            end
+        end
 
         if replay.distance_based_steering
             pct = sim_cum_dist / total_data_dist

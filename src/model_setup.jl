@@ -65,7 +65,7 @@ end
 """
     apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
 
-Apply wing geometry adjustments to a `SystemStructure`:
+Apply wing geometry adjustments to a `SystemDefinition`:
 tip leading-edge reduction and trailing-edge wire shortening.
 
 Both were fitted against the particle lattice and address segments by position, so
@@ -87,7 +87,7 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     if config.reduce_tip
         if in_range(config.tip_segments)
             for idx in config.tip_segments
-                sys.segments[idx].l0 -= config.tip_reduction
+                sys.segments[idx].rest_length -= config.tip_reduction
             end
         else
             @warn "Skipping tip reduction: no segments at those indices" config.tip_segments
@@ -96,7 +96,7 @@ function apply_geom_adjustments!(sys, config::V3GeomAdjustConfig)
     if config.reduce_te
         if in_range(config.te_segments)
             for idx in config.te_segments
-                sys.segments[idx].l0 *= config.te_frac
+                sys.segments[idx].rest_length *= config.te_frac
             end
         else
             @warn "Skipping TE reduction: no segments at those indices" config.te_segments
@@ -113,7 +113,8 @@ point's `drag_coeff`. This lets the solver account for
 parasitic drag distributed along the span.
 """
 function distribute_wing_drag!(sys, area, drag_coeff)
-    wing_pts = [p for p in sys.points if p.is_wing_node]
+    wing_pts = [p for (i, p) in enumerate(sys.points)
+                if SymbolicAWEModels.wing_node(sys, i)]
     n = length(wing_pts)
     n > 0 || error("No wing points found")
     area_per_point = area / n
@@ -131,15 +132,14 @@ Distribute wing mass over LE-TE pairs proportional to chord
 length. `dist` controls the LE/TE split (0.75 = 75% on LE).
 """
 function distribute_wing_mass!(sys, mass; dist=0.75)
-    wing_pts = sort(
-        [p for p in sys.points if p.is_wing_node],
-        by=p -> p.idx)
+    wing_pts = [p for (i, p) in enumerate(sys.points)
+                if SymbolicAWEModels.wing_node(sys, i)]
     n = length(wing_pts)
     iseven(n) || error(
         "Expected even number of wing points, got $n")
     pairs = [(wing_pts[i], wing_pts[i+1])
              for i in 1:2:n]
-    chords = [norm(le.pos_undeformed_b - te.pos_undeformed_b)
+    chords = [norm(le.pos_ENU - te.pos_ENU)
               for (le, te) in pairs]
     total_chord = sum(chords)
     for (i, (le, te)) in enumerate(pairs)
@@ -159,10 +159,10 @@ bridle line that was split into segments, not part of the tether.
 """
 function tether_point_idxs(sys)
     idxs = Set{Int}()
-    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
-    for tether in sys.tethers, segment_idx in tether.segment_idxs
-        tether.idx in winched || continue
-        i, j = sys.segments[segment_idx].point_idxs
+    winched = Set(idx for winch in sys.winches for idx in winch.tethers)
+    for (tether_idx, tether) in enumerate(sys.tethers), segment_idx in tether.segments
+        tether_idx in winched || continue
+        i, j = sys.segments[segment_idx].points
         push!(idxs, i, j)
     end
     return sort!(collect(idxs))
@@ -205,15 +205,13 @@ frame (LE tubes, struts, TE wires, diagonals), which is stiff in compression by
 design and would dominate any compression metric. A segment belongs to the wing
 frame when both of its endpoints are wing nodes.
 """
-function tether_bridle_segments(sys)
-    points = sys.points
-    return [seg.idx for seg in sys.segments
-            if !(points[seg.point_idxs[1]].is_wing_node &&
-                 points[seg.point_idxs[2]].is_wing_node)]
-end
+tether_bridle_segments(sys) =
+    [idx for idx in eachindex(sys.segments)
+     if !SymbolicAWEModels.wing_structural_segment(sys, idx)]
 
 """
-    set_damping_per_stiffness!(sys, seg_idxs, ratio)
+    set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
+    set_damping_per_stiffness!(sam::SymbolicAWEModel, seg_idxs, ratio)
 
 Damp the segments `seg_idxs` proportionally to their stiffness:
 `unit_damping = ratio * unit_stiffness` [N·s], the relation the `materials`
@@ -221,9 +219,10 @@ section of `struc_geometry.yaml` uses to derive `unit_damping` from
 `damping_per_stiffness`. Segments carrying a callable force law instead of a
 stiffness are skipped, as there is no `unit_stiffness` to scale.
 
-`unit_damping` is a flattened MTK parameter re-synced from the live
-`SystemStructure` before every `step!`, so this takes effect on the next step
-without rebuilding the model.
+On a structure this sets the segments' `damping_per_stiffness`, which a model
+built from it turns into `unit_damping`. On a model after `init!` it sets the run's
+`unit_damping` parameter, which takes effect on the next step without rebuilding the
+model.
 
 [`init`](@ref) calls this for its `damping_per_stiffness` keyword before
 settling, which is the usual way in: the run is then damped from the very first
@@ -233,11 +232,20 @@ tolerate badly (see `examples/simple_parking.jl`).
 
 See [`tether_bridle_segments`](@ref) for the usual choice of `seg_idxs`.
 """
-function set_damping_per_stiffness!(sys, seg_idxs, ratio)
-    segments = sys.segments
+function set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
+    for segment in (sys.segments[idx] for idx in seg_idxs)
+        KiteGeometry.unit_stiffness(segment, sys.materials) isa Real || continue
+        segment.unit_damping = nothing
+        segment.damping_per_stiffness = ratio
+    end
+    return nothing
+end
+
+function set_damping_per_stiffness!(sam::SymbolicAWEModel, seg_idxs, ratio)
     for idx in seg_idxs
-        segments[idx].unit_stiffness isa Real || continue
-        segments[idx].unit_damping = ratio * segments[idx].unit_stiffness
+        unit_stiffness = run_value(sam, :segments, idx, :unit_stiffness)
+        unit_stiffness isa Real || continue
+        set_run_value!(sam, :segments, idx, :unit_damping, ratio * unit_stiffness)
     end
     return nothing
 end

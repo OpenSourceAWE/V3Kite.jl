@@ -45,7 +45,7 @@ using PrecompileTools: @compile_workload
             damping_per_stiffness = 0.002,
             remake_model = false, remake_settled_state = false)
 
-        s.sys.winches[1].brake = true
+        set_run_value!(s.sam, :winches, 1, :brake, true)
 
         for _ in 1:3
             step!(s; rel_depower = 0.25, rel_steering = 0.0040,

@@ -19,7 +19,7 @@ three changes that the V3 model requires:
 
 1. The turn rate comes from `calc_turn_rate` (`coordinate_utils.jl`), not from a plain
    `diff(heading)/dt`. Heading lives in the rotating tangent-sphere frame, so
-   the frame-transport term `−φ̇·sin(β)` has to be subtracted; at the ~70°
+   the frame-transport term `φ̇·sin(β)` has to be added; at the ~70°
    elevation of these runs `sin(β) ≈ 0.94`, so leaving it out biases both
    coefficients.
 2. The fit uses `sl.steering` (what the KCU tape actually reached), never

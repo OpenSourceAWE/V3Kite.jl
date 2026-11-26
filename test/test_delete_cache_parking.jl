@@ -54,7 +54,7 @@ try
             damping_per_stiffness = DAMPING_PER_STIFFNESS,
             depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME, dt = DT,
             system_yaml = PROJECT, aero_mode = AERO_MODE, remake_model = false)
-        s.sys.winches[1].brake = USE_BRAKE
+        set_run_value!(s.sam, :winches, 1, :brake, USE_BRAKE)
 
         # Constant-length setpoint: the tether length just after settling.
         l0 = s.sys_state.l_tether[1]

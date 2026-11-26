@@ -54,8 +54,8 @@ function simulate(s, steps, plot=false)
             dforce = +4.5
         end
         force = winch_force(s)
-        winch = s.sys.winches[1]
-        set_torque = -winch.drum_radius / winch.gear_ratio * force + dforce
+        drum_radius, gear_ratio, _ = drum_params(s)
+        set_torque = -drum_radius / gear_ratio * force + dforce
         step!(s; rel_depower = DEPOWER_SETPOINT, rel_steering = REL_STEERING, set_torque,
               vsm_interval = VSM_INTERVAL)
         iter += 1
@@ -63,18 +63,19 @@ function simulate(s, steps, plot=false)
         if plot
             reltime = i*dt-dt
             if mod(i, 5) == 1
-                tether = s.sys.tethers[1]
-                n_segs = length(tether.segment_idxs)
-                pos = [s.sys.points[tether.start_point_idx].pos_w]
-                for si in tether.segment_idxs
-                    seg = s.sys.segments[si]
-                    push!(pos, s.sys.points[seg.point_idxs[2]].pos_w)
+                sys = s.sam.definition
+                tether = sys.tethers[1]
+                n_segs = length(tether.segments)
+                pos(point) = run_value(s.sam, :points, point, :pos_w)
+                positions = [pos(tether.start_point)]
+                for si in tether.segments
+                    push!(positions, pos(sys.segments[si].points[2]))
                 end
                 if FRONT_VIEW
-                    plot2d(pos, reltime; zoom=ZOOM, front=true,
+                    plot2d(positions, reltime; zoom=ZOOM, front=true,
                                         segments=n_segs, fig="front_view")
                 else
-                    plot2d(pos, reltime; zoom=ZOOM, front=false,
+                    plot2d(positions, reltime; zoom=ZOOM, front=false,
                                         segments=n_segs, fig="side_view")
                 end
                 sleep(0.001) # yield to let GLMakie's render task redraw
@@ -114,6 +115,7 @@ if PLOT
                  "heading [deg]", "wind_speed_kite [m/s]", "AoA [deg]"], fig=fig_name)
     display(p)
 end
-@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" s.set.mass s.sys.points[1].extra_mass s.set.d_tether
+kcu_mass = run_value(s.sam, :points, 1, :extra_mass)
+@printf "\nMass kite: %.1f kg,  mass KCU: %.1f kg,  tether diameter: %.1f mm\n" s.set.mass kcu_mass s.set.d_tether
 println("Number of states: $(states(s))")
 nothing

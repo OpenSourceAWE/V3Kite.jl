@@ -8,6 +8,7 @@ end
 
 using Test
 using LinearAlgebra
+using Statistics: mean
 using V3Kite
 using KitePodModels: KCU
 # V3Kite is torque-only; the winch length loop is the caller's.
@@ -25,7 +26,7 @@ isdefined(@__MODULE__, :hold_torque!) ||
     V3Kite.with_model_cache(V3Kite.default_cache_path(data_path)) do
         init!(sam; remake=false, remake_vsm=true)
     end
-    sys.winches[1].brake = true
+    set_run_value!(sam, :winches, 1, :brake, true)
     kcu = KCU(sam.set)
     v3kite = V3KITE(set=sam.set, kcu=kcu, sam=sam)
 
@@ -152,15 +153,13 @@ isdefined(@__MODULE__, :hold_torque!) ||
     end
 
     @testset "span_mean_aoa" begin
-        # NaN would mean the VSM engine was not FOUND, not an unloaded wing: it
-        # hangs off `wing.aero` and is only reached through `getproperty`
-        # forwarding, so any feature test on the wing itself silently disables this.
-        alpha = span_mean_aoa(sys)
+        # NaN would mean the wing's VSM engine was not found, not an unloaded wing.
+        alpha = span_mean_aoa(sam)
         @test isfinite(alpha)
         @test abs(alpha) < deg2rad(45)
         # The VSM's own span mean, over effective instead of geometric AoA:
         # the two differ by the induced angle, a degree or so here.
-        @test abs(alpha - sys.wings[1].vsm_aoa) < deg2rad(10)
+        @test abs(alpha - mean(sam.aero[1].vsm_solver.sol.alpha_dist)) < deg2rad(10)
     end
 
     @testset "winch_force" begin
@@ -204,7 +203,7 @@ end
         @test s isa V3KITE
         @test s.dt > 0.0
         @test s.steps == round(Int, SIM_TIME / s.dt)
-        @test s.sys.winches[1].brake == false  # un-braked, ready for step!
+        @test run_value(s.sam, :winches, 1, :brake) == false  # un-braked, ready for step!
         @test s.kcu.depower ≈ DEPOWER_SETPOINT
         @test s.kcu.steering ≈ 0.0
         @test s.sys_state.time == 0.0
@@ -220,12 +219,13 @@ end
         # returned model runs with that floor, so the default is readable off the
         # settled points: the `body_sim_damping:` of the project's kite settings.
         expected = load_kite(PROJECT).body_sim_damping
-        tether_pts = Set(tether_point_idxs(s.sys))
-        wing_pts = [i for i in eachindex(s.sys.points) if !(i in tether_pts)]
+        damping(i) = run_value(s.sam, :points, i, :body_frame_damping)
+        tether_pts = Set(tether_point_idxs(s.sam.definition))
+        wing_pts = [i for i in eachindex(s.sam.definition.points) if !(i in tether_pts)]
         @test !isempty(wing_pts)
-        @test all(i -> s.sys.points[i].body_frame_damping ≈ expected, wing_pts)
+        @test all(i -> damping(i) ≈ expected, wing_pts)
         # Tether points are skipped by `set_body_frame_damping!`, floor or not.
-        @test all(i -> all(iszero, s.sys.points[i].body_frame_damping), tether_pts)
+        @test all(i -> all(iszero, damping(i)), tether_pts)
     end
 
     l0 = unstretched_length(s)
@@ -302,24 +302,50 @@ end
             depower_setpoint = DEPOWER_SETPOINT, sim_time = SIM_TIME,
             system_yaml = PROJECT, damping_per_stiffness = RATIO)
 
-        seg_idxs = tether_bridle_segments(s_dps.sys)
+        segment(run, i, quantity) = run_value(run.sam, :segments, i, quantity)
+        seg_idxs = tether_bridle_segments(s_dps.sam.definition)
         @test !isempty(seg_idxs)
         # Segments with a callable force law have no stiffness to scale.
-        damped = [i for i in seg_idxs
-                  if s_dps.sys.segments[i].unit_stiffness isa Real]
+        damped = [i for i in seg_idxs if segment(s_dps, i, :unit_stiffness) isa Real]
         @test !isempty(damped)
-        @test all(i -> s_dps.sys.segments[i].unit_damping ≈
-                       RATIO * s_dps.sys.segments[i].unit_stiffness, damped)
+        @test all(i -> segment(s_dps, i, :unit_damping) ≈
+                       RATIO * segment(s_dps, i, :unit_stiffness), damped)
         # `s` was built with the default `nothing`, which leaves the material
         # values of struc_geometry.yaml: 0.002 on the bridles and none on the
         # main tether, so every one of these segments changed.
-        @test all(i -> s_dps.sys.segments[i].unit_damping !=
-                       s.sys.segments[i].unit_damping, damped)
+        @test all(i -> segment(s_dps, i, :unit_damping) !=
+                       segment(s, i, :unit_damping), damped)
         # The wing frame keeps the damping given in struc_geometry.yaml.
-        wing_segs = setdiff(collect(eachindex(s_dps.sys.segments)), seg_idxs)
+        wing_segs = setdiff(collect(eachindex(s_dps.sam.definition.segments)), seg_idxs)
         @test !isempty(wing_segs)
-        @test all(i -> s_dps.sys.segments[i].unit_damping ==
-                       s.sys.segments[i].unit_damping, wing_segs)
+        @test all(i -> segment(s_dps, i, :unit_damping) == segment(s, i, :unit_damping),
+                  wing_segs)
+    end
+
+    @testset "A Structure Loaded From A Settled State Stands In That Pose" begin
+        kite_set = load_kite(PROJECT)
+        kite_set.aero_mode = AeroDirect()
+        config = V3Kite.V3SettleConfig(project = PROJECT, kite_set = kite_set)
+        wing_pos = run_value(s.sam, :wings, 1, :pos_w)
+        row = (x = wing_pos[1], y = wing_pos[2], z = wing_pos[3], vx = 0.0, vy = 0.0,
+               vz = 0.0, heading = 0.0, steering = 0.0, depower = DEPOWER_SETPOINT,
+               wind_vec = [V_WIND, 0.0, 0.0])
+        cache_path = mktempdir()
+        V3Kite.save_state_log(s.sam,
+            settled_state_path(config, row; cache_path))
+        sys, _ = load_settled_struct(config, row; cache_path)
+        loaded = SymbolicAWEModel(nothing, sys)
+        position(run, i) = run_value(run, :points, i, :pos_w)
+        @test all(i -> position(loaded, i) ≈ position(s.sam, i), eachindex(sys.points))
+        @test run_value(loaded, :bodies, 1, :R_b_to_w) ≈
+              run_value(s.sam, :bodies, 1, :R_b_to_w)
+    end
+
+    @testset "A Kite Due North Has Azimuth East Of Plus 90 Degrees" begin
+        for i in 10:13
+            set_run_value!(s.sam, :points, i, :pos_w, [0.0, 100.0, 100.0])
+        end
+        @test calc_azimuth_east(s) ≈ π / 2
     end
 end
 nothing

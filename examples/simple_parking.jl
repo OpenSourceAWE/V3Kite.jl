@@ -79,7 +79,7 @@ s = init(V_WIND, TETHER_LENGTH; body_start_damping = BODY_START_DAMPING,
     system_yaml = PROJECT, aero_mode = AERO_MODE)
 
 # `init` leaves the winch un-braked; brake it to park at constant tether length.
-s.sys.winches[1].brake = USE_BRAKE
+set_run_value!(s.sam, :winches, 1, :brake, USE_BRAKE)
 
 # Constant-length setpoint: the tether length just after settling.
 l0 = s.sys_state.l_tether[1]
@@ -90,8 +90,8 @@ wpc = winch_pos_controller(s)
 
 # The segments the compression report below is taken over — the same ones `init`
 # applied `DAMPING_PER_STIFFNESS` to. `tether_bridle_segments` comes from V3Kite
-# (`src/model_setup.jl`) and takes the `SystemStructure`, not the `V3KITE` model.
-line_segs = tether_bridle_segments(s.sam.sys_struct)
+# (`src/model_setup.jl`) and takes the `SystemDefinition`, not the `V3KITE` model.
+line_segs = tether_bridle_segments(s.sam.definition)
 
 # ================= COMPRESSION LOGGING =================== #
 
@@ -100,16 +100,15 @@ line_segs = tether_bridle_segments(s.sam.sys_struct)
 
 Largest compression force [N] over the segments `seg_idxs`, reported as a
 positive number, with `(0.0, 0)` while all of them are in tension. Also raises
-`peaks[i]`, the running peak of segment `seg_idxs[i]`. `segment.force` is
+`peaks[i]`, the running peak of segment `seg_idxs[i]`. A segment's force is
 signed — negative means compression — and is refreshed from the integrator by
 every `step!`, so the value belongs to the row `step!` has just logged and is
 written into its free `var_01` slot.
 """
 function log_max_compression!(s, seg_idxs, peaks)
-    segments = s.sam.sys_struct.segments
     force, seg_idx = 0.0, 0
     for (i, idx) in enumerate(seg_idxs)
-        f = -segments[idx].force
+        f = -run_value(s.sam, :segments, idx, :force)
         f > peaks[i] && (peaks[i] = f)
         if f > force
             force, seg_idx = f, idx
@@ -128,7 +127,6 @@ exceeded `limit` [N], strongest first, with their endpoint points and the
 `compression_frac` that scales their stiffness below the rest length.
 """
 function print_compression_report(s, seg_idxs, peaks, limit)
-    segments = s.sam.sys_struct.segments
     sel = [i for i in sortperm(peaks; rev = true) if peaks[i] > limit]
     if isempty(sel)
         println("\nNo tether or bridle segment exceeded ",
@@ -140,10 +138,10 @@ function print_compression_report(s, seg_idxs, peaks, limit)
     @printf("  %-9s %-11s %-16s %s\n", "segment", "points", "compression_frac",
             "peak [N]")
     for i in sel
-        seg = segments[seg_idxs[i]]
-        p1, p2 = seg.point_idxs
-        @printf("  %-9d %-11s %-16.3f %8.2f\n", seg.idx, "$p1 - $p2",
-                seg.compression_frac, peaks[i])
+        seg_idx = seg_idxs[i]
+        p1, p2 = s.sam.definition.segments[seg_idx].points
+        @printf("  %-9d %-11s %-16.3f %8.2f\n", seg_idx, "$p1 - $p2",
+                run_value(s.sam, :segments, seg_idx, :compression_frac), peaks[i])
     end
 end
 

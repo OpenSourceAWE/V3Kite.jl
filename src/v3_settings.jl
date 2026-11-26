@@ -92,6 +92,19 @@ vsm_settings_path(project; data_path=nothing) =
         project_entry(project, "vsm_settings"; data_path); data_path)
 
 """
+    v3_vsm_settings(project, geometry_file; data_path=nothing) -> VSMSettings
+
+The project's `vsm_settings:` with its wing read from `geometry_file`, the settings a
+model of the project is built with.
+"""
+function v3_vsm_settings(project, geometry_file; data_path=nothing)
+    vsm_set = VortexStepMethod.VSMSettings(vsm_settings_path(project; data_path);
+                                           data_prefix=false)
+    vsm_set.wings[1].geometry_file = geometry_file
+    return vsm_set
+end
+
+"""
     has_surface_tables(geometry_path) -> Bool
 
 Whether an aero geometry carries the per-node `Cp`/`cf` tables `AeroPressure`
@@ -129,7 +142,8 @@ function aero_geometry_path(project; data_path=nothing, aero_mode=nothing)
         "No aero geometry at $path (from `aero_geometry:` in $project). " *
         "The surface-resolved tables are generated, not tracked — run " *
         "examples/v3beam_aero_geometry.jl to write them.")
-    if aero_mode isa SymbolicAWEModels.AeroPressure && !has_surface_tables(path)
+    if aero_mode isa SymbolicAWEModels.AeroSpec{SymbolicAWEModels.AeroPressure} &&
+            !has_surface_tables(path)
         error("$project flies `aero_mode: pressure` on `aero_geometry: $entry`, " *
               "which carries polars but no per-node Cp/cf tables. Run " *
               "examples/v3beam_aero_geometry.jl and point `aero_geometry:` " *

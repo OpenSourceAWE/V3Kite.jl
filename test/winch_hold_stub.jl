@@ -55,6 +55,6 @@ function hold_torque!(lhc::LengthHoldController, s::V3KITE, set_length;
     dv_max = acceleration_limit * s.dt
     v_sp = clamp(v_sp, lhc.v_sp_prev - dv_max, lhc.v_sp_prev + dv_max)
     lhc.v_sp_prev = v_sp
-    return force_to_torque(winch_force(s), s.sys) +
+    return force_to_torque(winch_force(s), s.sam) +
         lhc.kp_speed * (v_sp - reel_out_speed(s))
 end

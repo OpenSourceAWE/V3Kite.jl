@@ -49,13 +49,13 @@ kite_set = load_kite(PROJECT)
 heading = load_heading(PROJECT)
 set = Settings(PROJECT)
 
-sam, sys = build_v3_model(PROJECT)
+sam, _ = build_v3_model(PROJECT)
 
 n_steps = Int(round(set.sample_freq * set.sim_time))
 dt = set.sim_time / n_steps
 logger, sys_state = create_logger(sam, n_steps)
 
-nominal_steering = V3Kite.get_steering(sys, kite_set.geom)
+nominal_steering = V3Kite.get_steering(sam, kite_set.geom)
 max_heading_rad = deg2rad(MAX_HEADING)
 angular_freq = 2pi / PERIOD
 
@@ -72,12 +72,12 @@ for step in 1:n_steps
     t = step * dt
 
     target_rad = max_heading_rad * sin(angular_freq * t)
-    measured = sys.wings[1].heading
+    measured = run_value(sam, :wings, 1, :heading)
     schedule_heading_pid!(pid, heading, t, sys_state.v_app, target_rad, measured)
     steering = nominal_steering + pid(target_rad, measured, 0.0)
     sys_state.bearing = target_rad
 
-    set_steering!(sys, steering, kite_set.geom)
+    set_steering!(sam, steering, kite_set.geom)
 
     if !sim_step!(sam; dt, vsm_interval = kite_set.vsm_interval)
         @error "Simulation failed" step
@@ -121,7 +121,7 @@ plot_window = plotx(sl.time,
     fig = "V3 Kite heading tracking – $(splitext(PROJECT)[1])")
 display(plot_window)
 
-scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
+scene = SymbolicAWEModels.replay(syslog, sam)
 display(GLMakie.Screen(), scene)
 
 @info "Example complete!"

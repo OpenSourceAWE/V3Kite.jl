@@ -19,6 +19,7 @@ if ! ("Test" ∈ keys(Pkg.project().dependencies))
     Pkg.activate("test")
 end
 
+using LinearAlgebra
 using Test
 using V3Kite
 
@@ -48,6 +49,26 @@ function consistent_log(; c1 = 0.05, c2 = -0.2, dt = 0.05, n = 601,
 end
 
 @testset "Turn Rate Identification" begin
+
+    @testset "Turn Rate Of A Circle Of Latitude Is The Velocity Direction's" begin
+        beta, omega, dt, radius = deg2rad(60.0), 0.2, 0.001, 100.0
+        time = collect(0:dt:1)
+        azimuth_ccw = omega .* time
+        position(phi) = radius .* [cos(beta) * cos(phi), cos(beta) * sin(phi), sin(beta)]
+        velocity(phi) = radius * cos(beta) * omega .* [-sin(phi), cos(phi), 0.0]
+        calc_R_t_to_w = V3Kite.SymbolicAWEModels.KiteGeometry.calc_R_t_to_w
+        function course(phi)
+            R_t_to_w = calc_R_t_to_w(position(phi))
+            return atan(velocity(phi) ⋅ R_t_to_w[:, 2], velocity(phi) ⋅ R_t_to_w[:, 1])
+        end
+        sl = (; time, course = course.(azimuth_ccw),
+            azimuth = [V3Kite.KiteUtils.azimuth_east(position(phi)) for phi in azimuth_ccw],
+            elevation = fill(beta, length(time)))
+        acceleration = -radius * cos(beta) * omega^2 .* [1.0, 0.0, 0.0]
+        velocity_turn_rate = normalize(position(0.0)) ⋅ (velocity(0.0) × acceleration) /
+            norm(velocity(0.0))^2
+        @test all(V3Kite.calc_turn_rate(sl; source = :course, dt) .≈ velocity_turn_rate)
+    end
 
     @testset "Correlation" begin
         a = [1.0, 3.0, 2.0, 5.0, 4.0]

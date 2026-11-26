@@ -35,9 +35,10 @@ module SurfplanAdapter
 
 using LinearAlgebra
 import YAML
-using SymbolicAWEModels: Tube, TimoshenkoTube, TUBE_SHEAR_COEFF, tube_linear_rigidities,
+using SymbolicAWEModels: TUBE_SHEAR_COEFF, tube_linear_rigidities,
     membrane_linear_rigidities, breukels_membrane_stiffness, comer_levy_bending_law,
     frame_quaternion_xy
+using SymbolicAWEModels.KiteGeometry: unit_stiffness
 using ..V3Kite: v3_data_path, V3BridleConfig
 
 include("topology.jl")
@@ -90,29 +91,17 @@ Replace each beam `Tube`'s constant bending rigidity with the curvature-softenin
 Comer-Levy law (`comer_levy_bending_law`) in place, so the loaded (linear-YAML) beam
 gains the post-collapse bending branch. `tube_radius` maps each tube name to its
 radius (from [`beam_joint_radii`](@ref)). Axial/shear are refreshed from the same
-`E·t`; torsion, damping and the resolved indices are carried over from the loaded
-tube. Done by element replacement (not a `SystemStructure` rebuild) so no reference
-re-resolution or tether re-expansion is triggered.
+`E·t`; every other column of the tube is left as loaded.
 """
 function apply_comer_bending!(sys, tube_radius::AbstractDict, topo::V3BeamTopology)
     pressure_pa = topo.pressure_bar * 1.0e5
-    for (k, tube) in enumerate(sys.tubes)
+    for tube in sys.tubes
         haskey(tube_radius, tube.name) || continue
         radius = tube_radius[tube.name]
-        et = resolve_membrane_stiffness(topo, radius)
-        EA, GA, _ = membrane_linear_rigidities(radius, et)
-        law = comer_levy_bending_law(radius, pressure_pa, et)
-        beam = tube.model
-        new_tube = Tube(tube.name, tube.body_a_ref, tube.body_b_ref;
-            diameter = tube.diameter, pressure = tube.pressure, law = tube.law,
-            anchor_a = tube.anchor_a_b, anchor_b = tube.anchor_b_b,
-            model = TimoshenkoTube(; EA, GA, GJ = beam.GJ, EIy = law, EIz = law,
-                shear_coeff = beam.shear_coeff, damping = beam.damping))
-        new_tube.model.rest_length = beam.rest_length
-        new_tube.idx = tube.idx
-        new_tube.body_a_idx = tube.body_a_idx
-        new_tube.body_b_idx = tube.body_b_idx
-        sys.tubes[k] = new_tube
+        membrane_stiffness = resolve_membrane_stiffness(topo, radius)
+        tube.EA, tube.GA, _ = membrane_linear_rigidities(radius, membrane_stiffness)
+        tube.EIy = tube.EIz =
+            comer_levy_bending_law(radius, pressure_pa, membrane_stiffness)
     end
     return sys
 end
@@ -136,19 +125,21 @@ keeping the ratio it is emitted with. The winched tether is left untouched, its
 material being the dyneema it is flown on rather than a bridle knob.
 """
 function apply_bridle_material!(sys, bridle::V3BridleConfig)
-    winched = Set(idx for winch in sys.winches for idx in winch.tether_idxs)
+    winched = Set(idx for winch in sys.winches for idx in winch.tethers)
     on_tether = Dict{Int, Bool}()
-    for tether in sys.tethers, segment_idx in tether.segment_idxs
-        on_tether[segment_idx] = tether.idx in winched
+    for (tether_idx, tether) in enumerate(sys.tethers), segment_idx in tether.segments
+        on_tether[segment_idx] = tether_idx in winched
     end
     tape_names = Set(Symbol.(TAPE_SEGMENT_NAMES))
-    for segment in sys.segments
-        get(on_tether, segment.idx, false) && continue
+    for (idx, segment) in enumerate(sys.segments)
+        get(on_tether, idx, false) && continue
         segment.compression_frac = bridle.compression_frac
         segment.compression_damping_frac = bridle.compression_damping_frac
-        haskey(on_tether, segment.idx) || segment.name in tape_names || continue
-        segment.unit_stiffness isa Real || continue
-        segment.unit_damping = bridle.bridle_rel_damping * segment.unit_stiffness
+        haskey(on_tether, idx) || segment.name in tape_names || continue
+        stiffness = unit_stiffness(segment, sys.materials)
+        stiffness isa Real || continue
+        segment.damping_per_stiffness = nothing
+        segment.unit_damping = bridle.bridle_rel_damping * stiffness
     end
     return sys
 end

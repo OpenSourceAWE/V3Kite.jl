@@ -83,10 +83,10 @@ sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
     steering = 0.0, depower = REL_DEPOWER, wind_vec)
 settle_failed && error("Settling failed")
-sys = sam.sys_struct
+sys = sam.definition
 
 # Brake the winch: park at constant tether length (no reel-out).
-sys.winches[1].brake = true
+set_run_value!(sam, :winches, 1, :brake, true)
 
 # Convenience wrapper exposing the V3KITE query interface
 # (reel_out_speed, winch_force, calc_elevation, calc_heading,
@@ -191,7 +191,7 @@ end
 # ==================== INTERACTIVE REPLAY ==================== #
 
 if REPLAY_LOG
-    scene = replay(syslog, sam.sys_struct; show_panes = false)
+    scene = replay(syslog, sam; show_panes = false)
     display(scene)
 end
 

@@ -99,15 +99,15 @@ function run_zenith_circles(;
         "settle_wing failed for elevation=$elev_deg, " *
             "v_wind=$v_wind, lt=$tether_length"
     )
-    sys = sam.sys_struct
-
-    @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
-    for ws in sys.vsm_set.wings
+    @assert !isnothing(sam.vsm_set) "sam.vsm_set is missing"
+    for ws in sam.vsm_set.wings
         ws.use_prior_polar = true
     end
-    for wing in sys.wings
-        wing.vsm_wing.use_prior_polar = true
+    for aero in sam.aero
+        aero.vsm_wing.use_prior_polar = true
     end
+    rest_length(i) = run_value(sam, :segments, i, :rest_length)
+    set_rest_length!(i, length) = set_run_value!(sam, :segments, i, :rest_length, length)
 
     # Logger for both phases; zenith phase is truly optional
     n_z = (sim_time_zenith > 0 && fps_zenith > 0) ?
@@ -124,8 +124,8 @@ function run_zenith_circles(;
     logger, sys_state = create_logger(sam, n_z + n_c)
 
     # Nominal segment lengths
-    nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    nom_left = rest_length(V3_STEERING_LEFT_IDX)
+    nom_right = rest_length(V3_STEERING_RIGHT_IDX)
 
     azimuth_setpoint = Float64[target_azimuth]
 
@@ -146,8 +146,8 @@ function run_zenith_circles(;
         )
 
         # Winch PID
-        nominal_tether_length = sys.tethers[1].len
-        init_winch_torque!(sys)
+        nominal_tether_length = run_value(sam, :tethers, 1, :len)
+        init_winch_torque!(sam)
         winch_pid = create_winch_pid(;
             K = winch_p,
             Ti = winch_i > 0 ? winch_p / winch_i : false,
@@ -159,23 +159,21 @@ function run_zenith_circles(;
             t = step * dt_z
 
             # Azimuth PID
-            azimuth = sys.wings[1].azimuth
+            azimuth = run_value(sam, :wings, 1, :azimuth)
             steer_ctrl = azimuth_pid(
                 target_azimuth, azimuth, 0.0
             )
             push!(azimuth_setpoint, target_azimuth)
 
             # Steering
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
-                nom_left + steer_ctrl
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-                nom_right - steer_ctrl
+            set_rest_length!(V3_STEERING_LEFT_IDX, nom_left - steer_ctrl)
+            set_rest_length!(V3_STEERING_RIGHT_IDX, nom_right + steer_ctrl)
 
             # Winch PID
-            tl = sys.tethers[1].len
+            tl = run_value(sam, :tethers, 1, :len)
             wf = winch_pid(nominal_tether_length, tl, 0.0)
-            wt = force_to_torque(wf, sys)
-            sys.winches[1].set_value = -wt
+            wt = force_to_torque(wf, sam)
+            set_run_value!(sam, :winches, 1, :set_value, -wt)
 
             if !sim_step!(
                     sam;
@@ -194,17 +192,15 @@ function run_zenith_circles(;
     if n_c > 0
         @info "Circular phase" n_c dt_c
 
-        sys.winches[1].brake = true
-        sys.winches[1].set_value = 0.0
+        set_run_value!(sam, :winches, 1, :brake, true)
+        set_run_value!(sam, :winches, 1, :set_value, 0.0)
 
         steer_change = V3_STEERING_GAIN * us
         vw_change = v_wind - v_wind_base
         steer_target_left = nom_left + steer_change
         steer_target_right = nom_right - steer_change
-        steer_start_left =
-            sys.segments[V3_STEERING_LEFT_IDX].l0
-        steer_start_right =
-            sys.segments[V3_STEERING_RIGHT_IDX].l0
+        steer_start_left = rest_length(V3_STEERING_LEFT_IDX)
+        steer_start_right = rest_length(V3_STEERING_RIGHT_IDX)
 
         for step in 1:n_c
             t = sim_time_zenith + step * dt_c
@@ -212,14 +208,12 @@ function run_zenith_circles(;
 
             rf = ramp_factor(pt, 0.0, ramp_time_us)
 
-            sys.segments[V3_STEERING_LEFT_IDX].l0 =
-                steer_start_left +
-                (steer_target_left - steer_start_left) * rf
-            sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-                steer_start_right +
-                (steer_target_right - steer_start_right) * rf
+            set_rest_length!(V3_STEERING_LEFT_IDX,
+                steer_start_left + (steer_target_left - steer_start_left) * rf)
+            set_rest_length!(V3_STEERING_RIGHT_IDX,
+                steer_start_right + (steer_target_right - steer_start_right) * rf)
 
-            sys.set.wind_vec = wind_vec_from_angles(
+            sam.set.wind_vec = wind_vec_from_angles(
                 v_wind_base + vw_change * rf, deg2rad(-90.0), 0.0
             )
 

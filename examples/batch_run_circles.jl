@@ -50,7 +50,7 @@ function course_rate_converged(course_uw, azimuth_uw, elevation,
     maxv = -Inf
     cnt = 0
     @inbounds for k in (i_lo+1):n
-        r = (course_uw[k] - course_uw[k-1]) / dt -
+        r = (course_uw[k] - course_uw[k-1]) / dt +
             ((azimuth_uw[k] - azimuth_uw[k-1]) / dt) *
             sin(elevation[k])
         a = abs(r)
@@ -128,15 +128,16 @@ function run_circles(;
     settle_failed && error(
         "settle_wing failed for elevation=$elev_deg, " *
         "v_wind=$v_wind, lt=$tether_length")
-    sys = something(sam).sys_struct
-
-    @assert !isnothing(sys.vsm_set) "sys.vsm_set is missing"
-    for ws in sys.vsm_set.wings
+    model = something(sam)
+    @assert !isnothing(model.vsm_set) "sam.vsm_set is missing"
+    for ws in model.vsm_set.wings
         ws.use_prior_polar = true
     end
-    for wing in sys.wings
-        wing.vsm_wing.use_prior_polar = true
+    for aero in model.aero
+        aero.vsm_wing.use_prior_polar = true
     end
+    rest_length(i) = run_value(model, :segments, i, :rest_length)
+    set_rest_length!(i, length) = set_run_value!(model, :segments, i, :rest_length, length)
 
     n_c = (sim_time_circles > 0 && fps_circles > 0) ?
           max(1, Int(round(fps_circles * sim_time_circles))) : 0
@@ -153,38 +154,34 @@ function run_circles(;
     check_every = something(stop_check_every,
         max(1, fps_circles))
 
-    nom_left = sys.segments[V3_STEERING_LEFT_IDX].l0
-    nom_right = sys.segments[V3_STEERING_RIGHT_IDX].l0
+    nom_left = rest_length(V3_STEERING_LEFT_IDX)
+    nom_right = rest_length(V3_STEERING_RIGHT_IDX)
 
     sim_start = time()
 
     @info "Circular phase" n_c dt_c
 
-    sys.winches[1].brake = true
-    sys.winches[1].set_value = 0.0
+    set_run_value!(model, :winches, 1, :brake, true)
+    set_run_value!(model, :winches, 1, :set_value, 0.0)
 
     steer_change = V3_STEERING_GAIN * us
     vw_change = v_wind - v_wind_base
     steer_target_left = nom_left + steer_change
     steer_target_right = nom_right - steer_change
-    steer_start_left =
-        sys.segments[V3_STEERING_LEFT_IDX].l0
-    steer_start_right =
-        sys.segments[V3_STEERING_RIGHT_IDX].l0
+    steer_start_left = rest_length(V3_STEERING_LEFT_IDX)
+    steer_start_right = rest_length(V3_STEERING_RIGHT_IDX)
 
     for step in 1:n_c
         t = step * dt_c
 
         rf = ramp_factor(t, 0.0, ramp_time_us)
 
-        sys.segments[V3_STEERING_LEFT_IDX].l0 =
-            steer_start_left +
-            (steer_target_left - steer_start_left) * rf
-        sys.segments[V3_STEERING_RIGHT_IDX].l0 =
-            steer_start_right +
-            (steer_target_right - steer_start_right) * rf
+        set_rest_length!(V3_STEERING_LEFT_IDX,
+            steer_start_left + (steer_target_left - steer_start_left) * rf)
+        set_rest_length!(V3_STEERING_RIGHT_IDX,
+            steer_start_right + (steer_target_right - steer_start_right) * rf)
 
-        sys.set.wind_vec = wind_vec_from_angles(
+        model.set.wind_vec = wind_vec_from_angles(
             v_wind_base + vw_change * rf, deg2rad(-90.0), 0.0)
 
         if !sim_step!(something(sam);

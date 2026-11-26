@@ -102,14 +102,12 @@ end
 
 function print_and_plot_wing(lg, sam; is_print=false)
     lg_last = lg.syslog[end]
-    wing = sam.sys_struct.wings[1]
-    V3Kite.SymbolicAWEModels.update_from_sysstate!(sam.sys_struct, lg_last)
-    origin_w = collect(wing.pos_w)
+    V3Kite.SymbolicAWEModels.update_from_sysstate!(sam, lg_last)
+    origin_w = collect(run_value(sam, :wings, 1, :pos_w))
     R_b_w = V3Kite.SymbolicAWEModels.quaternion_to_rotation_matrix(
         lg_last.orient)
-    wing_point_idxs = [
-        p.idx for p in sam.sys_struct.points
-        if p.is_wing_node]
+    wing_point_idxs = [i for i in eachindex(sam.definition.points)
+                       if run_value(sam, :points, i, :is_wing_node)]
 
     # 2D scatter plots of wing nodes in body frame
     xs_b, ys_b, zs_b = Float64[], Float64[], Float64[]
@@ -168,8 +166,8 @@ function print_and_plot_wing(lg, sam; is_print=false)
     lines_xy, lines_xz, lines_yz =
         Point2f[], Point2f[], Point2f[]
     for seg_idx in wing_seg_idxs
-        seg = sam.sys_struct.segments[seg_idx]
-        p1, p2 = seg.point_idxs
+        seg = sam.definition.segments[seg_idx]
+        p1, p2 = seg.points
         pos1_w = [lg_last.X[p1], lg_last.Y[p1],
             lg_last.Z[p1]]
         pos2_w = [lg_last.X[p2], lg_last.Y[p2],
@@ -201,7 +199,7 @@ end
 # =============================================================================
 
 function plot_time_series(lg, sam)
-    return plot(sam.sys_struct, lg;
+    return plot(sam, lg;
         plot_turn_rates=false, plot_reelout=false,
         plot_twist=false,
         plot_yaw_rate_paper=false,
@@ -267,12 +265,12 @@ function compute_line_stretch(lg, sam;
             ratio=Dict{Symbol,Matrix{Float64}}())
     end
 
-    segments = sam.sys_struct.segments
-    base_l0 = [Float64(seg.l0) for seg in segments]
+    segments = sam.definition.segments
+    base_l0 = [Float64(seg.rest_length) for seg in segments]
 
-    tether_seg_idxs = if !isempty(sam.sys_struct.tethers) &&
-                         !isempty(sam.sys_struct.tethers[1].segment_idxs)
-        Int.(sam.sys_struct.tethers[1].segment_idxs)
+    tether_seg_idxs = if !isempty(sam.definition.tethers) &&
+                         !isempty(sam.definition.tethers[1].segments)
+        Int.(sam.definition.tethers[1].segments)
     else
         collect(90:95)
     end
@@ -335,11 +333,11 @@ function compute_line_stretch(lg, sam;
     l0_adj = segment_l0_adjustments === nothing ?
              Dict{Int,Any}() : segment_l0_adjustments
 
-    pulleys = sam.sys_struct.pulleys
+    pulleys = sam.definition.pulleys
     pulley_seg_set = Set{Int}()
     for p in pulleys
-        push!(pulley_seg_set, Int(p.segment_idxs[1]))
-        push!(pulley_seg_set, Int(p.segment_idxs[2]))
+        push!(pulley_seg_set, Int(p.segments[1]))
+        push!(pulley_seg_set, Int(p.segments[2]))
     end
 
     seg_len_for_pulleys = Dict(
@@ -376,7 +374,7 @@ function compute_line_stretch(lg, sam;
                     end
                 end
                 (!isfinite(l0) || l0 <= 0) && continue
-                p1, p2 = seg.point_idxs
+                p1, p2 = seg.points
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
@@ -428,7 +426,7 @@ function compute_line_stretch(lg, sam;
                     end
                 end
                 (!isfinite(l0) || l0 <= 0) && continue
-                p1, p2 = seg.point_idxs
+                p1, p2 = seg.points
                 dx = X[p2] - X[p1]
                 dy = Y[p2] - Y[p1]
                 dz = Z[p2] - Z[p1]
@@ -525,7 +523,7 @@ function compute_line_stretch(lg, sam;
         pmat = fill(NaN, n_samples, np)
         pl0 = fill(NaN, n_samples, np)
         for (ci, pulley) in enumerate(pulleys)
-            s1, s2 = Int.(pulley.segment_idxs)
+            s1, s2 = Int.(pulley.segments)
             len1 = get(seg_len_for_pulleys, s1,
                 fill(NaN, n_samples))
             len2 = get(seg_len_for_pulleys, s2,
@@ -571,7 +569,7 @@ function compute_line_stretch(lg, sam;
                 max_e_info = (; sample=r,
                     pulley=Int(pulleys[c].idx),
                     segments=Tuple(
-                        Int.(pulleys[c].segment_idxs)),
+                        Int.(pulleys[c].segments)),
                     time=sample_times[r])
             end
 
@@ -587,7 +585,7 @@ function compute_line_stretch(lg, sam;
                 max_c_info = (; sample=r,
                     pulley=Int(pulleys[c].idx),
                     segments=Tuple(
-                        Int.(pulleys[c].segment_idxs)),
+                        Int.(pulleys[c].segments)),
                     time=sample_times[r])
             end
 
@@ -686,11 +684,11 @@ lg, sam, up, us, v_wind, lt =
 up_fraction = up / 100
 us_fraction = us / 100
 seg87_nom = Float64(
-    sam.sys_struct.segments[V3_STEERING_LEFT_IDX].l0)
+    sam.definition.segments[V3_STEERING_LEFT_IDX].rest_length)
 seg88_nom = Float64(
-    sam.sys_struct.segments[V3_DEPOWER_IDX].l0)
+    sam.definition.segments[V3_DEPOWER_IDX].rest_length)
 seg89_nom = Float64(
-    sam.sys_struct.segments[V3_STEERING_RIGHT_IDX].l0)
+    sam.definition.segments[V3_STEERING_RIGHT_IDX].rest_length)
 steering_tape_change = V3_STEERING_GAIN * us_fraction
 power_target_l0 = 0.2 + 5.0 * up_fraction
 segment_l0_adjustments = Dict(
@@ -705,7 +703,7 @@ stretch_info = compute_line_stretch(lg, sam;
 
 # Plots
 fig_time = plot_time_series(lg, sam)
-scene = SymbolicAWEModels.replay(lg, sam.sys_struct;
+scene = SymbolicAWEModels.replay(lg, sam;
     autoplay=false, loop=true, show_panes=false)
 fig_wing = print_and_plot_wing(lg, sam, is_print=true)
 

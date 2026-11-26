@@ -165,17 +165,29 @@ function draw_incidence!(ax, kcu_2d, cr_2d,
 end
 
 """
-    plot_body_frame_local(sys_structs; extra_points, extra_groups, dir, labels)
+    kcu_body_positions(sam[, positions_w]) -> Vector
 
-Plot wing points in 2D body frame. Accepts single sys_struct or vector of them.
-Extra points connected per-strut and LE.
+World positions `positions_w` [m], by default every point of the run `sam`, in the
+wing's body frame of `sam` with the KCU (point 1) as origin.
+"""
+function kcu_body_positions(sam, positions_w=SymbolicAWEModels.run_positions(sam))
+    R_w_b = V3Kite.calc_R_b_w(sam)'
+    kcu = run_value(sam, :points, 1, :pos_w)
+    return [R_w_b * (pos_w - kcu) for pos_w in positions_w]
+end
+
+"""
+    plot_body_frame_local(sams; extra_points, extra_groups, dir, labels)
+
+Plot wing points in 2D body frame, with the KCU as origin. Accepts a single model
+or a vector of them. Extra points connected per-strut and LE.
 
 # Arguments
-- `sys_structs`: System structure or vector of system structures to plot
+- `sams`: Model or vector of models whose runs to plot
 - `extra_points`: Optional vector of (x,y,z) tuples from load_extra_points
 - `extra_groups`: Optional groups from load_extra_points
 - `dir::Symbol`: Viewing direction (:side, :front, or :top)
-- `labels`: Optional vector of labels for each sys_struct
+- `labels`: Optional vector of labels, one per model
 - `point_idxs`: Optional vector of point indices to plot (default: wing nodes only)
 - `point_size`: Size of simulation points (default: 10)
 - `extra_point_size`: Size of extra points (default: 8)
@@ -185,10 +197,10 @@ Extra points connected per-strut and LE.
 - `show_point_idxs`: Show point index labels (default: true)
 - `show_twist`: Show twist panel below (default: false)
 - `show_incidence`: Show incidence angle overlay on :side views (default: false)
-- `show_kcu`: Show KCU point (sys_struct point 1) with legend entry (default: false)
+- `show_kcu`: Show KCU point (point 1) with legend entry (default: false)
 - `show_camera`: Show camera point (ungrouped extra point) with legend entry (default: false)
 """
-function V3Kite.plot_body_frame_local(sys_structs;
+function V3Kite.plot_body_frame_local(sams;
                                extra_points=nothing,
                                extra_groups=nothing,
                                dir::Symbol=:front,
@@ -207,7 +219,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
                                show_camera=false,
                                annotation="")
     # Normalize to vector
-    structs = sys_structs isa Vector ? sys_structs : [sys_structs]
+    structs = sams isa Vector ? sams : [sams]
     n_structs = length(structs)
 
     # Default labels
@@ -259,40 +271,25 @@ function V3Kite.plot_body_frame_local(sys_structs;
     all_y_vals = Float64[]
     sim_aoa_data = []
 
-    # Plot each sys_struct
-    for (s_idx, sys_struct) in enumerate(structs)
-        points = sys_struct.points
-        wings = sys_struct.wings
-        segments = sys_struct.segments
+    # Plot each model
+    for (s_idx, sam) in enumerate(structs)
+        definition = sam.definition
         color = PLOT_COLORS[mod1(s_idx, length(PLOT_COLORS))]
 
-        # Update pos_b for PARTICLE_DYNAMICS wing points
-        for wing in wings
-            if wing.dynamics_type == SymbolicAWEModels.PARTICLE_DYNAMICS
-                R_w_b = V3Kite.calc_R_b_w(sys_struct)'
-                wing.pos_w .= points[1].pos_w
-                for point in points
-                    if point.wing_idx == wing.idx
-                        point.pos_b .= R_w_b * (point.pos_w - wing.pos_w)
-                    end
-                end
-            end
-        end
+        pos_b = kcu_body_positions(sam)
+        wing_pts = [i for i in eachindex(definition.points)
+                    if run_value(sam, :points, i, :is_wing_node)]
 
         if show_twist
-            wing_pts = sort(
-                [p for p in points if p.is_wing_node],
-                by=p -> p.idx)
             span_ys = Float64[]
             aoas = Float64[]
-            le_pos = [wing_pts[i].pos_b
-                      for i in 1:2:length(wing_pts)]
+            le_pos = [pos_b[wing_pts[i]] for i in 1:2:length(wing_pts)]
             n_le = length(le_pos)
             body_x = [1.0, 0.0, 0.0]
             for k in 1:n_le
                 le = wing_pts[2k - 1]
                 te = wing_pts[2k]
-                chord_b = te.pos_b - le.pos_b
+                chord_b = pos_b[te] - pos_b[le]
                 y_airf = if k == 1
                     normalize(le_pos[2] - le_pos[1])
                 elseif k == n_le
@@ -305,26 +302,23 @@ function V3Kite.plot_body_frame_local(sys_structs;
                     dot(chord_b, z_loc),
                     dot(chord_b, body_x))))
                 push!(span_ys,
-                    (le.pos_b[2] + te.pos_b[2]) / 2)
+                    (pos_b[le][2] + pos_b[te][2]) / 2)
             end
             push!(sim_aoa_data,
                 (span_ys, aoas, color,
                  labels[s_idx]))
         end
 
-        if isnothing(point_idxs)
-            plot_points = [p for p in points if p.is_wing_node]
-        else
-            plot_points = [points[i] for i in point_idxs if i <= length(points)]
-        end
+        plot_points = isnothing(point_idxs) ? wing_pts :
+            [i for i in point_idxs if i <= length(definition.points)]
 
         # Extract 2D coords based on viewing direction
         if dir == :top
-            coords = [(p.pos_b[2], p.pos_b[1]) for p in plot_points]
+            coords = [(pos_b[i][2], pos_b[i][1]) for i in plot_points]
         elseif dir == :side
-            coords = [(p.pos_b[1], p.pos_b[3]) for p in plot_points]
+            coords = [(pos_b[i][1], pos_b[i][3]) for i in plot_points]
         else  # :front
-            coords = [(p.pos_b[2], p.pos_b[3]) for p in plot_points]
+            coords = [(pos_b[i][2], pos_b[i][3]) for i in plot_points]
         end
 
         x_vals = [c[1] for c in coords]
@@ -333,18 +327,16 @@ function V3Kite.plot_body_frame_local(sys_structs;
         append!(all_y_vals, y_vals)
 
         # Plot segments (skip TE 20-28 and diagonals 29-46)
-        plot_point_idxs = Set(p.idx for p in plot_points)
-        for seg in segments
-            if 20 <= seg.idx <= 46
+        plot_point_idxs = Set(plot_points)
+        for (seg_idx, seg) in enumerate(definition.segments)
+            if 20 <= seg_idx <= 46
                 continue
             end
-            from_idx, to_idx = seg.point_idxs
+            from_idx, to_idx = seg.points
             if from_idx in plot_point_idxs && to_idx in plot_point_idxs
-                p1 = points[from_idx]
-                p2 = points[to_idx]
-                c1 = get_2d(p1.pos_b)
-                c2 = get_2d(p2.pos_b)
-                is_le = seg.idx <= 9
+                c1 = get_2d(pos_b[from_idx])
+                c2 = get_2d(pos_b[to_idx])
+                is_le = seg_idx <= 9
                 lw = is_le ? 5 : 3
                 clr = is_le ? color : (color, 0.5)
                 lines!(ax, [c1[1], c2[1]], [c1[2], c2[2]];
@@ -380,33 +372,24 @@ function V3Kite.plot_body_frame_local(sys_structs;
                 offset = (12 * sign(away_x), 12 * sign(away_y))
                 align_x = away_x >= 0 ? :left : :right
                 align_y = away_y >= 0 ? :bottom : :top
-                text!(ax, px, py; text=string(p.idx), fontsize=12,
+                text!(ax, px, py; text=string(p), fontsize=12,
                       align=(align_x, align_y), offset=offset)
             end
         end
     end
 
-    # Plot KCU (point 1) for each sys_struct
+    # The KCU (point 1) is the origin of every body frame drawn here
     if show_kcu
-        for sys_struct in structs
-            wing = sys_struct.wings[1]
-            R_w_b = V3Kite.calc_R_b_w(sys_struct)'
-            kcu_b = R_w_b *
-                (sys_struct.points[1].pos_w - wing.pos_w)
-            kx, ky = get_2d(kcu_b)
-            push!(all_x_vals, kx)
-            push!(all_y_vals, ky)
-            scatter!(ax, [kx], [ky];
-                color=:green, markersize=12,
-                marker=:circle)
-        end
+        push!(all_x_vals, 0.0)
+        push!(all_y_vals, 0.0)
+        scatter!(ax, [0.0], [0.0]; color=:green, markersize=12, marker=:circle)
     end
 
     # Plot extra points with connections (use first struct's wing for transform)
     if !isnothing(extra_points) && !isnothing(extra_groups)
-        wing = structs[1].wings[1]
         R_w_b = V3Kite.calc_R_b_w(structs[1])'
-        extra_body = [R_w_b * (collect(p) - wing.pos_w) for p in extra_points]
+        kcu = run_value(structs[1], :points, 1, :pos_w)
+        extra_body = [R_w_b * (collect(p) - kcu) for p in extra_points]
 
         if dir == :top
             extra_coords = [(p[2], p[1]) for p in extra_body]
@@ -501,16 +484,14 @@ function V3Kite.plot_body_frame_local(sys_structs;
 
     # Incidence angle overlay (side view only)
     if show_incidence && dir == :side
-        # Sim incidence from first sys_struct
+        # Sim incidence from the first model
         sys1 = structs[1]
-        pts1 = sys1.points
-        wing1 = sys1.wings[1]
-        R_w_b = V3Kite.calc_R_b_w(sys1)'
-        kcu_b = R_w_b * (pts1[1].pos_w - wing1.pos_w)
-        le_3_b = pts1[10].pos_b
-        te_3_b = pts1[11].pos_b
-        le_4_b = pts1[12].pos_b
-        te_4_b = pts1[13].pos_b
+        pos_b = kcu_body_positions(sys1)
+        kcu_b = pos_b[1]
+        le_3_b = pos_b[10]
+        te_3_b = pos_b[11]
+        le_4_b = pos_b[12]
+        te_4_b = pos_b[13]
         cr_b = chord_ref_mid(
             le_3_b, te_3_b, le_4_b, te_4_b)
         le_center_b = (le_3_b + le_4_b) / 2
@@ -523,8 +504,7 @@ function V3Kite.plot_body_frame_local(sys_structs;
         # Photogrammetry incidence (when extra data given)
         if !isnothing(extra_points) &&
                 !isnothing(extra_groups)
-            eb = [R_w_b * (collect(p) - wing1.pos_w)
-                  for p in extra_points]
+            eb = kcu_body_positions(sys1, collect.(extra_points))
             s3_idx = nothing
             s4_idx = nothing
             for (gname, indices) in extra_groups
@@ -659,15 +639,15 @@ function V3Kite.plot_body_frame_local(sys_structs;
 end
 
 """
-    plot_twist_dist(sys_structs; extra_points,
+    plot_twist_dist(sams; extra_points,
         extra_groups, labels, figsize)
 
 Plot twist distribution along the span.
 Computes local twist at each LE/TE pair from sim
-sys_structs and optionally from photogrammetry data.
+sams and optionally from photogrammetry data.
 
 # Arguments
-- `sys_structs`: System structure or vector of them
+- `sams`: Model or vector of models
 - `extra_points`: Optional photogrammetry points
 - `extra_groups`: Optional photogrammetry groups
 - `labels`: Optional vector of labels
@@ -676,7 +656,7 @@ sys_structs and optionally from photogrammetry data.
 - `wingtips`: Include wingtip struts (default: false)
 - `limits`: Twist axis limits in deg (default: (-7, 10))
 """
-function V3Kite.plot_twist_dist(sys_structs;
+function V3Kite.plot_twist_dist(sams;
         extra_points=nothing,
         extra_groups=nothing,
         labels=nothing,
@@ -688,8 +668,8 @@ function V3Kite.plot_twist_dist(sys_structs;
         limits=(-7, 10),
         show_yaxis=true,
         annotation="")
-    structs = sys_structs isa Vector ?
-        sys_structs : [sys_structs]
+    structs = sams isa Vector ?
+        sams : [sams]
     n_structs = length(structs)
     if isnothing(labels)
         labels = n_structs == 1 ?
@@ -707,13 +687,12 @@ function V3Kite.plot_twist_dist(sys_structs;
         yticklabelsvisible=show_yaxis,
         title=ax_title, limits=((-5.3, 5.3), limits))
 
-    # Sim AoA per sys_struct
-    for (s_idx, sys_struct) in enumerate(structs)
-        points = sys_struct.points
+    # Sim AoA per model
+    for (s_idx, sam) in enumerate(structs)
         color = PLOT_COLORS[
             mod1(s_idx, length(PLOT_COLORS))]
 
-        span_ys, twist = V3Kite.wing_twist_dist(sys_struct)
+        span_ys, twist = V3Kite.wing_twist_dist(sam)
         keep = wingtips ? (1:length(span_ys)) :
             (2:(length(span_ys) - 1))
         span_ys = span_ys[keep]
@@ -728,9 +707,9 @@ function V3Kite.plot_twist_dist(sys_structs;
     # Photogrammetry AoA
     if !isnothing(extra_points) &&
             !isnothing(extra_groups)
-        wing = structs[1].wings[1]
+        wing_pos = run_value(structs[1], :wings, 1, :pos_w)
         R_w_b = V3Kite.calc_R_b_w(structs[1])'
-        extra_body = [R_w_b * (collect(p) - wing.pos_w)
+        extra_body = [R_w_b * (collect(p) - wing_pos)
                       for p in extra_points]
         le_idxs = Int[]
         strut_groups = Tuple{String,Vector{Int}}[]
@@ -805,7 +784,7 @@ end
 """
     plot_photogrammetry(points, groups; dir, kwargs...)
 
-Plot photogrammetry points in 2D without a sys_struct.
+Plot photogrammetry points in 2D without a model.
 Projects 3D points based on `dir` and draws group lines
 and scatter points.
 
@@ -1028,7 +1007,7 @@ tether force, apparent wind, wind speed, kite velocity, force
 coefficient, steering gain, and steering input.
 """
 function V3Kite.plot_replay(
-        syss::Vector{<:SymbolicAWEModels.SystemStructure},
+        syss::Vector{<:SymbolicAWEModel},
         logs::Vector{<:SymbolicAWEModels.KiteUtils.SysLog};
         tape_lengths=nothing,
         suffixes=nothing,
@@ -1117,7 +1096,7 @@ function V3Kite.plot_replay(
     for (i, lg) in enumerate(logs)
         sl = lg.syslog
         A_proj = calculate_projected_area(
-            syss[i].wings[1].vsm_wing)
+            syss[i].aero[1].vsm_wing)
         cf = [sl.winch_force[k][1] /
               (0.5 * 1.225 * sl.v_app[k]^2 * A_proj)
               for k in eachindex(sl.winch_force)]
@@ -1289,7 +1268,7 @@ function V3Kite.plot_sphere_trajectory(
         Point3f(0, axis_len, 0)];
         color=:green, linewidth=3)
     text!(ax, Point3f(0, axis_len * 1.1, 0);
-        text="Y (az=-90)", fontsize=14, color=:green)
+        text="Y (az=90)", fontsize=14, color=:green)
     lines!(ax, [Point3f(0, 0, 0),
         Point3f(0, 0, axis_len)];
         color=:blue, linewidth=3)
@@ -1310,7 +1289,7 @@ function V3Kite.plot_sphere_trajectory(
 
         # ENU frame, azimuth_east convention
         x = radius .* cos.(elevation) .* cos.(azimuth)
-        y = -radius .* cos.(elevation) .* sin.(azimuth)
+        y = radius .* cos.(elevation) .* sin.(azimuth)
         z = radius .* sin.(elevation)
 
         color = actual_colors[

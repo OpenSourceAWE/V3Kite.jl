@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
-    tube_linear_rigidities
+    tube_linear_rigidities, membrane_linear_rigidities, AeroSpec
 
 @testset "V3Kite.jl" begin
 
@@ -219,7 +219,7 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test !beam.geom.reduce_tip && !beam.geom.reduce_te
         @test beam.bridle.compression_frac == 0.0
         @test beam.init_mode == :settle
-        @test beam.aero_mode isa AeroPressure
+        @test beam.aero_mode isa AeroSpec{AeroPressure}
 
         # The settling schedule sets the transient, the kite file what flies.
         beam_settle = load_settle("system_beam.yaml"; kite_set=beam)
@@ -371,27 +371,71 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
     @testset "Wing Stations" begin
         config = V3Kite.V3SettleConfig()
         data_path = V3Kite.project_data_path(config.project, nothing)
-        sys, _ = V3Kite.build_settling_struct(config; data_path,
+        sys, _, _ = V3Kite.build_settling_struct(config; data_path,
             source_struc = V3Kite.struc_geometry_path(config.project; data_path),
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
-        @test length(sys.stations) == 10
-        @test length(sys.wings[1].station_idxs) == 10
-        @test length(wing_station_chords(sys)) == 10
-        span_y, twist = wing_twist_dist(sys)
+        @test length(sys.spanwise_stations) == 10
+        sam = SymbolicAWEModel(nothing, sys)
+        @test length(run_value(sam, :wings, 1, :station_idxs)) == 10
+        @test length(wing_station_chords(sam)) == 10
+        span_y, twist = wing_twist_dist(sam)
         @test length(span_y) == 10
         @test length(twist) == 10
     end
 
+    @testset "A Flight Data Row Places The Run At Its Elevation, Azimuth And Velocity" begin
+        config = V3Kite.V3SettleConfig()
+        data_path = V3Kite.project_data_path(config.project, nothing)
+        sys, transforms, set = V3Kite.build_settling_struct(config; data_path,
+            source_struc = V3Kite.struc_geometry_path(config.project; data_path),
+            source_aero = V3Kite.aero_geometry_path(config.project; data_path,
+                aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
+        sam = SymbolicAWEModel(set, sys; transforms)
+        anchor = run_value(sam, :points, transforms[1].base_point, :pos_w)
+        elevation, azimuth = deg2rad(55.0), deg2rad(25.0)
+        tether_length = norm(run_value(sam, :wings, 1, :pos_w) - anchor)
+        wing_pos = tether_length * [cos(elevation) * cos(azimuth),
+                                    -cos(elevation) * sin(azimuth), sin(elevation)]
+        row = (x=wing_pos[1], y=wing_pos[2], z=wing_pos[3], vx=1.0, vy=2.0, vz=3.0,
+               heading=0.4, steering=0.0, depower=0.2, wind_vec=[7.0, 0.0, 0.0])
+        update_sys_struct_from_data!(sam, row)
+        relative = run_value(sam, :wings, 1, :pos_w) - anchor
+        @test run_value(sam, :points, transforms[1].base_point, :pos_w) ≈ anchor
+        @test atan(relative[3], hypot(relative[1], relative[2])) ≈ elevation atol=1e-6
+        @test atan(-relative[2], relative[1]) ≈ azimuth atol=1e-6
+        @test run_value(sam, :bodies, 1, :vel_w) ≈ [1.0, 2.0, 3.0]
+        @test set.wind_vec == [7.0, 0.0, 0.0]
+    end
+
     @testset "Beam Wing Loads Its Tubes" begin
-        _, sys = create_v3_model("system_beam.yaml")
+        sam, sys = create_v3_model("system_beam.yaml")
         @test length(sys.tubes) == 21
-        @test count(point -> point.tube_idx != 0, sys.points) == 150
+        @test count(point -> !isnothing(point.tube), sys.points) == 150
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
         pressure_bar = V3BeamTopology().pressure_bar
-        @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
-            tube.diameter / 2, pressure_bar)[3], sys.tubes)
+        @test all(i -> run_value(sam, :tubes, i, :EIy) ≈ tube_linear_rigidities(
+            sys.tubes[i].diameter / 2, pressure_bar)[3], eachindex(sys.tubes))
+    end
+
+    @testset "Comer-Levy Bending Softens Each Beam Tube Past Wrinkling" begin
+        sys, _ = load_authoring(joinpath(v3_data_path(), "struc_geometry_beam.yaml");
+            name = "beam", set = Settings("system_beam.yaml"))
+        torsion = [tube.GJ for tube in sys.tubes]
+        radii = Dict(tube.name => tube.diameter / 2 for tube in sys.tubes)
+        topo = V3BeamTopology()
+        apply_comer_bending!(sys, radii, topo)
+        for (tube, GJ) in zip(sys.tubes, torsion)
+            radius = radii[tube.name]
+            membrane_stiffness =
+                V3Kite.SurfplanAdapter.resolve_membrane_stiffness(topo, radius)
+            EA, GA, EI0 = membrane_linear_rigidities(radius, membrane_stiffness)
+            @test (tube.EA, tube.GA, tube.GJ) == (EA, GA, GJ)
+            @test tube.EIy === tube.EIz
+            @test tube.EIy.EI0 ≈ EI0
+            @test tube.EIy(10 * tube.EIy.curvature_knee) < EI0
+        end
     end
 
     include("test_ripple_metrics.jl")

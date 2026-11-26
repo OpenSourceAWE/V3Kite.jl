@@ -77,21 +77,19 @@ function ramp_factor(t, t_start, t_end)
 end
 
 """
-    init_winch_torque!(sys) -> initial_torque
+    init_winch_torque!(sam) -> initial_torque
 
-Initialize winch torque from current tether force.
-Sets `winch.set_value` and returns the computed torque.
+Initialize the first winch's torque of the run `sam` from its current tether force,
+as its `set_value`, and return it.
 """
-function init_winch_torque!(sys)
-    winch = sys.winches[1]
-    initial_force = norm(winch.force)
-    torque = force_to_torque(initial_force, sys)
-    winch.set_value = torque
+function init_winch_torque!(sam)
+    torque = force_to_torque(norm(run_value(sam, :winches, 1, :force)), sam)
+    set_run_value!(sam, :winches, 1, :set_value, torque)
     return torque
 end
 
 """
-    force_to_torque(force, sys; ff_scale=1.0) -> torque
+    force_to_torque(force, sam; ff_scale=1.0) -> torque
 
 Convert tether force [N] to winch torque [N·m].
 Uses `τ = -ff_scale * r/G * F + friction` from the first winch.
@@ -102,10 +100,9 @@ torque and is not part of the load being held, and `winch.friction` flips sign
 with the reel-out direction — scaling it would make the intended compliance
 direction- and speed-dependent instead of a plain fraction of the tether force.
 """
-function force_to_torque(force, sys; ff_scale=1.0)
-    winch = sys.winches[1]
-    return -ff_scale * winch.drum_radius / winch.gear_ratio * force +
-        winch.friction
+function force_to_torque(force, sam; ff_scale=1.0)
+    winch(quantity) = run_value(sam, :winches, 1, quantity)
+    return -ff_scale * winch(:drum_radius) / winch(:gear_ratio) * force + winch(:friction)
 end
 
 """
@@ -132,28 +129,27 @@ Wing drag force [N]: VSM aero drag plus parasitic drag
 from the wing nodes.
 """
 function compute_drag(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    va_b = wing.va_b
+    va_b = run_value(sam, :wings, 1, :va_b)
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
     va_hat_b = va_b / v_app
 
     # VSM drag component (body frame → scalar)
-    vsm_drag = dot(wing.aero_force_b, va_hat_b)
+    vsm_drag = dot(run_value(sam, :wings, 1, :aero_force_b), va_hat_b)
 
-    # Parasitic drag from wing points (world frame)
-    parasitic_w = zeros(3)
-    for p in sys.points
-        p.is_wing_node || continue
-        parasitic_w .+= p.drag_force
-    end
-    R_b_w = calc_R_b_w(sys)
-    va_hat_w = R_b_w * va_hat_b
-    parasitic_drag = dot(parasitic_w, va_hat_w)
-
-    return vsm_drag + parasitic_drag
+    wing_points = filter(i -> run_value(sam, :points, i, :is_wing_node),
+                         eachindex(sam.definition.points))
+    va_hat_w = calc_R_b_w(sam) * va_hat_b
+    return vsm_drag + dot(point_drag(sam, wing_points), va_hat_w)
 end
+
+"""
+    point_drag(sam, idxs) -> Vector{Float64}
+
+Sum of the parasitic drag forces [N] of the points `idxs` of the run `sam`, world frame.
+"""
+point_drag(sam, idxs) =
+    sum((run_value(sam, :points, i, :drag_force) for i in idxs); init=zeros(3))
 
 """
     compute_drag_coeff(sam) -> Float64
@@ -163,9 +159,8 @@ from the wing nodes. Together with tether, bridle, and
 KCU drag coefficients, the four sum to the total CD.
 """
 function compute_drag_coeff(sam)
-    wing = sam.sys_struct.wings[1]
-    norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = drag_coeff_ref(wing)
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return 0.0
+    _, q_ref = drag_coeff_ref(sam)
     return compute_drag(sam) / q_ref
 end
 
@@ -176,13 +171,12 @@ Compute lift force [N] from the first wing's aero force
 component perpendicular to the apparent wind direction.
 """
 function compute_lift(sam)
-    wing = sam.sys_struct.wings[1]
-    va_b = wing.va_b
+    va_b = run_value(sam, :wings, 1, :va_b)
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
     va_hat = va_b / v_app
-    lift_vec = wing.aero_force_b - dot(wing.aero_force_b, va_hat) * va_hat
-    return norm(lift_vec)
+    aero_force_b = run_value(sam, :wings, 1, :aero_force_b)
+    return norm(aero_force_b - dot(aero_force_b, va_hat) * va_hat)
 end
 
 """
@@ -196,21 +190,13 @@ wing drag from `compute_drag`, this gives the total system
 drag (see `total_drag`).
 """
 function compute_tether_drag(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    va_b = wing.va_b
+    va_b = run_value(sam, :wings, 1, :va_b)
     v_app = norm(va_b)
     v_app < 1e-6 && return 0.0
-    va_hat_b = va_b / v_app
-    R_b_w = calc_R_b_w(sys)
-    va_hat_w = R_b_w * va_hat_b
-
-    drag_w = zeros(3)
-    for p in sys.points
-        p.is_wing_node && continue
-        drag_w .+= p.drag_force
-    end
-    return dot(drag_w, va_hat_w)
+    va_hat_w = calc_R_b_w(sam) * (va_b / v_app)
+    other_points = filter(i -> !run_value(sam, :points, i, :is_wing_node),
+                          eachindex(sam.definition.points))
+    return dot(point_drag(sam, other_points), va_hat_w)
 end
 
 """
@@ -221,9 +207,8 @@ component perpendicular to the apparent wind direction,
 normalized by `q_inf * A_proj`. Uses `rho = 1.225 kg/m³`.
 """
 function compute_lift_coeff(sam)
-    wing = sam.sys_struct.wings[1]
-    norm(wing.va_b) < 1e-6 && return 0.0
-    _, q_ref = drag_coeff_ref(wing)
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return 0.0
+    _, q_ref = drag_coeff_ref(sam)
     return compute_lift(sam) / q_ref
 end
 
@@ -263,44 +248,37 @@ Returns `Inf` when there is no apparent wind at all, so every ratio
 formed against it is `NaN`.
 """
 function drag_floor(sam; cd_min = LD_CD_MIN)
-    wing = sam.sys_struct.wings[1]
-    norm(wing.va_b) < 1e-6 && return Inf
-    _, q_ref = drag_coeff_ref(wing)
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return Inf
+    _, q_ref = drag_coeff_ref(sam)
     return cd_min * q_ref
 end
 
 """
-    drag_coeff_ref(wing) -> (va_hat_b, q_ref)
+    drag_coeff_ref(sam) -> (va_hat_b, q_ref)
 
-Common reference quantities for drag coefficient functions:
+Common reference quantities for drag coefficient functions of the first wing:
 apparent-wind unit vector (body frame) and dynamic pressure
 times projected area.
 """
-function drag_coeff_ref(wing)
-    va_b = wing.va_b
+function drag_coeff_ref(sam)
+    va_b = run_value(sam, :wings, 1, :va_b)
     v_app = norm(va_b)
     va_hat_b = va_b / v_app
-    A_proj = calculate_projected_area(wing.vsm_wing)
+    A_proj = calculate_projected_area(sam.aero[1].vsm_wing)
     q_ref = 0.5 * RHO_SL * v_app^2 * A_proj
     return va_hat_b, q_ref
 end
 
 """
-    point_drag_cd(sys, wing, idxs) -> Float64
+    point_drag_cd(sam, idxs) -> Float64
 
-Sum `point.drag_force` for points whose index is in `idxs`,
-project onto kite apparent wind, normalize by `q * A_proj`.
+Sum the drag forces of the points `idxs`, project onto kite apparent wind,
+normalize by `q * A_proj`.
 """
-function point_drag_cd(sys, wing, idxs)
-    va_hat_b, q_ref = drag_coeff_ref(wing)
-    drag_w = zeros(3)
-    for p in sys.points
-        p.idx in idxs || continue
-        drag_w .+= p.drag_force
-    end
-    R_b_w = calc_R_b_w(sys)
-    va_hat_w = R_b_w * va_hat_b
-    return dot(drag_w, va_hat_w) / q_ref
+function point_drag_cd(sam, idxs)
+    va_hat_b, q_ref = drag_coeff_ref(sam)
+    va_hat_w = calc_R_b_w(sam) * va_hat_b
+    return dot(point_drag(sam, idxs), va_hat_w) / q_ref
 end
 
 """
@@ -311,11 +289,8 @@ projected onto the kite apparent wind and normalized by
 `q * A_proj`.
 """
 function compute_tether_drag_coeff(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    norm(wing.va_b) < 1e-6 && return 0.0
-    return point_drag_cd(sys, wing,
-        Set(tether_point_idxs(sys)))
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return 0.0
+    return point_drag_cd(sam, tether_point_idxs(sam.definition))
 end
 
 """
@@ -326,18 +301,12 @@ points (excluding KCU / point 1), normalized by
 `q * A_proj`.
 """
 function compute_bridle_drag_coeff(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    norm(wing.va_b) < 1e-6 && return 0.0
-    tether_pts = Set(tether_point_idxs(sys))
-    bridle_idxs = Set{Int}()
-    for p in sys.points
-        p.idx in tether_pts && continue
-        p.is_wing_node && continue
-        p.idx == 1 && continue  # KCU
-        push!(bridle_idxs, p.idx)
-    end
-    return point_drag_cd(sys, wing, bridle_idxs)
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return 0.0
+    tether_pts = Set(tether_point_idxs(sam.definition))
+    bridle_idxs = [i for i in eachindex(sam.definition.points)
+                   if i != 1 && !(i in tether_pts) &&  # 1 is the KCU
+                      !run_value(sam, :points, i, :is_wing_node)]
+    return point_drag_cd(sam, bridle_idxs)
 end
 
 """
@@ -347,10 +316,8 @@ KCU drag coefficient from point 1's drag force,
 normalized by `q * A_proj`.
 """
 function compute_kcu_drag_coeff(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    norm(wing.va_b) < 1e-6 && return 0.0
-    return point_drag_cd(sys, wing, Set([1]))
+    norm(run_value(sam, :wings, 1, :va_b)) < 1e-6 && return 0.0
+    return point_drag_cd(sam, (1,))
 end
 
 """
@@ -360,8 +327,7 @@ Mean force of trailing-edge-connected segments (indices
 3, 5, 7, …, 21).
 """
 function mean_te_segment_force(sam)
-    return mean(sam.sys_struct.segments[i].force
-                for i in 3:2:21)
+    return mean(run_value(sam, :segments, i, :force) for i in 3:2:21)
 end
 
 """
@@ -379,16 +345,13 @@ function chord_ref_mid(le_3, te_3, le_4, te_4;
 end
 
 """
-    chord_ref_mid(sys; frac=0.3)
+    chord_ref_mid(sam; frac=0.3)
 
-Chord reference point from sys_struct points 10-13.
+Chord reference point from points 10-13 of the run `sam`.
 """
-function chord_ref_mid(sys; frac=0.3)
-    return chord_ref_mid(
-        sys.points[10].pos_w,
-        sys.points[11].pos_w,
-        sys.points[12].pos_w,
-        sys.points[13].pos_w; frac)
+function chord_ref_mid(sam; frac=0.3)
+    pos(i) = run_value(sam, :points, i, :pos_w)
+    return chord_ref_mid(pos(10), pos(11), pos(12), pos(13); frac)
 end
 
 """
@@ -404,45 +367,40 @@ function compute_kite_aoa(R_b_w, kite_vel, wind_vec)
 end
 
 """
-    compute_kite_aoa(sys) -> Float64
+    compute_kite_aoa(sam) -> Float64
 
-Convenience wrapper extracting R_b_w and apparent wind
-from the system structure.
+Convenience wrapper reading the apparent wind of the run `sam`.
 """
-function compute_kite_aoa(sys)
-    R_b_w = calc_R_b_w(sys)
-    v_app_b = sys.wings[1].va_b
+function compute_kite_aoa(sam)
+    v_app_b = run_value(sam, :wings, 1, :va_b)
     return atan(v_app_b[3], v_app_b[1])
 end
 
 """
-    compute_wing_incidence(sys) -> Float64
+    compute_wing_incidence(sam) -> Float64
 
 AoA of the apparent wind relative to the mid-chord
 direction. Uses the average chord (LE→TE of struts 3 & 4)
 as x-axis with the body spanwise y-axis to form the
 reference frame.
 """
-function compute_wing_incidence(sys)
-    le_3 = sys.points[10].pos_w
-    te_3 = sys.points[11].pos_w
-    le_4 = sys.points[12].pos_w
-    te_4 = sys.points[13].pos_w
-    R_b_w = calc_R_b_w(sys)
+function compute_wing_incidence(sam)
+    pos(i) = run_value(sam, :points, i, :pos_w)
+    le_3, te_3, le_4, te_4 = pos(10), pos(11), pos(12), pos(13)
+    R_b_w = calc_R_b_w(sam)
     y_body = R_b_w[:, 2]
     chord_w = normalize(
         normalize(te_3 - le_3) +
         normalize(te_4 - le_4))
     z_chord = normalize(cross(chord_w, y_body))
-    wing = sys.wings[1]
-    v_app_w = R_b_w * wing.va_b
+    v_app_w = R_b_w * run_value(sam, :wings, 1, :va_b)
     return atan(
         dot(v_app_w, z_chord),
         dot(v_app_w, chord_w))
 end
 
 """
-    span_mean_aoa(sys) -> Float64
+    span_mean_aoa(sam) -> Float64
 
 Span-averaged geometric angle of attack of the wing [rad], the mean of the
 VSM's per-panel `alpha_geometric_dist`.
@@ -455,10 +413,8 @@ Panels the VSM logs as `NaN` (local velocity too small) are skipped, so the
 result is `NaN` only if every panel is. Returns `NaN` for a wing without a VSM
 solver; see [`compute_wing_incidence`](@ref) for a geometric alternative.
 """
-function span_mean_aoa(sys)
-    wing = sys.wings[1]
-    # The engine hangs off the aero mode; `hasproperty(wing, ...)` misses the forwarding.
-    engine = SymbolicAWEModels.vsm_engine(wing.aero)
+function span_mean_aoa(sam)
+    engine = SymbolicAWEModels.vsm_engine(sam.aero[1])
     isnothing(engine) && return NaN
     alphas = engine.vsm_solver.sol.alpha_geometric_dist
     # The VSM returns some panels as `pi + atan(...)`; wrap as update_sys_state! does.
@@ -473,7 +429,7 @@ function span_mean_aoa(sys)
 end
 
 """
-    wing_station_chords(sys, wing=sys.wings[1]) -> Vector{NamedTuple}
+    wing_station_chords(sam, wing_idx=1) -> Vector{NamedTuple}
 
 Every station's `(y, le, te)` — span position [m] and body-frame leading/
 trailing edge position — sorted from the `-y` tip outboard.
@@ -482,39 +438,32 @@ The edges are the station's extreme points in chordwise CAD x, which is the rule
 SymbolicAWEModels itself maps aero sections onto. Pairing wing nodes off by
 index instead only works on the lattice: a beam station carries eleven chordwise
 control points that are wing nodes too.
-
-Positions are derived from live `pos_w` here rather than read from `point.pos_b`,
-which holds the *undeformed* geometry: the equations take it as the parameter
-that `twist_deformed_offset` rotates by the live twist angle, so writing the
-deformed positions back into it would twist an already-twisted station on the
-next model build.
 """
-function wing_station_chords(sys, wing=sys.wings[1])
-    R_w_b = calc_R_b_w(sys)'
-    origin = isnothing(wing.origin) ? Vector(wing.pos_w) :
-        SymbolicAWEModels.get_ref_position_from_points(sys.points, wing.origin)
-    body_pos(point) = R_w_b * (point.pos_w - origin)
+function wing_station_chords(sam, wing_idx=1)
+    positions = SymbolicAWEModels.run_positions(sam)
+    R_w_b, origin = KiteGeometry.wing_frame(positions,
+                                            SymbolicAWEModels.wing_frame(sam, wing_idx))
+    body_pos(i) = R_w_b' * (positions[i] - origin)
     stations = NamedTuple[]
-    for station_idx in wing.station_idxs
-        idxs = sys.stations[station_idx].point_idxs
+    for station_idx in run_value(sam, :wings, wing_idx, :station_idxs)
+        idxs = sam.definition.spanwise_stations[station_idx].points
         length(idxs) < 2 && continue
-        station = [sys.points[i] for i in idxs]
-        le = body_pos(argmin(p -> body_pos(p)[1], station))
-        te = body_pos(argmax(p -> body_pos(p)[1], station))
+        le = body_pos(argmin(i -> body_pos(i)[1], idxs))
+        te = body_pos(argmax(i -> body_pos(i)[1], idxs))
         push!(stations, (y=(le[2] + te[2]) / 2, le=le, te=te))
     end
     return sort!(stations, by=station -> station.y)
 end
 
 """
-    wing_twist_dist(sys, wing=sys.wings[1]) -> (span_y, twist)
+    wing_twist_dist(sam, wing_idx=1) -> (span_y, twist)
 
 Span position [m] and local twist [rad] of every wing station, outboard from the
 `-y` tip. A station's twist is the angle of its chord off the body x axis in the
 plane normal to the local spanwise direction.
 """
-function wing_twist_dist(sys, wing=sys.wings[1])
-    stations = wing_station_chords(sys, wing)
+function wing_twist_dist(sam, wing_idx=1)
+    stations = wing_station_chords(sam, wing_idx)
     n = length(stations)
     n < 2 && return (Float64[], Float64[])
     body_x = [1.0, 0.0, 0.0]
@@ -530,15 +479,15 @@ function wing_twist_dist(sys, wing=sys.wings[1])
 end
 
 """
-    differential_twist(sys, wing=sys.wings[1]) -> Float64
+    differential_twist(sam, wing_idx=1) -> Float64
 
 Mean station twist of the `+y` wing half less that of the `-y` half [rad]: the
 antisymmetric part of the twist distribution, which is what a bridle-steered
 wing turns on. Symmetric deformation gives zero however much overall twist it
 carries, so this separates steering from depower. `NaN` when a half is empty.
 """
-function differential_twist(sys, wing=sys.wings[1])
-    span_y, twist = wing_twist_dist(sys, wing)
+function differential_twist(sam, wing_idx=1)
+    span_y, twist = wing_twist_dist(sam, wing_idx)
     right = [t for (y, t) in zip(span_y, twist) if y > 0]
     left = [t for (y, t) in zip(span_y, twist) if y < 0]
     (isempty(right) || isempty(left)) && return NaN
@@ -546,7 +495,7 @@ function differential_twist(sys, wing=sys.wings[1])
 end
 
 """
-    aero_moment_z(sys, wing=sys.wings[1]) -> Float64
+    aero_moment_z(sam, wing_idx=1) -> Float64
 
 Yaw moment [N·m] of the wing's VSM solution, the z component of its aerodynamic
 moment about the VSM reference point. Read together with
@@ -556,13 +505,14 @@ Under `AeroPressure` the loads the structure feels come from the pressure
 integration rather than from this solution, so it is the aero moment of the same
 deformed geometry, not the applied one. `NaN` without a VSM solver.
 """
-function aero_moment_z(sys, wing=sys.wings[1])
-    wing.aero isa SymbolicAWEModels.AbstractVSMAero || return NaN
-    return wing.vsm_solver.sol.moment[3]
+function aero_moment_z(sam, wing_idx=1)
+    aero = sam.aero[wing_idx]
+    aero isa SymbolicAWEModels.AbstractVSMAero || return NaN
+    return aero.vsm_solver.sol.moment[3]
 end
 
 """
-    compute_bridle_euler(sys) -> (yaw, pitch, roll)
+    compute_bridle_euler(sam) -> (yaw, pitch, roll)
 
 Compute NED Euler angles (ZYX convention) of the bridle
 reference frame. This is the inverse of `euler_to_quaternion`
@@ -573,10 +523,10 @@ ZYX Euler angles.
 The bridle z-axis points downward (wing → KCU) to match
 the NED body-frame z-down convention used by the EKF.
 """
-function compute_bridle_euler(sys)
-    mid_w = chord_ref_mid(sys)
-    z_br = normalize(sys.points[1].pos_w - mid_w)
-    R_b_w = calc_R_b_w(sys)
+function compute_bridle_euler(sam)
+    mid_w = chord_ref_mid(sam)
+    z_br = normalize(run_value(sam, :points, 1, :pos_w) - mid_w)
+    R_b_w = calc_R_b_w(sam)
     y_br = R_b_w[:, 2]
     x_br = normalize(cross(y_br, z_br))
     R_br_w = hcat(x_br, y_br, z_br)
@@ -588,8 +538,8 @@ function compute_bridle_euler(sys)
 end
 
 """
-    compute_bridle_pitch_angle(sys) -> Float64
-    compute_bridle_pitch_angle(sys, R_b_w) -> Float64
+    compute_bridle_pitch_angle(sam) -> Float64
+    compute_bridle_pitch_angle(sam, R_b_w) -> Float64
 
 Angle between tether direction (ground → KCU) and bridle
 direction (KCU → 30%-chord midpoint), projected into
@@ -598,15 +548,15 @@ the body xz plane. Positive when the bridle pitches forward
 
 The two-argument form allows passing an explicit `R_b_w`
 (e.g. built from EKF Euler angles) instead of deriving it
-from the sys_struct geometry.
+from the run `sam`.
 """
-function compute_bridle_pitch_angle(sys)
-    return compute_bridle_pitch_angle(sys, calc_R_b_w(sys))
+function compute_bridle_pitch_angle(sam)
+    return compute_bridle_pitch_angle(sam, calc_R_b_w(sam))
 end
 
-function compute_bridle_pitch_angle(sys, R_b_w)
-    kcu_w = sys.points[1].pos_w
-    qc_w = chord_ref_mid(sys)
+function compute_bridle_pitch_angle(sam, R_b_w)
+    kcu_w = run_value(sam, :points, 1, :pos_w)
+    qc_w = chord_ref_mid(sam)
     v_tether_w = normalize(kcu_w)
     v_bridle_w = normalize(qc_w - kcu_w)
     R_w_b = R_b_w'
@@ -625,15 +575,13 @@ the force-magnitude-weighted average of `pos_b[1]` for wing
 points 2:21.
 """
 function compute_cop_x(sam)
-    sys = sam.sys_struct
-    wing = sys.wings[1]
-    R_w_b = calc_R_b_w(sys)'
+    R_w_b = calc_R_b_w(sam)'
+    wing_pos = run_value(sam, :wings, 1, :pos_w)
     total_force = 0.0
     weighted_x = 0.0
     for i in 2:21
-        p = sys.points[i]
-        f = norm(p.aero_force_b)
-        pos_b = R_w_b * (p.pos_w - wing.pos_w)
+        f = norm(run_value(sam, :points, i, :aero_force_b))
+        pos_b = R_w_b * (run_value(sam, :points, i, :pos_w) - wing_pos)
         weighted_x += pos_b[1] * f
         total_force += f
     end
@@ -676,18 +624,16 @@ function log_state!(logger, sys_state, sam, t;
     sys_state.var_01 = compute_drag_coeff(sam)
     sys_state.var_02 = compute_lift_coeff(sam)
     sys_state.var_03 = mean_te_segment_force(sam)
-    sys_state.var_04 = compute_kite_aoa(sam.sys_struct)
-    yaw, pitch, roll = compute_bridle_euler(sam.sys_struct)
+    sys_state.var_04 = compute_kite_aoa(sam)
+    yaw, pitch, roll = compute_bridle_euler(sam)
     sys_state.var_05 = yaw
     sys_state.var_06 = pitch
     sys_state.var_07 = roll
-    sys_state.var_08 = compute_bridle_pitch_angle(
-        sam.sys_struct)
+    sys_state.var_08 = compute_bridle_pitch_angle(sam)
     sys_state.var_09 = compute_tether_drag_coeff(sam)
     sys_state.var_10 = compute_bridle_drag_coeff(sam)
     sys_state.var_11 = compute_kcu_drag_coeff(sam)
-    sys_state.var_12 = compute_wing_incidence(
-        sam.sys_struct)
+    sys_state.var_12 = compute_wing_incidence(sam)
     sys_state.var_13 = compute_cop_x(sam)
     if steering !== nothing
         sys_state.steering = steering
@@ -805,7 +751,7 @@ end
     build_replay_sys_struct(set, kite_set, source_struc,
         vsm_set) -> (sam, sys_struct)
 
-Build a fresh `SymbolicAWEModel` and `SystemStructure`
+Build a fresh `SymbolicAWEModel` and `SystemDefinition`
 without running settling — load the YAML, apply geometry
 adjustments, place it at `set.l_tether`, and call `init!`.
 The `settle: false` path of `flight_replay.jl`, and what
@@ -814,13 +760,10 @@ the model is built from comes from `kite_set`, so a plot cannot
 be drawn against a different one than the replay flew.
 """
 function build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
-    sys = load_sys_struct_from_yaml(source_struc;
-        system_name=v3_model_name(kite_set), set,
-        dynamics_type=kite_set.wing_type, vsm_set,
-        aero_mode=resolve_aero_mode(kite_set))
-    sam = SymbolicAWEModel(set, sys; backend=kite_set.backend)
+    sys, transforms = load_v3_authoring(source_struc, kite_set; set)
     apply_geom_adjustments!(sys, kite_set.geom)
-    place_at_tether_length!(sys, set.l_tether)
+    place_at_tether_length!(sys, transforms, set.l_tether)
+    sam = v3_model(set, sys, kite_set; transforms, vsm_set)
     # Cache the model binary, not `data_path`; see `with_model_cache`.
     with_model_cache(default_cache_path()) do
         SymbolicAWEModels.init!(sam;
