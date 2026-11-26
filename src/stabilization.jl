@@ -256,7 +256,7 @@ reinit_integrator!(sam; prn=true, lin_vsm=true) =
 """
     start_from_state!(sam, path) -> Bool
 
-Restore the state logged at `path` onto `sam`'s state and push it onto its
+Restore the state logged at `path` onto the run `sam` and push it onto its
 integrator, so a run starts where that log left off. Returns `false` when the log
 is missing or unreadable.
 
@@ -265,7 +265,7 @@ Call after `init!`, which builds the integrator the restored state is pushed ont
 function start_from_state!(sam, path)
     state = read_state_log(path)
     isnothing(state) && return false
-    update_from_sysstate!(sam.state, state)
+    update_from_sysstate!(sam, state)
     reinit_integrator!(sam)
     return true
 end
@@ -337,17 +337,17 @@ apply_settled_damping!(sys, config::V3SettleConfig) = apply_decayed_damping!(
     sys, config, max(0.0, 1.0 - config.num_steps / config.decay_steps))
 
 """
-    apply_settled_state!(state, config, path) -> Bool
+    apply_settled_state!(sam, config, path) -> Bool
 
-Restore the settled state at `path` into the run state `state` and re-apply the
-settled damping to its structure. Returns `false` when the file is missing or
+Restore the settled state at `path` into the run `sam` and re-apply the settled
+damping to its definition. Returns `false` when the file is missing or
 unreadable, so the caller can fall back to the source geometry rather than crash.
 """
-function apply_settled_state!(state, config::V3SettleConfig, path)
+function apply_settled_state!(sam, config::V3SettleConfig, path)
     settled = read_state_log(path)
     isnothing(settled) && return false
-    update_from_sysstate!(state, settled)
-    apply_settled_damping!(state.structure, config)
+    update_from_sysstate!(sam, settled)
+    apply_settled_damping!(sam.definition, config)
     return true
 end
 
@@ -369,29 +369,33 @@ function load_settled_struct(config::V3SettleConfig, init_row;
         source_struc = struc_geometry_path(config.project; data_path),
         source_aero = aero_geometry_path(config.project; data_path,
             aero_mode = resolve_aero_mode(config.kite_set)))
-    state = SystemState(sys; set, transforms, vsm_set)
-    apply_settled_state!(state, config, path) ||
+    sam = v3_model(set, sys, config.kite_set; transforms, vsm_set)
+    apply_settled_state!(sam, config, path) ||
         error("No settled state at $path; run settle_wing first")
-    set_design_pose!(sys, state)
+    set_design_pose!(sam)
     return sys, transforms
 end
 
 """
-    set_design_pose!(sys::SystemDefinition, state::SystemState)
+    set_design_pose!(sam::SymbolicAWEModel)
 
-Write the pose of `state` into the rows of `sys`: each point's position, and each body's
-centre of mass and frame, so a model built from `sys` starts in that pose.
+Write the pose the run `sam` stands in into the rows of its definition: each point's
+position, and each body's own centre of mass and frame, so a model built from the
+definition starts in that pose.
 """
-function set_design_pose!(sys::SystemDefinition, state::SystemState)
-    design = Pose(sys)
-    for (idx, point) in enumerate(state.points)
-        design.pos[idx] = point.pos_w
+function set_design_pose!(sam::SymbolicAWEModel)
+    pose = Pose(sam)
+    bodies = eachindex(sam.definition.bodies)
+    own_com_b = [run_value(sam, :bodies, b, :extra_com_offset_b) for b in bodies]
+    design = Pose(sam.definition)
+    for (idx, pos) in enumerate(pose.pos)
+        design.pos[idx] = pos
     end
-    for (idx, body) in enumerate(state.bodies)
-        design.body_pos[idx] = body.com_w
-        design.body_R[idx] = body.R_b_to_w
+    for b in bodies
+        design.body_pos[b] = pose.body_pos[b] + pose.body_R[b] * own_com_b[b]
+        design.body_R[b] = pose.body_R[b]
     end
-    return sys
+    return sam
 end
 
 """
@@ -483,53 +487,57 @@ Base.@kwdef mutable struct V3RelaxConfig
 end
 
 """
-    segment_stiffness_baseline(sys) -> (unit_stiffness, unit_damping)
+    segment_stiffness_baseline(sam) -> (unit_stiffness, unit_damping)
 
-Every segment's stiffness and damping, captured before a relaxation scales them.
-Errors on a callable force law, which has no scalar to scale.
+Every segment's stiffness and damping in the run `sam`, captured before a relaxation
+scales them. Errors on a callable force law, which has no scalar to scale.
 """
-function segment_stiffness_baseline(sys)
-    stiffness = [segment.unit_stiffness for segment in sys.segments]
+function segment_stiffness_baseline(sam)
+    segments = eachindex(sam.definition.segments)
+    stiffness = [run_value(sam, :segments, i, :unit_stiffness) for i in segments]
     all(value -> value isa Real, stiffness) || error(
         "relax_bridle!: a segment carries a callable unit_stiffness, which " *
         "cannot be scaled; relax the geometry with linear springs instead.")
-    return stiffness, [segment.unit_damping for segment in sys.segments]
+    return stiffness, [run_value(sam, :segments, i, :unit_damping) for i in segments]
 end
 
 """
-    scale_segment_stiffness!(sys, baseline, scale)
+    scale_segment_stiffness!(sam, baseline, scale)
 
-Set every segment's stiffness and damping to `scale` times its baseline.
+Set every segment's stiffness and damping in the run `sam` to `scale` times its
+baseline.
 """
-function scale_segment_stiffness!(sys, baseline, scale)
+function scale_segment_stiffness!(sam, baseline, scale)
     stiffness, damping = baseline
-    for (idx, segment) in enumerate(sys.segments)
-        segment.unit_stiffness = stiffness[idx] * scale
-        segment.unit_damping = damping[idx] * scale
+    for i in eachindex(stiffness)
+        set_run_value!(sam, :segments, i, :unit_stiffness, stiffness[i] * scale)
+        set_run_value!(sam, :segments, i, :unit_damping, damping[i] * scale)
     end
     return nothing
 end
 
 """
-    damping_snapshot(components) -> Vector{Tuple}
+    damping_snapshot(sam, collection) -> Vector{Tuple}
 
-Copy the world- and body-frame damping of every point or body, so a relaxation
-can hand them back when it is done.
+The world- and body-frame damping of every point or body (`collection` `:points` or
+`:bodies`) of the run `sam`, so a relaxation can hand them back when it is done.
 """
-damping_snapshot(components) =
-    [(copy(item.world_frame_damping), copy(item.body_frame_damping))
-     for item in components]
+damping_snapshot(sam, collection) =
+    [(run_value(sam, collection, i, :world_frame_damping),
+      run_value(sam, collection, i, :body_frame_damping))
+     for i in eachindex(getproperty(sam.definition, collection))]
 
 """
-    raise_damping!(components, saved, world, body)
+    raise_damping!(sam, collection, saved, world, body)
 
-Hold every component's damping at `world`/`body`, or at the value it started
-with where that is already larger. `world`/`body` at zero restores the snapshot.
+Hold the damping of every point or body of the run `sam` at `world`/`body`, or at
+the value it started with where that is already larger. `world`/`body` at zero
+restores the snapshot.
 """
-function raise_damping!(components, saved, world, body)
-    for (idx, item) in enumerate(components)
-        item.world_frame_damping .= max.(saved[idx][1], world)
-        item.body_frame_damping .= max.(saved[idx][2], body)
+function raise_damping!(sam, collection, saved, world, body)
+    for (i, (saved_world, saved_body)) in enumerate(saved)
+        set_run_value!(sam, collection, i, :world_frame_damping, max.(saved_world, world))
+        set_run_value!(sam, collection, i, :body_frame_damping, max.(saved_body, body))
     end
     return nothing
 end
@@ -548,7 +556,7 @@ function relax_residual(sam)
 end
 
 """
-    relax_bridle!(sam, sys, config=V3RelaxConfig(); prn=true)
+    relax_bridle!(sam, config=V3RelaxConfig(); prn=true)
         -> (reached_scale, steps, residual)
 
 Settle a geometry whose bridle rest lengths disagree with its node positions,
@@ -570,17 +578,15 @@ nothing else damps. Both decay away over the hold phase before returning.
 Call after `init!`. Returns the scale actually reached (1.0 on success), the
 number of steps taken and the final residual.
 """
-function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
-                       prn::Bool=true)
-    baseline = segment_stiffness_baseline(sys)
-    saved_points = damping_snapshot(sys.points)
-    saved_bodies = damping_snapshot(sys.bodies)
-    raise_damping!(sys.points, saved_points, config.world_damping, 0.0)
-    raise_damping!(sys.bodies, saved_bodies, config.body_damping,
-        config.body_damping)
+function relax_bridle!(sam, config::V3RelaxConfig=V3RelaxConfig(); prn::Bool=true)
+    baseline = segment_stiffness_baseline(sam)
+    saved_points = damping_snapshot(sam, :points)
+    saved_bodies = damping_snapshot(sam, :bodies)
+    raise_damping!(sam, :points, saved_points, config.world_damping, 0.0)
+    raise_damping!(sam, :bodies, saved_bodies, config.body_damping, config.body_damping)
 
     scale = config.start_scale
-    scale_segment_stiffness!(sys, baseline, scale)
+    scale_segment_stiffness!(sam, baseline, scale)
     steps = 0
     residual = NaN
     while scale < 1.0 && steps < config.max_steps
@@ -596,16 +602,15 @@ function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
             @info "relax_bridle! ramping" steps scale residual
         residual < config.settled_tol || continue
         scale = min(1.0, scale * config.growth)
-        scale_segment_stiffness!(sys, baseline, scale)
+        scale_segment_stiffness!(sam, baseline, scale)
     end
 
-    scale_segment_stiffness!(sys, baseline, 1.0)
+    scale_segment_stiffness!(sam, baseline, 1.0)
     if scale >= 1.0
         for hold in 1:config.hold_steps
             decay = 1.0 - hold / config.hold_steps
-            raise_damping!(sys.points, saved_points,
-                config.world_damping * decay, 0.0)
-            raise_damping!(sys.bodies, saved_bodies,
+            raise_damping!(sam, :points, saved_points, config.world_damping * decay, 0.0)
+            raise_damping!(sam, :bodies, saved_bodies,
                 config.body_damping * decay, config.body_damping * decay)
             try
                 next_step!(sam; dt=config.dt,
@@ -619,8 +624,8 @@ function relax_bridle!(sam, sys, config::V3RelaxConfig=V3RelaxConfig();
                 @info "relax_bridle! holding" hold residual=relax_residual(sam)
         end
     end
-    raise_damping!(sys.points, saved_points, 0.0, 0.0)
-    raise_damping!(sys.bodies, saved_bodies, 0.0, 0.0)
+    raise_damping!(sam, :points, saved_points, 0.0, 0.0)
+    raise_damping!(sam, :bodies, saved_bodies, 0.0, 0.0)
     residual = relax_residual(sam)
     prn && @info "Bridle relaxed" scale steps residual
     return scale, steps, residual
@@ -775,21 +780,16 @@ function settle_wing(config::V3SettleConfig, init_row;
         # Tape rest lengths are parameters, not state, so the log does not carry
         # them; the rebuilt structure needs them applied as settling did.
         apply_geom_adjustments!(sys, gc)
-        sam = SymbolicAWEModel(set, sys; transforms, vsm_set,
-                               backend = config.kite_set.backend)
-        apply_settled_state!(sam.state, config, dest_struc) || (sam = nothing)
+        sam = v3_model(set, sys, config.kite_set; transforms, vsm_set)
+        apply_settled_state!(sam, config, dest_struc) || (sam = nothing)
     end
 
     if isnothing(sam)
         @info "Loading source geometry" source_struc
-        sys, transforms = load_sys_struct_from_yaml(source_struc;
-            system_name=v3_model_name(config.kite_set), set,
-            dynamics_type=config.kite_set.wing_type,
-            aero_mode=resolve_aero_mode(config.kite_set))
+        sys, transforms = load_v3_authoring(source_struc, config.kite_set; set)
         place_at_tether_length!(sys, transforms, set.l_tether)
-        sam = SymbolicAWEModel(set, sys; transforms,
-            vsm_set=v3_vsm_settings(config.project, source_aero; data_path),
-            backend = config.kite_set.backend)
+        sam = v3_model(set, sys, config.kite_set; transforms,
+            vsm_set=v3_vsm_settings(config.project, source_aero; data_path))
     end
 
     with_model_cache(cache_path) do
@@ -823,10 +823,7 @@ function build_settling_struct(config::V3SettleConfig;
     set.l_tether = config.tether_length
     # profile_law is taken from sim_settings_default.yaml (loaded via Settings above).
 
-    sys, transforms = load_sys_struct_from_yaml(source_struc;
-        system_name=v3_model_name(config.kite_set), set,
-        dynamics_type=config.kite_set.wing_type,
-        aero_mode=resolve_aero_mode(config.kite_set))
+    sys, transforms = load_v3_authoring(source_struc, config.kite_set; set)
 
     # Explicit `config.kcu_mass` (used by parameter sweeps) takes priority;
     # otherwise fall back to the `kcu_mass` field of the active settings YAML
@@ -868,8 +865,7 @@ function setup_settling_model(config::V3SettleConfig;
 
     apply_geom_adjustments!(sys, gc)
     place_at_tether_length!(sys, transforms, gc.tether_length)
-    sam = SymbolicAWEModel(set, sys; transforms, vsm_set,
-                           backend = config.kite_set.backend)
+    sam = v3_model(set, sys, config.kite_set; transforms, vsm_set)
     with_model_cache(cache_path) do
         SymbolicAWEModels.init!(sam; remake=config.kite_set.remake_model,
             remake_vsm=true,
@@ -905,12 +901,11 @@ function run_power_zone_settling!(config::V3SettleConfig;
         @info "Settling from a relaxed state" state_path
     end
 
-    state = sam.state
-    update_sys_struct_from_data!(state, init_row; config=gc)
+    update_sys_struct_from_data!(sam, init_row; config=gc)
 
     data_pos = [init_row.x, init_row.y, init_row.z]
     data_vel = [init_row.vx, init_row.vy, init_row.vz]
-    R_t_to_w = SymbolicAWEModels.KiteGeometry.calc_R_t_to_w(data_pos)
+    R_t_to_w = KiteGeometry.calc_R_t_to_w(data_pos)
     target_course = atan(
         data_vel ⋅ R_t_to_w[:, 2],
         data_vel ⋅ R_t_to_w[:, 1])
@@ -922,7 +917,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
     # Override initial depower if ramp is configured
     if !isnothing(config.start_depower)
-        set_depower!(state, config.start_depower / 100.0, 0.0, gc)
+        set_depower!(sys, config.start_depower / 100.0, 0.0, gc)
     end
 
     reinit_integrator!(sam)
@@ -944,7 +939,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
     logger, sys_state = create_logger(sam, total_steps)
 
     @info "Starting power-zone settling..." num_substeps=config.num_substeps
-    wing = state.wings[1]
+    wing(quantity) = run_value(sam, :wings, 1, quantity)
     failed = false
     try
         for step in 1:config.num_steps
@@ -960,10 +955,10 @@ function run_power_zone_settling!(config::V3SettleConfig;
                     max(config.num_steps - 1, 1)
                 dp = config.start_depower +
                     frac * (dp_end - config.start_depower)
-                set_depower!(state, dp / 100.0, 0.0, gc)
+                set_depower!(sys, dp / 100.0, 0.0, gc)
             end
 
-            SymbolicAWEModels.reposition!(state)
+            SymbolicAWEModels.reposition!(sam)
             try
                 reinit_integrator!(sam; prn=false)
             catch failure
@@ -991,17 +986,17 @@ function run_power_zone_settling!(config::V3SettleConfig;
 
                 if show_progress &&
                    should_report(global_step, total_steps)
-                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(sys.points[1].body_frame_damping, digits=1) elevation=round(rad2deg(wing.elevation), digits=2) heading=round(rad2deg(wing.heading), digits=2)
+                    @info "Step $step/$(config.num_steps)" substep=sub damping=round.(sys.points[1].body_frame_damping, digits=1) elevation=round(rad2deg(wing(:elevation)), digits=2) heading=round(rad2deg(wing(:heading)), digits=2)
                 end
             end
             failed && break
 
             if config.course_correction_mode === :course
                 target = target_course
-                current = wing.course
+                current = wing(:course)
             else
                 target = target_heading
-                current = wing.heading
+                current = wing(:heading)
             end
             diff = wrap_to_pi(target - current)
             delta_heading =
@@ -1010,14 +1005,13 @@ function run_power_zone_settling!(config::V3SettleConfig;
             transform.heading = wrap_to_pi(old_heading + delta_heading)
 
             # reposition! does not rotate vel_w
-            base_pos = state.points[transform.base_point].pos_w
-            k = normalize(wing.pos_w - base_pos)
-            wing.vel_w .= SymbolicAWEModels.KiteGeometry.rotate_v_around_k(
-                wing.vel_w, k, delta_heading)
-            for point in view(state.points, transform.points)
-                point.vel_w .=
-                    SymbolicAWEModels.KiteGeometry.rotate_v_around_k(
-                        point.vel_w, k, delta_heading)
+            base_pos = run_value(sam, :points, transform.base_point, :pos_w)
+            k = normalize(wing(:pos_w) - base_pos)
+            set_run_value!(sam, :wings, 1, :vel_w,
+                           KiteGeometry.rotate_v_around_k(wing(:vel_w), k, delta_heading))
+            for i in transform.points
+                set_run_value!(sam, :points, i, :vel_w, KiteGeometry.rotate_v_around_k(
+                    run_value(sam, :points, i, :vel_w), k, delta_heading))
             end
 
             if show_progress &&
@@ -1042,7 +1036,7 @@ function run_power_zone_settling!(config::V3SettleConfig;
                     "$(config.num_steps) steps; state not saved")
 
     # Final placement on target elev/azim/heading; the loop ends on a drifted sim_step!.
-    SymbolicAWEModels.reposition!(state)
+    SymbolicAWEModels.reposition!(sam)
 
     @info "Saving settled state..."
     save_state_log(sam, dest_struc)

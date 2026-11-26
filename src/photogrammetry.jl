@@ -29,12 +29,12 @@ end
 
 """
     load_extra_points(csv_path::String,
-        sys_struct=nothing; body_offset=[0.0, 0.0, 0.0])
+        sam=nothing; body_offset=[0.0, 0.0, 0.0])
 
 Load extra points from CSV and optionally transform from
 camera frame to simulation frame.
 
-When `sys_struct` is `nothing`, returns raw camera-frame
+When `sam` is `nothing`, returns raw camera-frame
 points (as Tuples) with no R,T alignment.
 
 CSV has columns: group, idx_in_group, x, y, z.
@@ -43,8 +43,7 @@ points 10, 12.
 
 # Arguments
 - `csv_path`: Path to CSV file with photogrammetry points
-- `sys_struct`: Run state (`sam.state`) for coordinate
-  transformation (default: `nothing`)
+- `sam`: The model whose run aligns the points (default: `nothing`)
 - `body_offset`: Offset in body frame [x, y, z]
 
 # Returns
@@ -52,7 +51,7 @@ points 10, 12.
   and group definitions
 """
 function load_extra_points(csv_path::String,
-        sys_struct=nothing;
+        sam=nothing;
         body_offset=[0.0, 0.0, 0.0])
     df = CSV.read(csv_path, DataFrame)
 
@@ -101,15 +100,13 @@ function load_extra_points(csv_path::String,
         strut4[le_idx], le_pts)
     csv_le_center = (csv_le_3 + csv_le_4) / 2
 
-    # Compute R, T only when sys_struct is provided
+    # Compute R, T only when sam is provided
     R = nothing
     T = nothing
-    if !isnothing(sys_struct)
+    if !isnothing(sam)
         # Sim reference: points 10, 12 (center LE)
-        sim_p10 = collect(
-            sys_struct.points[10].pos_w)
-        sim_p12 = collect(
-            sys_struct.points[12].pos_w)
+        sim_p10 = collect(run_value(sam, :points, 10, :pos_w))
+        sim_p12 = collect(run_value(sam, :points, 12, :pos_w))
         sim_le_center = (sim_p10 + sim_p12) / 2
 
         # Direction vectors: z exact from camera→CR,
@@ -123,7 +120,7 @@ function load_extra_points(csv_path::String,
         csv_y = normalize(cross(csv_z, csv_x))
 
         # Sim basis: z from KCU→CR, x/y orthogonalized
-        R_b_w = calc_R_b_w(sys_struct)
+        R_b_w = calc_R_b_w(sam)
 
         # Rotation: R * csv_basis = sim_basis
         csv_basis = hcat(csv_x, csv_y, csv_z)

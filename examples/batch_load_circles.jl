@@ -45,13 +45,12 @@ end
 # System construction
 # =============================================================================
 
-function build_sys(; tether_length=150.0)
+function build_sam(; tether_length=150.0)
     settings = Settings("system_psm.yaml")
     settings.l_tether = tether_length
-    sam, _ = create_v3_model("system_psm.yaml"; settings)
-    apply_geom_adjustments!(sam.state, V3GeomAdjustConfig(
-        reduce_te=true))
-    return sam.state
+    sam, definition = create_v3_model("system_psm.yaml"; settings)
+    apply_geom_adjustments!(definition, V3GeomAdjustConfig(reduce_te=true))
+    return sam
 end
 
 # =============================================================================
@@ -122,19 +121,19 @@ function midle_to_kcu_dir(sl, k; eps=1e-12)
     return n > eps ? dir / n : nothing
 end
 
-function calc_ref_area(sys)
-    isempty(sys.wings) && return NaN
-    wing = sys.wings[1]
-    hasproperty(wing, :vsm_aero) || return NaN
-    return wing.vsm_aero.projected_area
+function calc_ref_area(sam)
+    isempty(sam.aero) && return NaN
+    aero = sam.aero[1]
+    aero isa V3Kite.SymbolicAWEModels.AbstractVSMAero || return NaN
+    return aero.vsm_aero.projected_area
 end
 
 # =============================================================================
 # Derived quantities
 # =============================================================================
 
-function calculate_cs(sl, sys; rho=1.225, eps=1e-12)
-    s_ref = calc_ref_area(sys)
+function calculate_cs(sl, sam; rho=1.225, eps=1e-12)
+    s_ref = calc_ref_area(sam)
     (!isfinite(s_ref) || s_ref <= eps) &&
         return Float64[], Float64[]
     n = length(sl.time)
@@ -215,15 +214,15 @@ function compute_turn_radius(sl_in, _sys;
     return radius, sl.time
 end
 
-function compute_ekf_yaw_and_rate(sl_in, sys; eps=1e-12)
+function compute_ekf_yaw_and_rate(sl_in, sam; eps=1e-12)
     sl = hasproperty(sl_in, :syslog) ?
          sl_in.syslog : sl_in
     n = length(sl.time)
     (n < 2 || isempty(sl.vel_kite)) && return nothing
-    (length(sys.wings) == 0 || length(sl.X) < n ||
+    (isempty(sam.definition.wings) || length(sl.X) < n ||
      length(sl.Y) < n || length(sl.Z) < n) &&
         return nothing
-    kite_idx = sys.wings[1].idx
+    kite_idx = sam.topology.slots.wings[1]
     yaw = Vector{Float64}(undef, n)
     @inbounds for k in 1:n
         pos = SVector{3}(sl.X[k][kite_idx],
@@ -287,8 +286,8 @@ function heading_rate(sl)
     return rates, sl.time[1:end-1]
 end
 
-function steering_command(sl, sys; steering_l0=nothing)
-    seg = sys.segments[V3_STEERING_LEFT_IDX]
+function steering_command(sl, sam; steering_l0=nothing)
+    seg = sam.definition.segments[V3_STEERING_LEFT_IDX]
     pi_, pj = seg.points
     n = length(sl.time)
     slen = zeros(Float64, n)
@@ -309,9 +308,9 @@ function steering_command(sl, sys; steering_l0=nothing)
     return us_cmd
 end
 
-function gk_series(sl, sys)
+function gk_series(sl, sam)
     hr, _ = heading_rate(sl)
-    us_cmd = steering_command(sl, sys; steering_l0=1.6)
+    us_cmd = steering_command(sl, sam; steering_l0=1.6)
     va = sl.v_app[2:end]
     us_seg = us_cmd[2:end]
     gk = similar(hr)
@@ -322,7 +321,7 @@ function gk_series(sl, sys)
     return gk, sl.time[2:end]
 end
 
-function gk_paper_series(sl, sys)
+function gk_paper_series(sl, sam)
     n = length(sl.time)
     yaw = Vector{Float64}(undef, n)
     @inbounds for k in 1:n
@@ -340,7 +339,7 @@ function gk_paper_series(sl, sys)
         end
     end
     yr = diff(rad2deg.(yaw)) ./ diff(sl.time)
-    us_cmd = steering_command(sl, sys)
+    us_cmd = steering_command(sl, sam)
     us_seg = us_cmd[2:end]
     va = sl.v_app[2:end]
     gk = similar(yr)
@@ -377,7 +376,7 @@ end
 # Log analysis
 # =============================================================================
 
-function analyze_log(lg, sys; window_sec=COURSE_RATE_WINDOW_SEC)
+function analyze_log(lg, sam; window_sec=COURSE_RATE_WINDOW_SEC)
     sl = lg.syslog
     length(sl.time) < 2 && return (
         aero_force=NaN, v_app=NaN,
@@ -397,15 +396,15 @@ function analyze_log(lg, sys; window_sec=COURSE_RATE_WINDOW_SEC)
     yr_deg, yr_time = heading_rate(sl)
     yaw_rate = mean_last_window(yr_deg, yr_time;
         window_sec)
-    ekf = compute_ekf_yaw_and_rate(lg, sys)
+    ekf = compute_ekf_yaw_and_rate(lg, sam)
     yaw_rate_paper = if ekf === nothing
         yaw_rate
     else
         mean_last_window(ekf[2], sl.time; window_sec)
     end
-    gk_v, gk_t = gk_series(sl, sys)
+    gk_v, gk_t = gk_series(sl, sam)
     gk = mean_last_window(gk_v, gk_t; window_sec)
-    gkp_v, gkp_t = gk_paper_series(sl, sys)
+    gkp_v, gkp_t = gk_paper_series(sl, sam)
     gk_paper = mean_last_window(gkp_v, gkp_t;
         window_sec)
     vk = [norm(v) for v in sl.vel_kite]
@@ -418,14 +417,14 @@ function analyze_log(lg, sys; window_sec=COURSE_RATE_WINDOW_SEC)
     az_deg = rad2deg.(sl.azimuth)
     azimuth = mean_last_window(az_deg, sl.time;
         window_sec)
-    cs_v, cs_t = calculate_cs(sl, sys)
+    cs_v, cs_t = calculate_cs(sl, sam)
     cs = abs(mean_last_window(cs_v, cs_t; window_sec))
-    tr_res = compute_turn_radius(sl, sys)
+    tr_res = compute_turn_radius(sl, sam)
     turn_radius = tr_res === nothing ? NaN :
                   mean_last_window(tr_res[1], tr_res[2];
         window_sec)
 
-    us_cmd = steering_command(sl, sys)
+    us_cmd = steering_command(sl, sam)
     usva = us_cmd .* sl.v_app
     usva_mean = mean_last_window(
         abs.(usva), sl.time; window_sec)
@@ -668,14 +667,14 @@ function main()
     isempty(log_names) && error("No logs in: $batch_dir")
 
     rows = NamedTuple[]
-    sys = build_sys()
+    sam = build_sam()
 
     for log_name in log_names
         tags = parse_up_us_vw_lt(log_name)
         tags === nothing && continue
         up, us, vw, lt = tags
         lg = load_log(log_name; path=batch_dir, frame=KA)
-        m = analyze_log(lg, sys)
+        m = analyze_log(lg, sam)
         push!(rows, (
             vw=vw, up=up, us=us, lt=lt,
             aero_force=m.aero_force, v_app=m.v_app,

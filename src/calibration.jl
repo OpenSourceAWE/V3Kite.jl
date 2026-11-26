@@ -46,17 +46,39 @@ const V3_STEERING_RIGHT_NAME = :steering_right
 const V3_DEPOWER_NAME = :power_tape
 
 """
-    tape_segment(sys, name, idx) -> Segment
+    tape_segment(sys, name, idx) -> Int
 
-The steering or depower tape called `name`, falling back to position `idx`.
+The index of the steering or depower tape called `name` in the definition `sys`, or in
+a model's definition, falling back to position `idx`.
 
 The beam geometry emitted by [`V3Kite.SurfplanAdapter`](@ref) names its segments, so
 the tapes are found by name whatever their position; the hand-written particle
-geometry numbers them, so there the fixed index applies. Resolving both here is what
-lets a run switch between the two by changing only the struc geometry filename.
+geometry numbers them, so there the fixed index applies.
 """
-tape_segment(sys, name::Symbol, idx::Int) =
-    haskey(sys.segments, name) ? sys.segments[name] : sys.segments[idx]
+tape_segment(sys::SystemDefinition, name::Symbol, idx::Int) =
+    haskey(sys.segments, name) ? KiteGeometry.row_index(sys.segments, name) : idx
+tape_segment(sam::SymbolicAWEModel, name::Symbol, idx::Int) =
+    tape_segment(sam.definition, name, idx)
+
+"""
+    tape_length(sys, segment) -> Float64
+
+Rest length [m] of segment index `segment`: a definition's row, or a model's run.
+"""
+tape_length(sys::SystemDefinition, segment) = sys.segments[segment].rest_length
+tape_length(sam::SymbolicAWEModel, segment) =
+    run_value(sam, :segments, segment, :rest_length)
+
+"""
+    set_tape_length!(sys, segment, rest_length)
+
+Set the rest length [m] of segment index `segment`: a definition's row, or the
+parameter of a model's run, which `init!` must have built.
+"""
+set_tape_length!(sys::SystemDefinition, segment, rest_length) =
+    sys.segments[segment].rest_length = rest_length
+set_tape_length!(sam::SymbolicAWEModel, segment, rest_length) =
+    set_run_value!(sam, :segments, segment, :rest_length, rest_length)
 
 """
     steering_percentage_to_lengths(percentage;
@@ -191,7 +213,7 @@ Set the steering input, accounting for steering tape reduction
 from the geometry config.
 
 # Arguments
-- `sys`: the run state `sam.state`, or a `SystemDefinition` before its model is built
+- `sys`: a model after `init!`, or a `SystemDefinition`
 - `steering`: Relative steering, must be between -1.0 .. 1.0
               (-1.0 = full left, 0.0 = neutral, 1.0 = full right)
 - `config`: Geometry adjustment config
@@ -204,10 +226,10 @@ function set_steering!(sys, steering,
     L_left, L_right = steering_percentage_to_lengths(
         steering * 100.0;
         l0_base=V3_STEERING_L0_BASE - reduction)
-    tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).rest_length =
-        max(min_l0, L_left)
-    tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).rest_length =
-        max(min_l0, L_right)
+    set_tape_length!(sys, tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX),
+                     max(min_l0, L_left))
+    set_tape_length!(sys, tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX),
+                     max(min_l0, L_right))
     return nothing
 end
 
@@ -217,15 +239,17 @@ end
 Get the current steering value as a normalized input.
 
 # Arguments
-- `sys`: the run state `sam.state`, or a `SystemDefinition` before its model is built
+- `sys`: a model after `init!`, or a `SystemDefinition`
 - `config`: Geometry adjustment config
 
 # Returns
 - Relative steering in range -1.0 .. 1.0
 """
 function get_steering(sys, ::V3GeomAdjustConfig)
-    L_left = tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX).rest_length
-    L_right = tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX).rest_length
+    L_left = tape_length(sys,
+                         tape_segment(sys, V3_STEERING_LEFT_NAME, V3_STEERING_LEFT_IDX))
+    L_right = tape_length(sys,
+                          tape_segment(sys, V3_STEERING_RIGHT_NAME, V3_STEERING_RIGHT_IDX))
     return steering_length_to_percentage(
         L_left, L_right) / 100.0
 end
@@ -239,7 +263,7 @@ depower offset, and steering-based depower offset from the
 geometry config.
 
 # Arguments
-- `sys`: the run state `sam.state`, or a `SystemDefinition` before its model is built
+- `sys`: a model after `init!`, or a `SystemDefinition`
 - `depower`: Relative depower, must be between 0.0 .. 1.0
              (0.0 = no depower, 1.0 = full depower)
 - `steering`: Relative steering in -1.0 .. 1.0 (used for
@@ -255,7 +279,7 @@ function set_depower!(sys, depower, steering,
     L_depower = depower_percentage_to_length(
         dp * 100.0;
         l0_base=V3_DEPOWER_L0_BASE - reduction)
-    tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).rest_length = L_depower
+    set_tape_length!(sys, tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX), L_depower)
     return dp
 end
 
@@ -265,7 +289,7 @@ end
 Get the current depower value as a normalized input.
 
 # Arguments
-- `sys`: the run state `sam.state`, or a `SystemDefinition` before its model is built
+- `sys`: a model after `init!`, or a `SystemDefinition`
 - `config`: Geometry adjustment config
 
 # Returns
@@ -274,7 +298,7 @@ Get the current depower value as a normalized input.
 function get_depower(sys, config::V3GeomAdjustConfig)
     reduction = config.reduce_depower ?
         config.depower_reduction : 0.0
-    L_depower = tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX).rest_length
+    L_depower = tape_length(sys, tape_segment(sys, V3_DEPOWER_NAME, V3_DEPOWER_IDX))
     return depower_length_to_percentage(
         L_depower;
         l0_base=V3_DEPOWER_L0_BASE - reduction) / 100.0

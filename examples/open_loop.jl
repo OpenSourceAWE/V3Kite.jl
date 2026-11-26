@@ -84,8 +84,7 @@ sam, settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
     steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
-sys = sam.state
-sys.winches[1].brake = true
+set_run_value!(sam, :winches, 1, :brake, true)
 
 # Logger
 n_steps = Int(round(FPS * SIM_TIME))
@@ -113,8 +112,8 @@ for step in 1:n_steps
     t = step * dt
 
     rf_us = ramp_factor(t, RAMP_START_US, RAMP_END_US)
-    set_steering!(sys, rf_us * US, gc)
-    set_depower!(sys, UP, 0.0, gc)
+    set_steering!(sam, rf_us * US, gc)
+    set_depower!(sam, UP, 0.0, gc)
 
     push!(tape_times, t)
     push!(tape_steering_pct, rf_us * US * 100)
@@ -128,8 +127,7 @@ for step in 1:n_steps
     log_state!(logger, sys_state, sam, t)
 
     if t > 1.0
-        ms, ms_mean, ms_idx = SymbolicAWEModels.segment_stretch_stats(
-            sam.state)
+        ms, ms_mean, ms_idx = SymbolicAWEModels.segment_stretch_stats(sam)
         push!(max_stretch_samples, ms)
         push!(mean_stretch_samples, ms_mean)
         push!(max_idx_samples, ms_idx)
@@ -156,8 +154,8 @@ log_name = "open_loop_lt_$(lt_tag)"
 save_log(logger, log_name)
 syslog = load_log(log_name)
 
-fig = plot(sam.sys_struct, syslog)
-scene = SymbolicAWEModels.replay(syslog, sam.sys_struct, show_panes=false)
+fig = plot(sam, syslog)
+scene = SymbolicAWEModels.replay(syslog, sam, show_panes=false)
 
 display(fig)
 display(scene)

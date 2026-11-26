@@ -96,7 +96,7 @@ function syslog_to_tape(syslog)
 end
 
 function create_replay_plots(;
-        sys_struct, data_sys_struct,
+        sam, data_sam,
         syslog, datalog,
         frame_csvs,
         geom::V3GeomAdjustConfig,
@@ -114,7 +114,7 @@ function create_replay_plots(;
     labels = ["simulation", "data"]
 
     fig = plot_replay(
-        [sys_struct, data_sys_struct],
+        [sam, data_sam],
         logs;
         tape_lengths=tapes,
         suffixes=labels,
@@ -201,10 +201,10 @@ function create_replay_plots(;
             frame_syslog_idxs)
         isnothing(idx) && continue
         _, syslog_idx = frame_syslog_idxs[idx]
-        update_from_sysstate!(sys_struct,
+        update_from_sysstate!(sam,
             syslog.syslog[syslog_idx])
         pts, groups = load_extra_points(
-            csv, sys_struct)
+            csv, sam)
         ann = get(frame_annotations, fi, "")
         frame_figs = Dict{Symbol, Any}()
         for dir in (:front, :side, :top)
@@ -223,7 +223,7 @@ function create_replay_plots(;
             else
                 ann
             end
-            bf = plot_body_frame_local(sys_struct;
+            bf = plot_body_frame_local(sam;
                 extra_points=pts,
                 extra_groups=groups, dir,
                 title=false, legend=show_leg,
@@ -246,7 +246,7 @@ function create_replay_plots(;
             frame_figs[dir] = bf
         end
         # Twist distribution
-        twist_fig = plot_twist_dist(sys_struct;
+        twist_fig = plot_twist_dist(sam;
             extra_points=pts,
             extra_groups=groups,
             figsize=(560*0.8, 210*0.8),
@@ -342,8 +342,7 @@ sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 data_sam, _ = build_replay_sys_struct(set, kite_set, source_struc, vsm_set)
 
 plots = create_replay_plots(;
-    sys_struct=sam.state,
-    data_sys_struct=data_sam.state,
+    sam, data_sam,
     syslog, datalog,
     frame_csvs, geom=kite_set.geom,
     section=SECTION,
@@ -372,14 +371,14 @@ if replay.save_videos
         show_heading=false, show_drag_coeff=false,
         show_lift_coeff=false, show_lift_drag_ratio=false,
         framerate=fps, frame_indexes=frame_syslog_idxs)
-    SymbolicAWEModels.record(syslog, sam.sys_struct,
+    SymbolicAWEModels.record(syslog, sam,
         gif("replay_3d_world"); body_frame=false, size=(800, 800),
         framerate=fps)
-    SymbolicAWEModels.record(syslog, sam.sys_struct,
+    SymbolicAWEModels.record(syslog, sam,
         gif("replay_3d_body"); body_frame=true, pan_vertical=5.0,
         size=(800, 800), framerate=fps)
 end
 
-scene = SymbolicAWEModels.replay(syslog, sam.sys_struct)
+scene = SymbolicAWEModels.replay(syslog, sam)
 
 nothing

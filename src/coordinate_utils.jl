@@ -68,27 +68,13 @@ function calc_csv_heading(roll, pitch, yaw, pos_w)
 end
 
 """
-    calc_R_b_w(state::SystemState)
+    calc_R_b_w(sam::SymbolicAWEModel)
 
-Calculate the body-to-world rotation matrix for PARTICLE_DYNAMICS wing type.
-
-# Arguments
-- `state`: Run state of a structure with a PARTICLE_DYNAMICS wing
-
-# Returns
-- 3x3 rotation matrix R_b_w
+Body-to-world rotation matrix of the first wing of the run `sam`, a particle-dynamics
+wing, from where its frame's reference points are now.
 """
-function calc_R_b_w(state::SymbolicAWEModels.SystemState)
-    @unpack points, wings = state
-    wing = wings[1]
-    R_b_w, origin = SymbolicAWEModels.calc_particle_dynamics_wing_frame(
-        points,
-        wing.z_ref_points,
-        wing.y_ref_points,
-        wing.origin
-    )
-    return R_b_w
-end
+calc_R_b_w(sam::SymbolicAWEModel) = first(KiteGeometry.wing_frame(
+    SymbolicAWEModels.run_positions(sam), SymbolicAWEModels.wing_frame(sam, 1)))
 
 """
     calc_turn_rate(syslog; source=:heading, dt=0.01)

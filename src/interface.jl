@@ -8,9 +8,6 @@ The plant. Winch controllers live in WinchControllers.jl; `step!` here takes a
 torque. What remains is the plant side they read: `drum_params`, `winch_force`,
 `reel_out_speed`, `unstretched_length` and `force_to_torque`.
 
-`s.sys` is the run's state, `s.sam.state`: its records hold positions, velocities and
-forces, and read any other property through to the structure `s.sam.sys_struct`.
-
 The KCU tape rate limits (`v_depower`/`v_steering`) live in the `kcu:` section
 of `data/sim_settings_default.yaml`, loaded like any other `Settings` field.
 """
@@ -52,16 +49,6 @@ of `data/sim_settings_default.yaml`, loaded like any other `Settings` field.
     last_step_time::Float64 = NaN
 end
 
-function Base.getproperty(s::V3KITE, name::Symbol)
-    if name === :sys
-        return getfield(s, :sam).state
-    end
-    return getfield(s, name)
-end
-
-function Base.propertynames(::V3KITE, private::Bool=false)
-    return (fieldnames(V3KITE)..., :sys)
-end
 
 """
     update_sys_state!(ss::SysState, s::V3KITE, zoom=1.0)
@@ -126,7 +113,7 @@ end
 Return the current unstretched tether length [m].
 """
 function unstretched_length(s::V3KITE)
-    s.sys.tethers[1].len
+    run_value(s.sam, :tethers, 1, :len)
 end
 
 """
@@ -153,9 +140,8 @@ Return the centre-of-pressure position of the kite from the four mid-span wing p
 is weighted 0.7 × LE + 0.3 × TE, then averaged over both sides.
 """
 function pos_kite(s::V3KITE)
-    pts = s.sys.points
-    (0.7 .* pts[10].pos_w .+ 0.3 .* pts[11].pos_w .+
-     0.7 .* pts[12].pos_w .+ 0.3 .* pts[13].pos_w) ./ 2
+    pos(i) = run_value(s.sam, :points, i, :pos_w)
+    (0.7 .* pos(10) .+ 0.3 .* pos(11) .+ 0.7 .* pos(12) .+ 0.3 .* pos(13)) ./ 2
 end
 
 """
@@ -165,7 +151,7 @@ Return the current stretched tether length [m] from the model's
 `stretched_len` field for the primary tether.
 """
 function tether_length(s::V3KITE)
-    s.sys.tethers[1].stretched_len
+    run_value(s.sam, :tethers, 1, :stretched_len)
 end
 
 """
@@ -244,7 +230,7 @@ end
 Returns a tuple of the x, y, and z vectors of the kite reference frame.
 """
 function kite_ref_frame(s::V3KITE)
-    R_b_w = calc_R_b_w(s.sys)
+    R_b_w = calc_R_b_w(s.sam)
     return R_b_w[:, 1], R_b_w[:, 2], R_b_w[:, 3]
 end
 
@@ -315,11 +301,11 @@ end
     calc_course(s::V3KITE; neg_azimuth=false)
 
 Return the course angle of the kite in radian as stored in
-`sam.state.wings[1].course`. If `neg_azimuth=true`, return
+the run of its first wing. If `neg_azimuth=true`, return
 the course using the negated azimuth sign convention.
 """
 function calc_course(s::V3KITE; neg_azimuth=false)
-    course = s.sys.wings[1].course
+    course = run_value(s.sam, :wings, 1, :course)
     neg_azimuth ? -course : course
 end
 
@@ -339,7 +325,7 @@ end
 Return the absolute value of the force at the winch as calculated during the last timestep.
 """
 function winch_force(s::V3KITE)
-    norm(s.sys.winches[1].force)
+    norm(run_value(s.sam, :winches, 1, :force))
 end
 
 """
@@ -347,7 +333,7 @@ end
 
 Return the current reel-out speed of the winch in m/s.
 """
-function reel_out_speed(s::V3KITE) s.sys.winches[1].vel end
+reel_out_speed(s::V3KITE) = run_value(s.sam, :winches, 1, :vel)
 
 """
     drum_params(s::V3KITE) -> (drum_radius, gear_ratio, friction)
@@ -357,8 +343,8 @@ numbers WinchControllers.jl's torque controllers need. `friction` is a runtime
 value, not a setting: it flips sign with the reel-out direction.
 """
 function drum_params(s::V3KITE)
-    winch = s.sys.winches[1]
-    return winch.drum_radius, winch.gear_ratio, winch.friction
+    winch(quantity) = run_value(s.sam, :winches, 1, quantity)
+    return winch(:drum_radius), winch(:gear_ratio), winch(:friction)
 end
 
 """
@@ -373,17 +359,11 @@ end
 """
     spring_forces(s::V3KITE) -> Vector{Float64}
 
-Return an array of scalar spring forces [N] from
-`sam.state.segments[seg_idx].force` for all tether segments.
+Return the scalar spring forces [N] of the first tether's segments.
 """
-function spring_forces(s::V3KITE)
-    tether = s.sys.tethers[1]
-    forces = zeros(Float64, length(tether.segments))
-    for (i, seg_idx) in enumerate(tether.segments)
-        forces[i] = s.sys.segments[seg_idx].force
-    end
-    return forces
-end
+spring_forces(s::V3KITE) =
+    [run_value(s.sam, :segments, segment, :force)
+     for segment in s.sam.definition.tethers[1].segments]
 
 # ============================ High-level interface ============================ #
 
@@ -540,19 +520,19 @@ function init(v_wind_gnd, l_tether;
         steering = 0.0, depower = depower_setpoint, wind_vec,
         data_path, cache_path, remake_model, remake_settled_state)
     settle_failed && error("Settling failed")
-    sys = sam.sys_struct
+    sys = sam.definition
 
     # Settling ran at `MIN_SETTLE_DAMPING_PER_STIFFNESS` if the flown ratio is
     # below it; set the flown one here, on a structure already at rest. Also
     # covers a cache hit, whose `.bin` is keyed by the floored value alone.
     if !isnothing(damping_per_stiffness)
-        set_damping_per_stiffness!(sam.state, tether_bridle_segments(sys),
+        set_damping_per_stiffness!(sam, tether_bridle_segments(sys),
                                    damping_per_stiffness)
     end
 
     # The serialized `set_value` is stale: releasing the brake alone steps at t = 0.
-    sys.winches[1].brake = false
-    init_winch_torque!(sam.state)
+    set_run_value!(sam, :winches, 1, :brake, false)
+    init_winch_torque!(sam)
 
     set = sam.set
     set.wind_vec = wind_vec
@@ -611,7 +591,7 @@ function apply_turbulence!(s::V3KITE)
     s.set.use_turbulence > 0 || return false
     ud = upwind_dir(s.wind_vec_mean)
     isfinite(ud) || return false
-    pos = s.sys.wings[1].pos_w
+    pos = run_value(s.sam, :wings, 1, :pos_w)
     v_turb, _ = calc_turbulent_wind(s.am, pos, s.sys_state.time; upwind_dir = ud)
     # 10 m clamp mirrors the one calc_turbulent_wind/get_wind apply internally.
     s.set.wind_vec = v_turb / calc_wind_factor(s.am, max(pos[3], 10.0))
@@ -684,13 +664,13 @@ function step!(s::V3KITE; rel_depower = 0.0, rel_steering = 0.0,
     # Qualified: calibration.jl's get_depower/get_steering(sys, config) would shadow these.
     dp = KitePodModels.get_depower(s.kcu)
     st = KitePodModels.get_steering(s.kcu)
-    set_depower!(s.sys, dp, st, s.gc)
-    set_steering!(s.sys, st, s.gc)
+    set_depower!(s.sam, dp, st, s.gc)
+    set_steering!(s.sam, st, s.gc)
 
     # Winch: a torque, or hold the measured force. A LENGTH setpoint is not a
     # plant input — converting one into a torque needs a controller, which this
     # package deliberately does not own; see the docstring.
-    torque = isnothing(set_torque) ? force_to_torque(winch_force(s), s.sys) :
+    torque = isnothing(set_torque) ? force_to_torque(winch_force(s), s.sam) :
                                      set_torque
 
     turbulent = apply_turbulence!(s)

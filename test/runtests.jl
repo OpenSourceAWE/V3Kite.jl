@@ -6,7 +6,7 @@ using LinearAlgebra
 using V3Kite
 using KitePodModels: KCU
 using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
-    tube_linear_rigidities, membrane_linear_rigidities, SystemState, AeroSpec
+    tube_linear_rigidities, membrane_linear_rigidities, AeroSpec
 
 @testset "V3Kite.jl" begin
 
@@ -376,9 +376,10 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
         @test length(sys.spanwise_stations) == 10
-        @test length(sys.bodies[1].station_idxs) == 10
-        @test length(wing_station_chords(SystemState(sys))) == 10
-        span_y, twist = wing_twist_dist(SystemState(sys))
+        sam = SymbolicAWEModel(nothing, sys)
+        @test length(run_value(sam, :wings, 1, :station_idxs)) == 10
+        @test length(wing_station_chords(sam)) == 10
+        span_y, twist = wing_twist_dist(sam)
         @test length(span_y) == 10
         @test length(twist) == 10
     end
@@ -390,20 +391,20 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
             source_struc = V3Kite.struc_geometry_path(config.project; data_path),
             source_aero = V3Kite.aero_geometry_path(config.project; data_path,
                 aero_mode = V3Kite.resolve_aero_mode(config.kite_set)))
-        state = SystemState(sys; set, transforms)
-        anchor = copy(state.points[transforms[1].base_point].pos_w)
+        sam = SymbolicAWEModel(set, sys; transforms)
+        anchor = run_value(sam, :points, transforms[1].base_point, :pos_w)
         elevation, azimuth = deg2rad(55.0), deg2rad(25.0)
-        tether_length = norm(state.wings[1].pos_w - anchor)
+        tether_length = norm(run_value(sam, :wings, 1, :pos_w) - anchor)
         wing_pos = tether_length * [cos(elevation) * cos(azimuth),
                                     -cos(elevation) * sin(azimuth), sin(elevation)]
         row = (x=wing_pos[1], y=wing_pos[2], z=wing_pos[3], vx=1.0, vy=2.0, vz=3.0,
                heading=0.4, steering=0.0, depower=0.2, wind_vec=[7.0, 0.0, 0.0])
-        update_sys_struct_from_data!(state, row)
-        relative = state.wings[1].pos_w - anchor
-        @test state.points[transforms[1].base_point].pos_w ≈ anchor
+        update_sys_struct_from_data!(sam, row)
+        relative = run_value(sam, :wings, 1, :pos_w) - anchor
+        @test run_value(sam, :points, transforms[1].base_point, :pos_w) ≈ anchor
         @test atan(relative[3], hypot(relative[1], relative[2])) ≈ elevation atol=1e-6
         @test atan(-relative[2], relative[1]) ≈ azimuth atol=1e-6
-        @test state.bodies[1].vel_w ≈ [1.0, 2.0, 3.0]
+        @test run_value(sam, :bodies, 1, :vel_w) ≈ [1.0, 2.0, 3.0]
         @test set.wind_vec == [7.0, 0.0, 0.0]
     end
 
@@ -414,14 +415,13 @@ using SymbolicAWEModels: quaternion_to_rotation_matrix, TUBE_SHEAR_COEFF,
         @test all(tube -> isapprox(tube.model.shear_coeff, TUBE_SHEAR_COEFF;
             atol = 1e-4), sys.tubes)
         pressure_bar = V3BeamTopology().pressure_bar
-        @test all(tube -> tube.model.EIy ≈ tube_linear_rigidities(
-            tube.diameter / 2, pressure_bar)[3], sam.state.tubes)
+        @test all(i -> run_value(sam, :tubes, i, :EIy) ≈ tube_linear_rigidities(
+            sys.tubes[i].diameter / 2, pressure_bar)[3], eachindex(sys.tubes))
     end
 
     @testset "Comer-Levy Bending Softens Each Beam Tube Past Wrinkling" begin
-        sys, _ = load_sys_struct_from_yaml(
-            joinpath(v3_data_path(), "struc_geometry_beam.yaml");
-            system_name = "beam", set = Settings("system_beam.yaml"))
+        sys, _ = load_authoring(joinpath(v3_data_path(), "struc_geometry_beam.yaml");
+            name = "beam", set = Settings("system_beam.yaml"))
         torsion = [tube.GJ for tube in sys.tubes]
         radii = Dict(tube.name => tube.diameter / 2 for tube in sys.tubes)
         topo = V3BeamTopology()

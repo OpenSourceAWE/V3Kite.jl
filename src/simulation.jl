@@ -169,6 +169,34 @@ function resolve_aero_mode(kite_set::V3KiteConfig)
 end
 
 """
+    load_v3_authoring(path, kite_set::V3KiteConfig; set) -> (sys, transforms)
+
+Load the authoring YAML at `path` with every wing flown as `kite_set.wing_type`, named
+[`v3_model_name`](@ref).
+"""
+function load_v3_authoring(path, kite_set::V3KiteConfig; set)
+    authored = YAML.load_file(path; dicttype=Dict{String, Any})
+    for wing in authored["wings"]["data"]
+        wing["dynamics_type"] = string(kite_set.wing_type)
+    end
+    return load_authoring(authored; set, name=v3_model_name(kite_set))
+end
+
+"""
+    v3_model(set, sys, kite_set::V3KiteConfig; transforms, vsm_set) -> SymbolicAWEModel
+
+A run of `sys` flown with the aero mode and backend `kite_set` picks.
+"""
+function v3_model(set, sys, kite_set::V3KiteConfig; transforms, vsm_set)
+    mode = resolve_aero_mode(kite_set)
+    aero = isnothing(mode) ? Dict{Symbol, SymbolicAWEModels.AbstractAeroModel}() :
+        Dict{Symbol, SymbolicAWEModels.AbstractAeroModel}(
+            wing.name => mode for wing in sys.wings)
+    return SymbolicAWEModel(set, sys; transforms, vsm_set, aero,
+                            backend=kite_set.backend)
+end
+
+"""
     create_v3_model(project::String; data_path=nothing, kite_set=nothing,
                     settings=nothing) -> (sam, sys)
 
@@ -199,9 +227,7 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     vsm_set = v3_vsm_settings(project,
         aero_geometry_path(project; data_path, aero_mode); data_path)
 
-    sys, transforms = load_sys_struct_from_yaml(struc_path;
-        system_name=v3_model_name(kite_set), set, dynamics_type=kite_set.wing_type,
-        aero_mode)
+    sys, transforms = load_v3_authoring(struc_path, kite_set; set)
 
     set_body_frame_damping!(sys, kite_set.body_sim_damping)
     SymbolicAWEModels.set_world_frame_damping(sys, kite_set.world_sim_damping)
@@ -217,7 +243,7 @@ function create_v3_model(project::String; data_path=nothing, kite_set=nothing,
     place_at_tether_length!(sys, transforms, set.l_tether)
     apply_kite_material!(sys, kite_set)
 
-    return SymbolicAWEModel(set, sys; transforms, vsm_set, backend = kite_set.backend), sys
+    return v3_model(set, sys, kite_set; transforms, vsm_set), sys
 end
 
 """
@@ -295,16 +321,15 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
             error("init_mode is :relaxed_state but no init_state is set in " *
                   "the kite_settings of $project")
         sam, sys = create_v3_model(project; data_path, kite_set)
-        set_depower!(sam.state, set.depower / 100.0, 0.0, kite_set.geom)
-        set_steering!(sam.state, 0.0, kite_set.geom)
+        set_depower!(sys, set.depower / 100.0, 0.0, kite_set.geom)
+        set_steering!(sys, 0.0, kite_set.geom)
+        sys.winches[1].brake = kite_set.brake
         # without this, init!'s model binary lands in data_path, unswept by bin/delete_cache_files
         with_model_cache(default_cache_path(data_path)) do
             SymbolicAWEModels.init!(sam; remake=remake_model,
                                     remake_vsm=true,
                                     analytic_jacobian=kite_set.analytic_jacobian)
         end
-        sys.winches[1].brake = kite_set.brake
-
         state_path = project_file(project, kite_set.init_state; data_path)
         start_from_state!(sam, state_path) ||
             error("No relaxed state at $state_path; run " *
@@ -326,7 +351,6 @@ function build_v3_model(project; data_path=nothing, remake_model=nothing,
         depower=set.depower / 100.0, wind_vec=[set.v_wind, 0.0, 0.0],
         data_path, remake_model, remake_settled_state)
     failed && error("Settling failed for $project")
-    sys = sam.sys_struct
-    sys.winches[1].brake = kite_set.brake
-    return sam, sys
+    set_run_value!(sam, :winches, 1, :brake, kite_set.brake)
+    return sam, sam.definition
 end

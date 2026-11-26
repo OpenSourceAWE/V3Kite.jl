@@ -127,8 +127,8 @@ material being the dyneema it is flown on rather than a bridle knob.
 function apply_bridle_material!(sys, bridle::V3BridleConfig)
     winched = Set(idx for winch in sys.winches for idx in winch.tethers)
     on_tether = Dict{Int, Bool}()
-    for tether in sys.tethers, segment_idx in tether.segments
-        on_tether[segment_idx] = tether.idx in winched
+    for (tether_idx, tether) in enumerate(sys.tethers), segment_idx in tether.segments
+        on_tether[segment_idx] = tether_idx in winched
     end
     tape_names = Set(Symbol.(TAPE_SEGMENT_NAMES))
     for (idx, segment) in enumerate(sys.segments)

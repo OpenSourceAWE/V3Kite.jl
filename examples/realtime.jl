@@ -101,8 +101,7 @@ sam, _settle_log, settle_failed = settle_wing(settle_config;
     position, velocity, heading,
     steering = 0.0, depower = UP, wind_vec)
 settle_failed && error("Settling failed")
-sys = sam.state
-sys.winches[1].brake = true
+set_run_value!(sam, :winches, 1, :brake, true)
 
 dt = 1.0 / FPS
 display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
@@ -112,7 +111,7 @@ display_interval = max(1, round(Int, FPS / DISPLAY_FPS))
 # =============================================================================
 
 @info "Creating 3D visualization..."
-scene = plot(sys; vector_scale, size=(1400, 900))
+scene = plot(sam; vector_scale, size=(1400, 900))
 display(scene)
 
 progress_text = Observable("t = 0.0s")
@@ -183,7 +182,8 @@ else
     nothing
 end
 
-wing_points = [p for p in sys.points if p.is_wing_node]
+wing_points = [i for i in eachindex(sam.definition.points)
+               if run_value(sam, :points, i, :is_wing_node)]
 
 @info "Starting real-time simulation..." dt FPS
 start_time = time()
@@ -202,10 +202,10 @@ try
         diff = steering_target[] - steering_pct[]
         steering_pct[] += clamp(diff, -max_delta, max_delta)
 
-        set_steering!(sys, steering_pct[] / 100.0, gc)
+        set_steering!(sam, steering_pct[] / 100.0, gc)
 
         depower_val = UP + depower_pct_delta[] / 100.0
-        set_depower!(sys, depower_val, 0.0, gc)
+        set_depower!(sam, depower_val, 0.0, gc)
 
         step_start = time()
         if !sim_step!(sam;
@@ -219,7 +219,7 @@ try
         log_state!(logger, sys_state, sam, t)
 
         if step % display_interval == 0
-            plot!(sys; vector_scale)
+            plot!(sam; vector_scale)
             progress_text[] = @sprintf("t = %.1fs", t)
             control_text[] = @sprintf(
                 "Steering: %.1f%% | Depower: %.1f%%",
@@ -234,7 +234,7 @@ try
 
         if step % (FPS * 5) == 0
             avg_pos = mean(
-                [p.pos_w for p in wing_points])
+                [run_value(sam, :points, i, :pos_w) for i in wing_points])
             @printf(
                 "  t=%.1fs z=%.1fm st=%.1f%% dp=%.1f%%\n",
                 t, avg_pos[3], steering_pct[],
@@ -258,7 +258,7 @@ save_log(logger, run_name)
 if record_video
     syslog = load_log(run_name)
     replay_scene = SymbolicAWEModels.replay(
-        syslog, sys; autoplay=false, loop=true)
+        syslog, sam; autoplay=false, loop=true)
     display(replay_scene)
 else
     total_elapsed = time() - start_time

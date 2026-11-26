@@ -113,7 +113,8 @@ point's `drag_coeff`. This lets the solver account for
 parasitic drag distributed along the span.
 """
 function distribute_wing_drag!(sys, area, drag_coeff)
-    wing_pts = [p for p in sys.points if p.is_wing_node]
+    wing_pts = [p for (i, p) in enumerate(sys.points)
+                if SymbolicAWEModels.wing_node(sys, i)]
     n = length(wing_pts)
     n > 0 || error("No wing points found")
     area_per_point = area / n
@@ -131,15 +132,14 @@ Distribute wing mass over LE-TE pairs proportional to chord
 length. `dist` controls the LE/TE split (0.75 = 75% on LE).
 """
 function distribute_wing_mass!(sys, mass; dist=0.75)
-    wing_pts = sort(
-        [p for p in sys.points if p.is_wing_node],
-        by=p -> p.idx)
+    wing_pts = [p for (i, p) in enumerate(sys.points)
+                if SymbolicAWEModels.wing_node(sys, i)]
     n = length(wing_pts)
     iseven(n) || error(
         "Expected even number of wing points, got $n")
     pairs = [(wing_pts[i], wing_pts[i+1])
              for i in 1:2:n]
-    chords = [norm(le.pos_undeformed_b - te.pos_undeformed_b)
+    chords = [norm(le.pos_ENU - te.pos_ENU)
               for (le, te) in pairs]
     total_chord = sum(chords)
     for (i, (le, te)) in enumerate(pairs)
@@ -160,8 +160,8 @@ bridle line that was split into segments, not part of the tether.
 function tether_point_idxs(sys)
     idxs = Set{Int}()
     winched = Set(idx for winch in sys.winches for idx in winch.tethers)
-    for tether in sys.tethers, segment_idx in tether.segments
-        tether.idx in winched || continue
+    for (tether_idx, tether) in enumerate(sys.tethers), segment_idx in tether.segments
+        tether_idx in winched || continue
         i, j = sys.segments[segment_idx].points
         push!(idxs, i, j)
     end
@@ -205,16 +205,13 @@ frame (LE tubes, struts, TE wires, diagonals), which is stiff in compression by
 design and would dominate any compression metric. A segment belongs to the wing
 frame when both of its endpoints are wing nodes.
 """
-function tether_bridle_segments(sys)
-    points = sys.points
-    return [idx for (idx, seg) in enumerate(sys.segments)
-            if !(points[seg.points[1]].is_wing_node &&
-                 points[seg.points[2]].is_wing_node)]
-end
+tether_bridle_segments(sys) =
+    [idx for idx in eachindex(sys.segments)
+     if !SymbolicAWEModels.wing_structural_segment(sys, idx)]
 
 """
     set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
-    set_damping_per_stiffness!(state::SystemState, seg_idxs, ratio)
+    set_damping_per_stiffness!(sam::SymbolicAWEModel, seg_idxs, ratio)
 
 Damp the segments `seg_idxs` proportionally to their stiffness:
 `unit_damping = ratio * unit_stiffness` [N·s], the relation the `materials`
@@ -223,9 +220,9 @@ section of `struc_geometry.yaml` uses to derive `unit_damping` from
 stiffness are skipped, as there is no `unit_stiffness` to scale.
 
 On a structure this sets the segments' `damping_per_stiffness`, which a model
-built from it turns into `unit_damping`. On a run's state it sets `unit_damping`,
-a flattened MTK parameter re-synced before every `step!`, so it takes effect on the
-next step without rebuilding the model.
+built from it turns into `unit_damping`. On a model after `init!` it sets the run's
+`unit_damping` parameter, which takes effect on the next step without rebuilding the
+model.
 
 [`init`](@ref) calls this for its `damping_per_stiffness` keyword before
 settling, which is the usual way in: the run is then damped from the very first
@@ -244,10 +241,11 @@ function set_damping_per_stiffness!(sys::SystemDefinition, seg_idxs, ratio)
     return nothing
 end
 
-function set_damping_per_stiffness!(state::SystemState, seg_idxs, ratio)
-    for segment in (state.segments[idx] for idx in seg_idxs)
-        segment.unit_stiffness isa Real || continue
-        segment.unit_damping = ratio * segment.unit_stiffness
+function set_damping_per_stiffness!(sam::SymbolicAWEModel, seg_idxs, ratio)
+    for idx in seg_idxs
+        unit_stiffness = run_value(sam, :segments, idx, :unit_stiffness)
+        unit_stiffness isa Real || continue
+        set_run_value!(sam, :segments, idx, :unit_damping, ratio * unit_stiffness)
     end
     return nothing
 end

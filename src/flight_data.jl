@@ -309,65 +309,61 @@ function interpolate_flight_data(data, n_substeps)
 end
 
 """
-    update_sys_struct_from_data!(sys, row;
+    update_sys_struct_from_data!(sam, row;
         extra_vel_body_x=0.0,
         config=V3GeomAdjustConfig())
 
-Update a run state from a single data row.
-Updates wing orientation from Euler angles and position
-via transform system. Sets steering/depower from CSV data
-using the provided geometry config.
+Pose the run `sam` as a single data row flies: the wing's elevation, azimuth and
+heading by its first transform, and the velocities of its points and bodies. Sets the
+wind, and the brake, steering and depower of its definition, which the next fresh
+`reinit!` takes into the run.
 
 # Arguments
-- `sys`: Run state to update (`sam.state`)
-- `row`: NamedTuple with roll, pitch, yaw, x, y, z, vx,
-  vy, vz, steering, depower fields
+- `sam`: The model whose run is posed
+- `row`: NamedTuple with x, y, z, vx, vy, vz, heading, steering, depower and
+  wind_vec fields, and optionally omega_b
 - `extra_vel_body_x`: Extra velocity in body x direction
 - `config`: Geometry adjustment config for tape reductions
 """
-function update_sys_struct_from_data!(sys, row;
+function update_sys_struct_from_data!(sam, row;
         extra_vel_body_x=0.0,
         config::V3GeomAdjustConfig=V3GeomAdjustConfig())
-    @unpack wings, points, winches, segments, transforms, bodies = sys
-    wing = wings[1]
-    transform = transforms[1]
+    sys = sam.definition
+    transform = sam.transforms[1]
 
-    sys.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
+    sam.set.wind_vec = KiteUtils.MVec3(row.wind_vec)
 
     data_pos = [row.x, row.y, row.z]
-    R_b_w = calc_R_b_w(sys)
+    R_b_w = calc_R_b_w(sam)
 
     transform.elevation = KiteUtils.calc_elevation(data_pos)
     transform.azimuth = KiteUtils.azimuth_east(data_pos)
     transform.heading = row.heading
-    SymbolicAWEModels.reposition!(sys, [transform])
+    SymbolicAWEModels.reposition!(sam, [transform])
 
     # apply vel with optional extra velocity in body x
     data_vel = [row.vx, row.vy, row.vz]
     extra_vel_w = extra_vel_body_x * R_b_w[:, 1]
     omega_b = hasproperty(row, :omega_b) ? collect(row.omega_b) : zeros(3)
     omega_w = R_b_w * omega_b
-    for point in points
-        transform_frac =
-            point.pos_w ⋅ normalize(wing.pos_w) /
-            norm(wing.pos_w)
-        point.vel_w .= transform_frac *
-            (data_vel + extra_vel_w +
-             cross(omega_w, point.pos_w - wing.pos_w))
+    wing_pos = run_value(sam, :wings, 1, :pos_w)
+    for i in eachindex(sys.points)
+        pos = run_value(sam, :points, i, :pos_w)
+        transform_frac = pos ⋅ normalize(wing_pos) / norm(wing_pos)
+        set_run_value!(sam, :points, i, :vel_w, transform_frac *
+            (data_vel + extra_vel_w + cross(omega_w, pos - wing_pos)))
     end
     # A beam wing's nodes ride the bodies, so the imposed state needs them to carry it too.
-    for body in bodies
-        body.vel_w .= data_vel + extra_vel_w +
-            cross(omega_w, body.pos_w - wing.pos_w)
-        body.ω_b .= body.R_b_to_w' * omega_w
+    for b in eachindex(sys.bodies)
+        pos = run_value(sam, :bodies, b, :pos_w)
+        set_run_value!(sam, :bodies, b, :vel_w,
+                       data_vel + extra_vel_w + cross(omega_w, pos - wing_pos))
+        set_run_value!(sam, :bodies, b, :ω_b,
+                       run_value(sam, :bodies, b, :R_b_to_w)' * omega_w)
     end
 
-    # update winch
-    winches[1].brake = true
-
-    # Set steering/depower from CSV data
-    set_steering!(sys, row.steering, config;
-        min_l0=0.01)
+    sys.winches[1].brake = true
+    set_steering!(sys, row.steering, config; min_l0=0.01)
     set_depower!(sys, row.depower, 0.0, config)
 end
 
